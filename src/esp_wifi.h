@@ -10,3 +10,4 @@ enum wifi_ps_type_t {
 
 inline esp_err_t esp_wifi_set_ps(wifi_ps_type_t) { return ESP_OK; }
 inline esp_err_t esp_wifi_stop() { return ESP_OK; }
+inline esp_err_t esp_wifi_deinit() { return ESP_OK; }

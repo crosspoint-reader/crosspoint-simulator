@@ -16,7 +16,11 @@ const std::string &OtaUpdater::getLatestVersion() const {
   return version;
 }
 
+#ifdef CROSSPOINT_SIMULATOR_OTA_CHANNELS
+OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(Channel) {
+#else
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+#endif
   LOG_DBG("OTA", "[SIM] OTA check is non-destructive; reporting no update");
   return NO_UPDATE;
 }

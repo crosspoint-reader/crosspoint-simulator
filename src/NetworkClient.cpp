@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "IPAddress.h"
 #include "Stream.h"
 
 struct NetworkClient::Impl {
@@ -55,6 +56,10 @@ int NetworkClient::connect(const char *host, uint16_t port) {
   stop();
   impl_ = std::make_shared<Impl>(fd);
   return 1;
+}
+
+int NetworkClient::connect(const IPAddress &address, uint16_t port) {
+  return connect(address.toString().c_str(), port);
 }
 
 size_t NetworkClient::write(const uint8_t *buf, size_t size) {

@@ -4,16 +4,24 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
+#include <limits>
+#include <random>
 #include <string>
 #include <thread>
 
+#include "esp_random.h"
+#include "freertos/task.h"
+
 #define PROGMEM
+#define pgm_read_byte_near(address) (*(const unsigned char *)(address))
 #define ICACHE_RODATA_ATTR
 #define IRAM_ATTR
 #define DRAM_ATTR
 #define RTC_NOINIT_ATTR
 #define PGM_P const char *
 #define PSTR(s) (s)
+
+using boolean = bool;
 
 inline unsigned long millis() {
   using namespace std::chrono;
@@ -45,7 +53,30 @@ struct ESPMock {
 };
 extern ESPMock ESP;
 
-inline long random(long max) { return std::rand() % max; }
+namespace simulator_arduino_detail {
+struct RandomEngine {
+  using result_type = uint64_t;
+  static constexpr result_type min() { return 0; }
+  static constexpr result_type max() {
+    return std::numeric_limits<result_type>::max();
+  }
+  result_type operator()() const {
+    result_type value = 0;
+    esp_fill_random(&value, sizeof(value));
+    return value;
+  }
+};
+} // namespace simulator_arduino_detail
+
+inline long random(long max) {
+  if (max <= 0)
+    return 0;
+  simulator_arduino_detail::RandomEngine engine;
+  return std::uniform_int_distribution<long>(0, max - 1)(engine);
+}
+inline long random(long min, long max) {
+  return min < max ? min + random(max - min) : min;
+}
 
 template <typename A, typename B>
 constexpr auto max(A a, B b) -> decltype(a > b ? a : b) {
