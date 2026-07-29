@@ -1,11 +1,15 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -18,6 +22,8 @@ struct Response {
   int statusCode = 0;
   int curlExitCode = 0;
   std::string body;
+  std::vector<std::pair<std::string, std::string>> headers;
+  size_t finalHeadersBegin = 0;
 };
 
 inline bool startsWith(const std::string &value, const char *prefix) {
@@ -93,6 +99,47 @@ inline bool readFile(const std::string &path, std::string &out) {
 
   std::fclose(file);
   return true;
+}
+
+inline void parseHeaders(const std::string &raw, Response &out) {
+  out.headers.clear();
+  out.finalHeadersBegin = 0;
+  size_t lineStart = 0;
+  while (lineStart < raw.size()) {
+    size_t lineEnd = raw.find('\n', lineStart);
+    if (lineEnd == std::string::npos)
+      lineEnd = raw.size();
+    size_t contentEnd = lineEnd;
+    if (contentEnd > lineStart && raw[contentEnd - 1] == '\r')
+      --contentEnd;
+
+    if (raw.compare(lineStart, 5, "HTTP/") == 0) {
+      out.finalHeadersBegin = out.headers.size();
+      lineStart = lineEnd + 1;
+      continue;
+    }
+
+    const size_t colon = raw.find(':', lineStart);
+    if (colon < contentEnd) {
+      size_t keyEnd = colon;
+      while (keyEnd > lineStart &&
+             (raw[keyEnd - 1] == ' ' || raw[keyEnd - 1] == '\t'))
+        --keyEnd;
+      size_t valueStart = colon + 1;
+      while (valueStart < contentEnd &&
+             (raw[valueStart] == ' ' || raw[valueStart] == '\t'))
+        ++valueStart;
+      while (contentEnd > valueStart &&
+             (raw[contentEnd - 1] == ' ' || raw[contentEnd - 1] == '\t'))
+        --contentEnd;
+      if (keyEnd > lineStart) {
+        out.headers.emplace_back(
+            raw.substr(lineStart, keyEnd - lineStart),
+            raw.substr(valueStart, contentEnd - valueStart));
+      }
+    }
+    lineStart = lineEnd + 1;
+  }
 }
 
 inline bool isDirectory(const std::string &path) {
@@ -184,15 +231,31 @@ inline bool fetchFromMockRoot(const std::string &url, Response &out) {
 inline bool fetchWithCurl(const std::string &url, const char *method,
                           const std::map<std::string, std::string> &headers,
                           const std::string &basicAuth, const char *body,
-                          Response &out) {
-  char tmpTemplate[] = "/tmp/crosspoint-sim-http-XXXXXX";
-  int fd = mkstemp(tmpTemplate);
-  if (fd < 0)
+                          Response &out, int timeoutMs) {
+  char bodyTemplate[] = "/tmp/crosspoint-sim-http-body-XXXXXX";
+  int bodyFd = mkstemp(bodyTemplate);
+  if (bodyFd < 0)
     return false;
-  close(fd);
+  close(bodyFd);
 
-  std::string cmd = "curl -L -sS --connect-timeout 10 --max-time 60 -o ";
-  cmd += shellQuote(tmpTemplate);
+  char headerTemplate[] = "/tmp/crosspoint-sim-http-headers-XXXXXX";
+  int headerFd = mkstemp(headerTemplate);
+  if (headerFd < 0) {
+    unlink(bodyTemplate);
+    return false;
+  }
+  close(headerFd);
+
+  const int timeoutSeconds = timeoutMs > 0 ? std::max(1, (timeoutMs + 999) / 1000) : 60;
+  const int connectTimeoutSeconds = std::min(10, timeoutSeconds);
+  std::string cmd = "curl -L -sS --connect-timeout ";
+  cmd += std::to_string(connectTimeoutSeconds);
+  cmd += " --max-time ";
+  cmd += std::to_string(timeoutSeconds);
+  cmd += " -D ";
+  cmd += shellQuote(headerTemplate);
+  cmd += " -o ";
+  cmd += shellQuote(bodyTemplate);
   cmd += " -w '%{http_code}'";
   if (method && std::string(method) != "GET")
     cmd += " -X " + shellQuote(method);
@@ -207,7 +270,8 @@ inline bool fetchWithCurl(const std::string &url, const char *method,
 
   FILE *pipe = popen(cmd.c_str(), "r");
   if (!pipe) {
-    unlink(tmpTemplate);
+    unlink(bodyTemplate);
+    unlink(headerTemplate);
     return false;
   }
 
@@ -220,24 +284,35 @@ inline bool fetchWithCurl(const std::string &url, const char *method,
   if (rc >= 0 && WIFEXITED(rc))
     out.curlExitCode = WEXITSTATUS(rc);
 
-  bool readOk = readFile(tmpTemplate, out.body);
-  unlink(tmpTemplate);
+  bool readOk = readFile(bodyTemplate, out.body);
+  unlink(bodyTemplate);
   if (!readOk)
     out.body.clear();
 
-  out.statusCode = std::atoi(statusText.c_str());
+  std::string rawHeaders;
+  if (readFile(headerTemplate, rawHeaders))
+    parseHeaders(rawHeaders, out);
+  unlink(headerTemplate);
+
+  int statusCode = 0;
+  const auto parsed = std::from_chars(
+      statusText.data(), statusText.data() + statusText.size(), statusCode);
+  if (parsed.ec == std::errc{} &&
+      parsed.ptr == statusText.data() + statusText.size())
+    out.statusCode = statusCode;
   return rc == 0 || out.statusCode > 0 || !out.body.empty();
 }
 
 inline bool fetch(const std::string &url, const char *method,
                   const std::map<std::string, std::string> &headers,
-                  const std::string &basicAuth, const char *body, Response &out) {
+                  const std::string &basicAuth, const char *body, Response &out,
+                  int timeoutMs = 60000) {
   out = Response{};
   if (fetchFromMockRoot(url, out))
     return true;
   if (fetchFromFileUrl(url, out))
     return true;
-  return fetchWithCurl(url, method, headers, basicAuth, body, out);
+  return fetchWithCurl(url, method, headers, basicAuth, body, out, timeoutMs);
 }
 
 } // namespace sim_http_fetch
