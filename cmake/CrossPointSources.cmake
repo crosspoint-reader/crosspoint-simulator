@@ -4,9 +4,9 @@
 # `pio run -e simulator -t compiledb`. Regenerate after any firmware change that
 # adds, removes, or renames a translation unit.
 #
-# firmware   : /tmp/claude-0/-home-user-crosspoint-simulator/4caa4929-b456-5ca4-aa96-085eb5c6fd4f/scratchpad/fw-regen
+# firmware   : /tmp/claude-0/-home-user-crosspoint-simulator/4caa4929-b456-5ca4-aa96-085eb5c6fd4f/scratchpad/fw-assembly
 # pinned at  : 1a7f5a9e3828e08565aa055a696ed8f0e9248c28
-# TU counts  : 145 firmware, 20 simulator (6 C, 159 C++)
+# TU counts  : 147 firmware, 20 simulator (6 C, 161 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
@@ -116,6 +116,8 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/Activity.cpp
   src/activities/ActivityManager.cpp
   src/activities/boot_sleep/BootActivity.cpp
+  src/activities/boot_sleep/CalendarSleepScreen.cpp
+  src/activities/boot_sleep/HolidayCalculator.cpp
   src/activities/boot_sleep/SleepActivity.cpp
   src/activities/browser/OpdsBookBrowserActivity.cpp
   src/activities/home/CrashActivity.cpp

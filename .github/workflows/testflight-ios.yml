@@ -99,6 +99,21 @@ jobs:
           path: firmware
           submodules: recursive
 
+      - name: Apply vendored firmware patches
+        # Upstream is not ours to push; features ship as format-patch output in
+        # firmware-patches/, applied in numeric order on the pinned commit.
+        # --check first so a drifted patch fails loudly BEFORE half-applying.
+        # Must run before source generation: patches edit translation YAML and
+        # renderer sources that gen_i18n.py / build_html.py consume.
+        run: |
+          shopt -s nullglob
+          cd firmware
+          for p in ../simulator/firmware-patches/[0-9]*.patch; do
+            echo "== applying $(basename "$p")"
+            git apply --check "$p"
+            git apply "$p"
+          done
+
       - name: Generate firmware sources
         # The firmware generates sources via PlatformIO extra_scripts, so a
         # fresh checkout is incomplete: gen_i18n.py produces

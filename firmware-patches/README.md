@@ -16,4 +16,6 @@ from the patched sources (`scripts/gen_i18n.py`, `scripts/build_html.py`).
 
 | Patch | What it does |
 | --- | --- |
-| `01-calendar-views.patch` | Adds the "Calendar Four/Five/Six" sleep-screen styles (4/5/6-week calendar grids, today highlighted) plus the `HalClock::getDateTime` accessor they need. Creates `src/activities/boot_sleep/CalendarSleepScreen.*` and `HolidayCalculator.*`, which the vendored CMake source list already expects. |
+| `01-calendar-views.patch` | Adds the "Calendar Four/Five/Six" sleep-screen styles (4/5/6-week calendar grids, today highlighted) plus the `HalClock::getDateTime` accessor they need. Creates `src/activities/boot_sleep/CalendarSleepScreen.*` and `HolidayCalculator.*`. The CMake source list was regenerated against the patched tree to include the two new TUs. |
+| `02-reader-no-link-underline.patch` | EPUB parser stops force-tagging internal anchors with the underline style; `<u>`/`<ins>` and CSS `text-decoration: underline` keep working. Links cannot be selected on this reader, so the underline was noise. |
+| `03-text-antialiasing.patch` | "Text Anti-Aliasing" grows from a toggle to Off / On / Crisp / Dark — glyph-gray-to-plane mapping strengths over the panel's 4 optical levels. Values 0/1 keep their legacy meaning, so old settings files round-trip. |
