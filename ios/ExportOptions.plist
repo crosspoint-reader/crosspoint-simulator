@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- TestFlight and the App Store share one export method. -->
+  <key>method</key>
+  <string>app-store-connect</string>
+
+  <key>teamID</key>
+  <string>887M8FR447</string>
+
+  <!-- Automatic signing, so xcodebuild -allowProvisioningUpdates can mint the
+       App Store profile for com.natebunnyfield.crosspoint.x3 rather than
+       requiring one to exist up front. -->
+  <key>signingStyle</key>
+  <string>automatic</string>
+
+  <key>destination</key>
+  <string>export</string>
+
+  <!-- Symbols make TestFlight crash reports readable. Bitcode is long dead. -->
+  <key>uploadSymbols</key>
+  <true/>
+
+  <!-- Do not let Xcode thin the build per-device; one universal arm64 IPA. -->
+  <key>stripSwiftSymbols</key>
+  <true/>
+</dict>
+</plist>

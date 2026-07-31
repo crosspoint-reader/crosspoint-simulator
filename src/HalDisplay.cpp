@@ -281,7 +281,14 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
 
 namespace SimulatorOverlay {
 static DrawFn overlayDraw = nullptr;
+// Packed 0xRRGGBB. White by default, so a host that never calls setClearColor
+// (every desktop build) keeps the blank-page field it has always had.
+static std::atomic<uint32_t> clearColor{0xFFFFFFu};
 void setDrawCallback(DrawFn fn) { overlayDraw = fn; }
+void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
+  clearColor.store((static_cast<uint32_t>(r) << 16) |
+                   (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b));
+}
 void requestPresent() { pendingPresent.store(true); }
 } // namespace SimulatorOverlay
 
@@ -427,11 +434,16 @@ void HalDisplay::presentIfNeeded() {
 
   SDL_UpdateTexture(texture, nullptr, pixelBuf,
                     DISPLAY_WIDTH * sizeof(uint32_t));
-  // Clear to white, not the default black. On desktop the window is exactly
-  // panel-sized so this never shows, but wherever the panel is letterboxed (the
-  // phone presents it at 2x inside a taller screen) the surround must match a
-  // blank e-ink page, so the panel edge is invisible.
-  SDL_SetRenderDrawColor(sdl_renderer, 255, 255, 255, 255);
+  // Clear to the field colour, not the default black. On desktop the window is
+  // exactly panel-sized so this never shows, but wherever the panel is
+  // letterboxed (the phone presents it at 2x inside a taller screen) it is the
+  // surround. It defaults to white, matching a blank e-ink page so the panel
+  // edge is invisible; SimulatorOverlay::setClearColor lets a host that has an
+  // appearance to follow say otherwise.
+  const uint32_t field = SimulatorOverlay::clearColor.load();
+  SDL_SetRenderDrawColor(sdl_renderer, static_cast<Uint8>(field >> 16),
+                         static_cast<Uint8>(field >> 8),
+                         static_cast<Uint8>(field), 255);
   SDL_RenderClear(sdl_renderer);
 
   // For portrait modes the landscape panel texture must be rotated to fill the

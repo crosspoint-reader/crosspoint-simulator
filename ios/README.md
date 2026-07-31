@@ -100,16 +100,19 @@ Left      —      Power      —      Right
 Back    Select     —       Up      Down
 ```
 
-| Control | Scancode | Glyph |
+| Control | Button index | Glyph |
 |---|---|---|
-| Back | `ESCAPE` | chevron against a bar |
-| Select | `RETURN` | checkmark |
-| Up / Down / Left / Right | `UP` `DOWN` `LEFT` `RIGHT` | chevrons |
-| Power | `P` | IEC power mark |
+| Back | `HalGPIO::BTN_BACK` | chevron against a bar |
+| Select | `HalGPIO::BTN_CONFIRM` | checkmark |
+| Up / Down / Left / Right | `BTN_UP` `BTN_DOWN` `BTN_LEFT` `BTN_RIGHT` | chevrons |
+| Power | `HalGPIO::BTN_POWER` | IEC power mark |
 
-Scancodes mirror `HalGPIO.cpp`'s `buttonScancode[]` exactly. There is no HOME —
-`hasHomeKey()` is X4-Pro-only. There is no control for the simulator's own SLEEP
-(`S`) either: that is a harness command, not a button the hardware has.
+Each control names a `HalGPIO::BTN_*` index directly and drives it through
+`gpio.injectButtonDown/Up()`. Scancodes are not involved: they were the transport
+while the pad injected by pushing SDL key events, and that indirection is what
+broke level reads (see below). There is no HOME — `hasHomeKey()` is X4-Pro-only.
+There is no control for the simulator's own SLEEP (`S`) either: that is a harness
+command, not a button the hardware has.
 
 Back draws a chevron against a bar rather than a bare chevron so it cannot be
 mistaken for Left.
@@ -150,9 +153,12 @@ pressed state would otherwise not appear until the next page render.
 `chdir()`, the harness install, and a normal `return 0` in place of `_exit(0)`
 (iOS reports a self-terminating process as a crash).
 
-## Open issue: level reads do not see injected keys
+## Closed: level reads do not see injected keys
 
-Measured, not assumed:
+**Resolved.** Option 1 below was taken. The pad no longer pushes SDL key events;
+it calls `gpio.injectButtonDown/Up(HalGPIO::BTN_*)`.
+
+The bug, measured not assumed:
 
 ```
 SDL_PushEvent rc=1
@@ -163,33 +169,67 @@ AFTER POLL:      GetKeyboardState[P]=0
 
 `SDL_PushEvent` delivers an event to the queue but does not update SDL's internal
 keyboard state array — that array is only written on the real-input path.
-Consequences for `HalGPIO`:
+Consequences for `HalGPIO`, when the pad injected by pushing key events:
 
-- **Edge reads work.** `update()` sets `pressedThisFrame` / `releasedThisFrame`
-  straight from the event (`HalGPIO.cpp:503-516`), so `wasPressed()` /
-  `wasReleased()` behave. Everything demonstrated above runs on this path.
-- **Level reads do not.** `isPressed()` (`:552`), `anyButtonHeld()` (`:588`) and
-  `powerHoldDuration()` (`:601`) consult
-  `SDL_GetKeyboardState(NULL) || syntheticButtonDown[]`. Injected keys set
-  neither, so `powerHoldDuration()` returns 0 at its early exit and
-  **long-press power-off never fires**. Autorepeat/held page-turn breaks the same
-  way.
+- **Edge reads worked.** `update()` sets `pressedThisFrame` /
+  `releasedThisFrame` straight from the dequeued event, so `wasPressed()` /
+  `wasReleased()` behaved.
+- **Level reads did not.** `isPressed()`, `getHeldTime()` and
+  `getPowerButtonHeldTime()` consult
+  `SDL_GetKeyboardState(NULL) || syntheticButtonDown[]`. Pushed events set
+  neither, so every held-button gesture silently never fired. Two the user hit:
+  - **Hold POWER to sleep.** `main.cpp:573-574` needs
+    `gpio.isPressed(BTN_POWER) && gpio.getPowerButtonHeldTime() > 400`; the
+    second call returned 0 at its early exit, so the device could only ever
+    sleep on the inactivity timeout.
+  - **Hold a side button to cycle font family.**
+    `EpubReaderActivity.cpp:648-665` needs
+    `ReaderUtils::detectHeldSideDirection()` (which is `isPressed()`) and
+    `getHeldTime() >= 700`; both were dead, so the branch was unreachable. The
+    font-SIZE tap in the same block survived, because it reads a release edge.
 
-The pad now expresses a genuine hold, so the input side is no longer the
-limitation — the firmware simply cannot read it. Any fix touches the simulator's
-`HalGPIO`; the firmware still does not change and no `#ifdef` is needed:
+The fix, in `HalGPIO`; the firmware does not change and no `#ifdef` is needed:
 
-1. **Promote a live injection API** — a platform-neutral
-   `HalGPIO::injectButtonDown/Up(uint8_t)` setting the same three arrays the
-   existing synthetic path sets (`processSyntheticEvents`, `HalGPIO.cpp:369-409`,
-   which is file-local and driven only by the `CROSSPOINT_SIM_INPUT_SCRIPT` env
-   var — a startup batch, not a live API), with that script refactored to call it
-   so there is one code path.
-2. **Make the keyboard path level-consistent** — have `update()` also set
-   `syntheticButtonDown[]` on KEYDOWN/KEYUP. Keeps the translation point at SDL,
-   but needs focus-loss handling so a real held key cannot stick.
+1. **A live injection API** — platform-neutral
+   `HalGPIO::injectButtonDown/Up(uint8_t)`, writing the press edge, the held
+   level and the `SDL_GetTicks()` press timestamp together.
+   `processSyntheticEvents()` (the `CROSSPOINT_SIM_INPUT_SCRIPT` batch) and the
+   `S` sleep shortcut were refactored onto it, so there is one code path and the
+   script env var is now a second caller of the same API rather than a parallel
+   implementation.
+2. *(not taken)* **Make the keyboard path level-consistent** — have `update()`
+   also set `syntheticButtonDown[]` on KEYDOWN/KEYUP. Keeps the translation point
+   at SDL, but needs focus-loss handling so a real held key cannot stick.
 
-Option 1 is the recommendation. **This is an open decision.**
+Verified on the desktop binary, which runs the identical `injectButtonDown/Up`
+code the pad now calls, driven through `CROSSPOINT_SIM_INPUT_SCRIPT`:
+
+- `4000:P:2000` → `[4430] [MAIN] Entering deep sleep`, i.e. 430 ms after the
+  injected press, matching `getPowerButtonDuration()` = 400 ms. A later
+  `9000:P:300` woke it: the relaunched process logged
+  `Verifying power button press duration`, which is reached only when
+  `getWakeupReason() == PowerButton`.
+- `6000:DOWN:1400` in the reader → `[6743] Loaded /.fonts/Edgar/Edgar_12.cpfont`
+  and `sdFontFamilyName` `Coelacanth` → `Edgar`, i.e. the family cycled 743 ms
+  into the hold (`SKIP_HOLD_MS` = 700).
+- `6000:DOWN:150` (a tap) stepped `fontSize` 0 → 1 and left the family alone, so
+  the edge path is not regressed and hold/tap still disambiguate.
+
+### Still open on the wake path: `rebootAsPowerWake()` cannot exec on iOS
+
+Waking from deep sleep is a process restart — `SimulatorLifecycle.cpp:61`
+`execvp(gArgv[0], gArgv)`, because a deep-sleep wake on the real device is a chip
+reset. The iOS sandbox denies `process-exec`, so on a device that call should
+fail and fall through to `std::perror("execvp"); _exit(1)` — the app dies instead
+of waking, and `_exit()` is itself reported as a crash (the reason
+`simulator_main.cpp` returns 0 rather than `_exit(0)` on iOS).
+
+This is independent of the injection bug above and survives its fix: both the
+`syntheticButtonDown[]` scan and the `SDL_PollEvent` fallback in
+`HalGPIO::startDeepSleep()` funnel into the same `rebootAsPowerWake()`.
+**Unverified** — it has not been observed on a device or simulator here, and the
+iOS Simulator's weaker sandbox may permit the `exec` where a device would not.
+Confirm before designing around it.
 
 ## Resolved along the way
 

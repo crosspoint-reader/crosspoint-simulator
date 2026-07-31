@@ -5,12 +5,12 @@
 //
 //   harness layer (this file)  draws an on-screen button pad and reads touches
 //                              on it. Lives outside the simulated device.
-//   device layer (HalGPIO)     sees only the X3's seven GPIO buttons, as SDL
-//                              keyboard scancodes.
+//   device layer (HalGPIO)     sees only the X3's seven GPIO buttons, by index.
 //
-// The harness translates the first into the second by pushing synthetic
-// SDL_EVENT_KEY_DOWN / _UP onto SDL's event queue. Nothing below SDL knows the
-// difference, so no #if TARGET_OS_IPHONE appears in HalGPIO or the firmware.
+// The harness translates the first into the second by calling HalGPIO's
+// platform-neutral live-injection API, gpio.injectButtonDown/Up(BTN_*). The
+// device layer cannot tell an injected button from a keyboard one, so no
+// #if TARGET_OS_IPHONE appears in HalGPIO or the firmware.
 //
 // hasTouch() stays false for X3 and iPhone touches become BUTTON events, never
 // touch events. Hit-testing happens HERE, above SDL; no coordinate is ever handed
@@ -20,7 +20,12 @@
 //
 // ONE CONTROL PER PHYSICAL BUTTON, and nothing else. Each is down-on-touch and
 // up-on-lift, so it expresses a genuine hold -- which is what page-turn
-// autorepeat and long-press power-off need.
+// autorepeat and long-press-to-sleep need.
+//
+// POWER is the one control whose GESTURE is widened, because a rectangle on
+// glass is not a key you can lean on: a tap holds the injected button past the
+// firmware's own sleep threshold instead of lifting with the finger. The device
+// layer still sees nothing but an ordinary long press. See kSleepHoldMs.
 //
 // WHY AN EVENT WATCH, NOT A POLL LOOP. HalGPIO::update() owns the SDL event pump
 // for the whole simulator and must keep owning it -- two pollers would split
@@ -28,11 +33,16 @@
 // without consuming them, so the harness sees finger events that HalGPIO simply
 // ignores, and neither steals from the other.
 //
-// A MEASURED LIMIT, verified not assumed: SDL_PushEvent delivers an event to the
-// queue but does NOT update SDL's internal keyboard state, so
-// SDL_GetKeyboardState() stays clear for injected keys. Edge reads
-// (wasPressed/wasReleased) therefore work; level reads (isPressed /
-// anyButtonHeld / powerHoldDuration) do not. See ios/README.md.
+// WHY NOT SDL_PushEvent. The pad used to inject by pushing synthetic
+// SDL_EVENT_KEY_DOWN / _UP. Measured, not assumed: SDL_PushEvent delivers an
+// event to the queue but does NOT update SDL's internal keyboard state array,
+// which is written only on the real-input path. Edge reads (wasPressed /
+// wasReleased) came off the dequeued event and worked; every level read
+// (isPressed, getHeldTime, getPowerButtonHeldTime) consults
+// SDL_GetKeyboardState() and stayed false, so nothing timed off a HELD button
+// could fire -- long-press-to-sleep and the reader's font-family hold both died
+// there. injectButtonDown/Up writes the press edge, the held level and the press
+// timestamp together, so a hold expressed by a finger survives all the way down.
 
 #include "CrossPointHarness.h"
 
@@ -42,13 +52,14 @@
 #include <string>
 #include <unistd.h>
 
+#include "HalGPIO.h"
 #include "SimulatorOverlay.h"
 
 namespace {
 
 // --- The X3's seven buttons ------------------------------------------------
 //
-// Scancodes mirror HalGPIO.cpp's buttonScancode[] exactly. There is no control
+// One control per HalGPIO::BTN_* index, and nothing else. There is no control
 // for the simulator's own SLEEP (`S`): that is a harness command, not a button
 // the hardware has. There is no HOME either -- hasHomeKey() is X4-Pro-only.
 //
@@ -61,34 +72,26 @@ namespace {
 // SIZING follows Apple's Human Interface Guidelines: every control is at least
 // 44x44 pt, targets are separated by >= 8 pt, and the bands are inset clear of
 // the Dynamic Island at the top and the home indicator at the bottom.
-enum class Glyph {
-  Back,  // chevron against a bar, so BACK cannot be mistaken for LEFT
-  ChevronLeft,
-  ChevronUp,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  Power
-};
-
+//
+// The controls are UNLABELLED -- no glyph, no text. The pad names nothing about
+// what each button does, which puts the whole affordance on the pressed state;
+// see the palette below for how that is paid for.
 struct PadButton {
-  SDL_Scancode scancode;
-  SDL_Keycode keycode;
+  uint8_t button;  // HalGPIO::BTN_*
   const char *name;
-  Glyph glyph;
   SDL_FRect rect{};
   bool down = false;
   SDL_FingerID finger = 0;
 };
 
 PadButton g_pad[] = {
-    {SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, "BACK", Glyph::Back},
-    {SDL_SCANCODE_P, SDLK_P, "POWER", Glyph::Power},
-    {SDL_SCANCODE_UP, SDLK_UP, "UP", Glyph::ChevronUp},
-    {SDL_SCANCODE_LEFT, SDLK_LEFT, "LEFT", Glyph::ChevronLeft},
-    {SDL_SCANCODE_RETURN, SDLK_RETURN, "CONFIRM", Glyph::Check},
-    {SDL_SCANCODE_RIGHT, SDLK_RIGHT, "RIGHT", Glyph::ChevronRight},
-    {SDL_SCANCODE_DOWN, SDLK_DOWN, "DOWN", Glyph::ChevronDown},
+    {HalGPIO::BTN_BACK, "BACK"},
+    {HalGPIO::BTN_POWER, "POWER"},
+    {HalGPIO::BTN_UP, "UP"},
+    {HalGPIO::BTN_LEFT, "LEFT"},
+    {HalGPIO::BTN_CONFIRM, "CONFIRM"},
+    {HalGPIO::BTN_RIGHT, "RIGHT"},
+    {HalGPIO::BTN_DOWN, "DOWN"},
 };
 constexpr int kPadBack = 0, kPadPower = 1, kPadUp = 2, kPadLeft = 3,
               kPadConfirm = 4, kPadRight = 5, kPadDown = 6;
@@ -98,20 +101,86 @@ bool g_padLaidOut = false;
 float g_ptScale = 3.0f;
 SDL_WindowID g_windowId = 0;
 
-void pushSyntheticKey(SDL_Scancode sc, SDL_Keycode key, bool down) {
-  SDL_Event e;
-  SDL_zero(e);
-  e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-  e.key.timestamp = SDL_GetTicksNS();
-  e.key.windowID = g_windowId;
-  e.key.which = 0;
-  e.key.scancode = sc;
-  e.key.key = key;
-  e.key.mod = SDL_KMOD_NONE;
-  e.key.down = down;
-  e.key.repeat = false;
-  if (!SDL_PushEvent(&e))
-    SDL_Log("[harness] SDL_PushEvent failed: %s", SDL_GetError());
+// The single translation point between the two layers. Called from the event
+// watch, which runs inside SDL_PumpEvents inside HalGPIO::update() -- i.e. after
+// beginFrame() has cleared the frame's edge latches and before the firmware
+// reads them, exactly the window the SDL keyboard path writes in.
+void injectButton(int padIndex, bool down) {
+  if (down)
+    gpio.injectButtonDown(g_pad[padIndex].button);
+  else
+    gpio.injectButtonUp(g_pad[padIndex].button);
+}
+
+// --- POWER: a tap sleeps, as well as a hold --------------------------------
+//
+// THE DEVICE SIDE IS A HOLD AND STAYS A HOLD. The firmware sleeps only once
+// getPowerButtonHeldTime() passes SETTINGS.getPowerButtonDuration()
+// (crosspoint-reader src/main.cpp:573-582). Nothing else on the device stops
+// it: there is no power-off anywhere in the firmware or the SDK, because on an
+// ESP32-C3 the only stop state is deep sleep (lib/hal/HalPowerManager.cpp:94)
+// and waking from it is a chip reset.
+//
+// THE PHONE SIDE IS A TAP. A hardware key you can find by feel and lean on is
+// not a rectangle on glass. A screen control that needs half a second of
+// pressure before anything happens at all does not read as deliberate, it reads
+// as broken -- there is no click, no travel and no detent to tell you it is
+// working, and the pad is unlabelled, so nothing else offers to explain it.
+//
+// So the harness widens the GESTURE without inventing a device behaviour: on a
+// tap the injected button STAYS DOWN until it has passed the firmware's own
+// threshold, then lifts. HalGPIO sees one ordinary long press and the firmware
+// runs its ordinary sleep path -- there is no second sleep mechanism here, and
+// nothing in this file knows what sleep is. A real hold needs none of this: it
+// passes the threshold before the finger lifts.
+//
+// kSleepHoldMs is read off the firmware rather than invented. 400ms is the
+// largest value getPowerButtonDuration() can return (it is 400, or 10 when
+// Settings > Controls > "Short power button" is set to Sleep --
+// src/CrossPointSettings.h:309-311), and the firmware samples it once per
+// loop() iteration, so the remaining 200ms is margin for a slow frame: a page
+// render holds loop() far longer than its 1ms idle delay.
+constexpr Uint32 kSleepHoldMs = 600;
+
+Uint64 g_powerPressedAt = 0;
+Uint32 g_deferredReleaseEvent = 0;  // SDL_RegisterEvents type; 0 until begin()
+SDL_TimerID g_deferredReleaseTimer = 0;
+Sint32 g_deferredReleaseGeneration = 0;
+
+// Runs on SDL's timer thread, so it deliberately does NOT touch HalGPIO. Every
+// other injection in this file happens on the thread that pumps events, and the
+// three arrays behind injectButtonUp are not synchronised. Pushing an event is
+// the thread-safe half; padWatch performs the injection when the event is
+// pumped, on the same thread as everything else.
+//
+// The generation rides in the event rather than being read from the global here,
+// so the timer thread reads nothing the event thread writes.
+Uint32 SDLCALL deferredReleaseFired(void *userdata, SDL_TimerID, Uint32) {
+  if (g_deferredReleaseEvent != 0) {
+    SDL_Event e;
+    SDL_zero(e);
+    e.type = g_deferredReleaseEvent;
+    e.user.code = static_cast<Sint32>(reinterpret_cast<intptr_t>(userdata));
+    SDL_PushEvent(&e);
+  }
+  return 0;  // one-shot
+}
+
+void cancelDeferredRelease() {
+  if (g_deferredReleaseTimer) {
+    SDL_RemoveTimer(g_deferredReleaseTimer);
+    g_deferredReleaseTimer = 0;
+  }
+  // Bumped unconditionally: a timer that has already fired cannot be removed,
+  // and its event may still be sitting in the queue. The generation is what
+  // stops that stale event from cutting short a press made since.
+  g_deferredReleaseGeneration++;
+}
+
+bool anyOtherButtonDown(int except) {
+  for (int i = 0; i < kPadCount; i++)
+    if (i != except && g_pad[i].down) return true;
+  return false;
 }
 
 // --- Layout ----------------------------------------------------------------
@@ -161,14 +230,85 @@ void layoutPad(int outW, int outH) {
   place(kPadDown, 4, lowerY);
 }
 
-// --- Painting --------------------------------------------------------------
+// --- Appearance ------------------------------------------------------------
 //
-// Apple system greys at the low-contrast end, so the chrome recedes and the
-// e-ink panel stays the subject: systemGray6 fill, systemGray5 hairline,
-// systemGray glyph, each one step darker while held.
-void setRGB(SDL_Renderer *r, int rr, int gg, int bb) {
-  SDL_SetRenderDrawColor(r, static_cast<Uint8>(rr), static_cast<Uint8>(gg),
-                         static_cast<Uint8>(bb), 255);
+// Apple's system greys at the low-contrast end, so the chrome recedes and the
+// e-ink panel stays the subject. Both appearances, published values:
+// systemBackground field, systemGray6 face, systemGray5 hairline, systemGray4
+// while held.
+//
+// THE PRESSED STATE CARRIES EVERYTHING. With the glyphs gone it is the only
+// feedback a control has, so it moves TWO steps along the ramp (6 -> 4) rather
+// than one, and it moves towards the foreground in each appearance -- darker in
+// light, lighter in dark. One step (6 -> 5) is 13/255 in light mode and is not
+// reliably visible on a phone; it is also exactly the hairline colour, which
+// would flatten the whole control into one tone.
+struct Palette {
+  Uint8 field[3];     // behind the panel and the pad: systemBackground
+  Uint8 hairline[3];  // button border: systemGray5
+  Uint8 face[3];      // button face: systemGray6
+  Uint8 faceDown[3];  // button face while held: systemGray4
+};
+
+constexpr Palette kLightPalette{{0xFF, 0xFF, 0xFF},
+                                {0xE5, 0xE5, 0xEA},
+                                {0xF2, 0xF2, 0xF7},
+                                {0xD1, 0xD1, 0xD6}};
+constexpr Palette kDarkPalette{{0x00, 0x00, 0x00},
+                               {0x2C, 0x2C, 0x2E},
+                               {0x1C, 0x1C, 0x1E},
+                               {0x3A, 0x3A, 0x3C}};
+
+bool g_dark = false;
+const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
+
+// THE FIELD FOLLOWS THE APPEARANCE; THE PANEL NEVER DOES.
+//
+// In light mode the field is white because a blank e-ink page is white, so the
+// panel edge disappears. That seamlessness is a coincidence of light mode, not
+// a requirement -- in dark mode the honest reading of the surround is the one
+// every e-reader actually has: a bezel. So the field goes to systemBackground
+// dark and the panel keeps showing exactly what the firmware drew.
+//
+// The tempting alternative -- darken the panel too, via HalDisplay's
+// setInverted -- is wrong twice over, both checked rather than assumed:
+//
+//   1. It is not "the firmware's own inversion". The firmware's HAL header
+//      (lib/hal/HalDisplay.h) has no inversion API at all, and nothing in the
+//      firmware or the SDK calls setInverted/toggleInverted/isInverted --
+//      the trio exists only in the simulator's HalDisplay. Driving it from the
+//      host appearance would make the DEVICE layer answer to a property of the
+//      phone, which is the one thing this harness exists not to do, and would
+//      show a panel state no X3 can produce.
+//   2. It would not even work live. Inversion is applied while converting the
+//      framebuffer to pixels (HalDisplay.cpp renderBwPixels /
+//      composeGrayscalePreview), which runs on the render task only when the
+//      firmware refreshes. Flipping the flag on a theme change re-presents the
+//      already-converted pixel buffer, so the panel would not change until the
+//      next page render -- which on e-ink may be never.
+void applyTheme() {
+  g_dark = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+  const Palette &p = palette();
+  SimulatorOverlay::setClearColor(p.field[0], p.field[1], p.field[2]);
+  // The firmware presents only when it has new panel content, which on an e-ink
+  // device is rare, so without this the new appearance would not appear until
+  // the next page render.
+  SimulatorOverlay::requestPresent();
+}
+
+// A watch of its own, deliberately not a case inside padWatch: this is a
+// painting concern and reads no input. SDL raises the theme change from UIKit's
+// traitCollectionDidChange on the UI thread, and applyTheme only writes a flag
+// and two atomics -- no renderer call happens here.
+bool SDLCALL themeWatch(void * /*userdata*/, SDL_Event *e) {
+  if (e->type == SDL_EVENT_SYSTEM_THEME_CHANGED) applyTheme();
+  return true;  // never filter anything out
+}
+
+// --- Painting --------------------------------------------------------------
+
+void setRGB(SDL_Renderer *r, const Uint8 c[3]) {
+  SDL_SetRenderDrawColor(r, c[0], c[1], c[2], 255);
 }
 
 void fillRect(SDL_Renderer *r, float x, float y, float w, float h) {
@@ -192,89 +332,27 @@ void fillRoundRect(SDL_Renderer *r, const SDL_FRect &b, float rad) {
   }
 }
 
-void strokeLine(SDL_Renderer *r, float x1, float y1, float x2, float y2,
-                float t) {
-  const float dx = x2 - x1, dy = y2 - y1;
-  const int steps = static_cast<int>(SDL_max(SDL_fabsf(dx), SDL_fabsf(dy))) + 1;
-  for (int i = 0; i <= steps; i++) {
-    const float f = static_cast<float>(i) / static_cast<float>(steps);
-    fillRect(r, x1 + dx * f - t / 2, y1 + dy * f - t / 2, t, t);
-  }
-}
-
-void drawGlyph(SDL_Renderer *r, Glyph g, float cx, float cy, float size,
-               float t) {
-  const float e = size / 2;
-  switch (g) {
-    case Glyph::Back:
-      // Chevron pointing into a bar. LEFT is a bare chevron, so the two read as
-      // different controls at a glance rather than as the same arrow twice.
-      strokeLine(r, cx + e * 0.9f, cy - e, cx - e * 0.1f, cy, t);
-      strokeLine(r, cx - e * 0.1f, cy, cx + e * 0.9f, cy + e, t);
-      strokeLine(r, cx - e * 0.75f, cy - e * 0.85f, cx - e * 0.75f,
-                 cy + e * 0.85f, t);
-      break;
-    case Glyph::ChevronLeft:
-      strokeLine(r, cx + e * 0.5f, cy - e, cx - e * 0.5f, cy, t);
-      strokeLine(r, cx - e * 0.5f, cy, cx + e * 0.5f, cy + e, t);
-      break;
-    case Glyph::ChevronRight:
-      strokeLine(r, cx - e * 0.5f, cy - e, cx + e * 0.5f, cy, t);
-      strokeLine(r, cx + e * 0.5f, cy, cx - e * 0.5f, cy + e, t);
-      break;
-    case Glyph::ChevronUp:
-      strokeLine(r, cx - e, cy + e * 0.5f, cx, cy - e * 0.5f, t);
-      strokeLine(r, cx, cy - e * 0.5f, cx + e, cy + e * 0.5f, t);
-      break;
-    case Glyph::ChevronDown:
-      strokeLine(r, cx - e, cy - e * 0.5f, cx, cy + e * 0.5f, t);
-      strokeLine(r, cx, cy + e * 0.5f, cx + e, cy - e * 0.5f, t);
-      break;
-    case Glyph::Check:
-      strokeLine(r, cx - e, cy + e * 0.05f, cx - e * 0.25f, cy + e * 0.7f, t);
-      strokeLine(r, cx - e * 0.25f, cy + e * 0.7f, cx + e, cy - e * 0.7f, t);
-      break;
-    case Glyph::Power: {
-      // IEC power mark: a broken ring with an upright bar through the gap.
-      const float rad = e * 0.85f;
-      for (int a = 40; a <= 320; a += 2) {
-        const float rads = static_cast<float>(a) * 3.14159265f / 180.0f;
-        fillRect(r, cx + SDL_sinf(rads) * rad - t / 2,
-                 cy + SDL_cosf(rads) * rad - t / 2, t, t);
-      }
-      strokeLine(r, cx, cy - rad * 1.05f, cx, cy - rad * 0.1f, t);
-      break;
-    }
-  }
-}
-
 void paintPad(SDL_Renderer *r, int outW, int outH) {
   if (!g_padLaidOut) {
     layoutPad(outW, outH);
     g_padLaidOut = true;
   }
+  const Palette &p = palette();
   const float S = g_ptScale;
   const float radius = 12.0f * S;
   const float hairline = SDL_max(1.0f, S * 0.5f);
 
+  // A hairline ring with the face inset inside it. The ring stays put while
+  // held, so the face changing tone reads as the control moving rather than as
+  // the control being redrawn.
   for (const PadButton &b : g_pad) {
-    setRGB(r, 0xE5, 0xE5, 0xEA);  // systemGray5 hairline
+    setRGB(r, p.hairline);
     fillRoundRect(r, b.rect, radius);
 
     const SDL_FRect inner{b.rect.x + hairline, b.rect.y + hairline,
                           b.rect.w - 2 * hairline, b.rect.h - 2 * hairline};
-    if (b.down)
-      setRGB(r, 0xE5, 0xE5, 0xEA);
-    else
-      setRGB(r, 0xF2, 0xF2, 0xF7);  // systemGray6
+    setRGB(r, b.down ? p.faceDown : p.face);
     fillRoundRect(r, inner, radius - hairline);
-
-    if (b.down)
-      setRGB(r, 0x6C, 0x6C, 0x70);
-    else
-      setRGB(r, 0x8E, 0x8E, 0x93);  // systemGray
-    drawGlyph(r, b.glyph, b.rect.x + b.rect.w / 2, b.rect.y + b.rect.h / 2,
-              20.0f * S, SDL_max(2.0f, 2.5f * S));
   }
 }
 
@@ -288,10 +366,48 @@ int padHitTest(float x, float y) {
 
 void releaseButton(int i) {
   if (!g_pad[i].down) return;
+  // Whatever the reason for this release -- finger, drag-off, backgrounding or
+  // the deferred timer itself -- any pending deferred release is now spent.
+  if (i == kPadPower) cancelDeferredRelease();
   g_pad[i].down = false;
-  pushSyntheticKey(g_pad[i].scancode, g_pad[i].keycode, false);
+  injectButton(i, false);
   SimulatorOverlay::requestPresent();
   SDL_Log("[harness] %s up", g_pad[i].name);
+}
+
+// Called when the finger leaves POWER. Returns true if the lift was a tap and
+// the button has been LEFT DOWN to finish becoming a hold; the caller must then
+// not release it.
+//
+// The control keeps its pressed appearance for that window. That is not a
+// cosmetic choice -- the device's button really is still down -- and it is the
+// only feedback that a tap was taken at all, since the sleep screen does not
+// appear until the firmware crosses its threshold.
+//
+// Every failure here falls back to releasing normally, so the worst case is the
+// old hold-only behaviour rather than a button stuck down.
+bool holdPowerForSleep() {
+  if (g_deferredReleaseEvent == 0) return false;
+  // A tap that is part of a chord must not be stretched. POWER+DOWN is the
+  // firmware's screenshot combo (main.cpp:543-552), and it is the POWER RELEASE
+  // that ends it (main.cpp:554-563); holding POWER past the finger would leave
+  // the combo latched and suppress the release the firmware is waiting for.
+  if (anyOtherButtonDown(kPadPower)) return false;
+  const Uint64 held = SDL_GetTicks() - g_powerPressedAt;
+  if (held >= kSleepHoldMs) return false;  // already a hold; nothing to add
+
+  cancelDeferredRelease();  // also advances the generation used below
+  g_deferredReleaseTimer = SDL_AddTimer(
+      kSleepHoldMs - static_cast<Uint32>(held), deferredReleaseFired,
+      reinterpret_cast<void *>(
+          static_cast<intptr_t>(g_deferredReleaseGeneration)));
+  if (!g_deferredReleaseTimer) {
+    SDL_Log("[harness] SDL_AddTimer failed: %s", SDL_GetError());
+    return false;
+  }
+  SDL_Log("[harness] POWER tap (%llums) held to %ums",
+          static_cast<unsigned long long>(held), kSleepHoldMs);
+  return true;
 }
 
 // Finger coordinates arrive normalised; the pad needs pixels, and the harness
@@ -318,7 +434,8 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
       g_windowId = e->tfinger.windowID;
       g_pad[hit].down = true;
       g_pad[hit].finger = e->tfinger.fingerID;
-      pushSyntheticKey(g_pad[hit].scancode, g_pad[hit].keycode, true);
+      if (hit == kPadPower) g_powerPressedAt = SDL_GetTicks();
+      injectButton(hit, true);
       SimulatorOverlay::requestPresent();
       SDL_Log("[harness] %s down", g_pad[hit].name);
       break;
@@ -342,10 +459,10 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
 
     case SDL_EVENT_FINGER_UP: {
       for (int i = 0; i < kPadCount; i++) {
-        if (g_pad[i].down && g_pad[i].finger == e->tfinger.fingerID) {
-          releaseButton(i);
-          break;
-        }
+        if (!g_pad[i].down || g_pad[i].finger != e->tfinger.fingerID) continue;
+        // POWER may outlive the finger; see holdPowerForSleep.
+        if (i != kPadPower || !holdPowerForSleep()) releaseButton(i);
+        break;
       }
       break;
     }
@@ -365,7 +482,14 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
       break;
     }
 
+    // The end of a POWER tap's borrowed hold. Not a case label: the type is
+    // assigned at runtime by SDL_RegisterEvents. The generation check discards
+    // an event whose timer was overtaken by a release that already happened.
     default:
+      if (g_deferredReleaseEvent != 0 && e->type == g_deferredReleaseEvent &&
+          e->user.code == g_deferredReleaseGeneration) {
+        releaseButton(kPadPower);
+      }
       break;
   }
   return true;  // never filter anything out
@@ -413,7 +537,27 @@ void CrossPointHarness_begin() {
   if (windows) SDL_free(windows);
 
   SimulatorOverlay::setDrawCallback(paintPad);
+
+  // Appearance. SDL_Init has already run (HalDisplay::begin calls it), so the
+  // theme is populated and can be read straight away; the watch keeps it current
+  // if the user flips the system between light and dark while the app is up.
+  applyTheme();
+  if (!SDL_AddEventWatch(themeWatch, nullptr))
+    SDL_Log("[harness] theme watch failed: %s", SDL_GetError());
+  SDL_Log("[harness] appearance: %s", g_dark ? "dark" : "light");
+
   SimulatorOverlay::requestPresent();
+
+  // The POWER tap's deferred release travels as a registered user event so the
+  // injection lands on the pumping thread. Registered before the watch, since
+  // the watch compares against it. 0 means registration failed, and every user
+  // of it falls back to releasing POWER with the finger.
+  g_deferredReleaseEvent = SDL_RegisterEvents(1);
+  if (g_deferredReleaseEvent == 0 ||
+      g_deferredReleaseEvent == static_cast<Uint32>(-1)) {
+    g_deferredReleaseEvent = 0;
+    SDL_Log("[harness] SDL_RegisterEvents failed; POWER tap-to-sleep disabled");
+  }
 
   if (!SDL_AddEventWatch(padWatch, nullptr))
     SDL_Log("[harness] SDL_AddEventWatch failed: %s", SDL_GetError());

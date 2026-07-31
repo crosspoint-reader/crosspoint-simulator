@@ -256,10 +256,10 @@ void requestSimulatorSleep() {
   // Current CrossPoint firmware sleeps on a held physical power button. Keep
   // the compatibility latch above for older consumers, and also drive the
   // current public HalGPIO state so the S shortcut follows the real firmware
-  // sleep path.
-  pressedThisFrame[HalGPIO::BTN_POWER] = true;
-  syntheticButtonDown[HalGPIO::BTN_POWER] = true;
-  buttonPressTime[HalGPIO::BTN_POWER] = SDL_GetTicks();
+  // sleep path. No matching injectButtonUp(): the shortcut has no release, so
+  // POWER stays held until clearButtonState() runs at sleep entry — which is
+  // what makes the firmware's held-duration check pass.
+  gpio.injectButtonDown(HalGPIO::BTN_POWER);
 }
 
 std::string uppercase(std::string value) {
@@ -375,16 +375,10 @@ void processSyntheticEvents() {
     event.handled = true;
     switch (event.action) {
     case SyntheticAction::KeyDown:
-      pressedThisFrame[event.button] = true;
-      syntheticButtonDown[event.button] = true;
-      // Held-time calculations use SDL_GetTicks() for real keyboard events;
-      // synthetic presses must use the same clock origin to avoid unsigned
-      // underflow being mistaken for an immediate long press.
-      buttonPressTime[event.button] = SDL_GetTicks();
+      gpio.injectButtonDown(static_cast<uint8_t>(event.button));
       break;
     case SyntheticAction::KeyUp:
-      releasedThisFrame[event.button] = true;
-      syntheticButtonDown[event.button] = false;
+      gpio.injectButtonUp(static_cast<uint8_t>(event.button));
       break;
     case SyntheticAction::TouchDown:
       beginTouch(event.logicalNx, event.logicalNy);
@@ -580,6 +574,27 @@ bool HalGPIO::wasAnyReleased() const {
       return true;
   }
   return false;
+}
+
+void HalGPIO::injectButtonDown(uint8_t buttonIndex) {
+  if (buttonIndex >= NUM_BUTTONS)
+    return;
+  pressedThisFrame[buttonIndex] = true;
+  // The level bit is the whole point of this entry point: SDL_GetKeyboardState()
+  // is never written for anything the host injects, so isPressed(),
+  // getHeldTime() and getPowerButtonHeldTime() have nothing else to read.
+  syntheticButtonDown[buttonIndex] = true;
+  // Held-time calculations use SDL_GetTicks() for real keyboard events;
+  // injected presses must use the same clock origin to avoid unsigned
+  // underflow being mistaken for an immediate long press.
+  buttonPressTime[buttonIndex] = SDL_GetTicks();
+}
+
+void HalGPIO::injectButtonUp(uint8_t buttonIndex) {
+  if (buttonIndex >= NUM_BUTTONS)
+    return;
+  releasedThisFrame[buttonIndex] = true;
+  syntheticButtonDown[buttonIndex] = false;
 }
 
 unsigned long HalGPIO::getHeldTime() const {

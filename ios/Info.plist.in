@@ -16,12 +16,22 @@
   <string>CrossPoint X3</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <!-- Both are set from CMake so the deploy script can bump them without
+       editing this file. CFBundleVersion must be unique per marketing version,
+       and TestFlight's daily upload cap (error 90382) is ALSO per marketing
+       version -- so hitting it means bumping CFBundleShortVersionString, not
+       waiting a day. -->
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>@CROSSPOINT_IOS_MARKETING_VERSION@</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>@CROSSPOINT_IOS_BUILD_NUMBER@</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+
+  <!-- No encryption beyond what the OS provides. Declaring it here means
+       TestFlight uploads skip the export-compliance prompt every time. -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
 
   <!-- Portrait only. The X3 panel is presented portrait and the control zones
        are laid out beneath it; rotation would invalidate the integer-scale

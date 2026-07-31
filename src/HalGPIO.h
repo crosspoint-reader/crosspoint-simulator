@@ -65,6 +65,31 @@ public:
   bool wasAnyPressed() const;
   bool wasReleased(uint8_t buttonIndex) const;
   bool wasAnyReleased() const;
+
+  // --- Live button injection (simulator-only; no firmware counterpart) ------
+  //
+  // Drives one button's full state — press edge, held level and press
+  // timestamp — from a host harness that has no real keyboard behind it (the
+  // on-screen pad on a phone, CROSSPOINT_SIM_INPUT_SCRIPT, a future automation
+  // hook).
+  //
+  // WHY THIS EXISTS RATHER THAN SDL_PushEvent. Measured, not assumed:
+  // SDL_PushEvent delivers an event to SDL's queue but never writes SDL's
+  // internal keyboard state array, which is only filled on the real-input path.
+  // A harness that injects by pushing events therefore drives the EDGE reads
+  // (wasPressed/wasReleased, fed from the dequeued event) while every LEVEL read
+  // — isPressed(), getHeldTime(), getPowerButtonHeldTime(), all of which consult
+  // SDL_GetKeyboardState() — stays false. Everything timed off a held button
+  // silently never fires: long-press-to-sleep, page-turn autorepeat, the
+  // reader's font-family hold. These two entry points write the same three
+  // arrays the SDL path writes, so both halves come from one place.
+  //
+  // Deliberately platform-neutral: it takes a HalGPIO::BTN_* index and contains
+  // no #ifdef. The knowledge of which host maps what onto which button belongs
+  // to the harness, above this layer.
+  void injectButtonDown(uint8_t buttonIndex);
+  void injectButtonUp(uint8_t buttonIndex);
+
   unsigned long getHeldTime() const;
   unsigned long getPowerButtonHeldTime() const;
   bool hasTouch() const;
