@@ -48,11 +48,7 @@
 
 #include <SDL3/SDL.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <cstdint>
 
 #include "HalGPIO.h"
 #include "SimulatorOverlay.h"
@@ -500,50 +496,10 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
 }  // namespace
 
 // --- Public entry points ---------------------------------------------------
-
-void CrossPointHarness_prepareFilesystem() {
-  // The app's Documents directory IS the emulated SD card. Info.plist sets
-  // UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace, so this folder is
-  // "On My iPhone > CrossPoint X3" in the Files app -- the only way to load
-  // books on a phone. Rooting the card at Documents itself (not Documents/fs_)
-  // puts "books" at the top level of that view, where a person will actually
-  // find it. The firmware's hidden state (.crosspoint) starts with a dot, which
-  // both HalStorage iteration and the Files app keep out of sight.
-  const char *home = std::getenv("HOME");
-  if (!home) {
-    SDL_Log("[harness] HOME unset; leaving CWD alone");
-    return;
-  }
-  const std::string docs = std::string(home) + "/Documents";
-  if (chdir(docs.c_str()) != 0) {
-    SDL_Log("[harness] chdir(%s) failed", docs.c_str());
-    return;
-  }
-  SDL_Log("[harness] cwd -> %s", docs.c_str());
-
-  // Root HalStorage at Documents. overwrite=0 keeps any externally supplied
-  // root (QA harnesses) authoritative.
-  setenv("CROSSPOINT_SIM_SD", docs.c_str(), 0);
-
-  // One-time migration from the pre-Files layout, where the card lived at
-  // Documents/fs_. rename() is a same-volume move, so an existing library and
-  // reading state carry over instead of silently vanishing after an update.
-  struct stat st{};
-  if (::stat("fs_", &st) == 0 && S_ISDIR(st.st_mode)) {
-    if (::rename("fs_/books", "books") == 0) {
-      SDL_Log("[harness] migrated fs_/books -> books");
-    }
-    if (::rename("fs_/.crosspoint", ".crosspoint") == 0) {
-      SDL_Log("[harness] migrated fs_/.crosspoint -> .crosspoint");
-    }
-    // Only succeeds once fs_ is empty; harmless if a stray file remains.
-    ::rmdir("fs_");
-  }
-
-  // Create the sideload target eagerly so "books" exists in Files from the
-  // very first launch, before the firmware ever touches storage.
-  ::mkdir("books", 0777);
-}
+//
+// CrossPointHarness_prepareFilesystem lives in CrossPointFsPrep.cpp: it is
+// plain POSIX and is compiled and exercised on a desktop host, which the
+// SDL-facing code in this file cannot be.
 
 void CrossPointHarness_begin() {
   // Touches must arrive as finger events only. Left on, SDL also synthesises

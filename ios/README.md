@@ -87,6 +87,19 @@ this layout (which kept the card at `Documents/fs_`) are migrated on launch:
 `fs_/books` and `fs_/.crosspoint` are renamed up a level, so libraries and
 reading positions survive the update.
 
+**Fonts sideload the same way, through a visible `fonts` folder.** The firmware
+scans two SD roots and merges them — `/.fonts` (hidden, preferred) and `/fonts`
+(visible; `SdCardFontRegistry.h:33-34`) — but Files refuses to create or show
+dot-prefixed names, so on the phone only the visible root is reachable. The
+harness creates `fonts/` eagerly next to `books/`; drop a font family folder of
+`.cpfont` files into it (see the firmware's `docs/sd-card-fonts.md`) and the
+firmware picks it up at the next boot. Families the firmware itself downloaded
+into `.fonts` earlier are moved up into `fonts/` on launch (per-family rename,
+never overwriting), which also steers the firmware's future downloads to the
+visible root — `defaultWriteRoot()` only prefers the hidden root while it
+exists. This lives in `CrossPointFsPrep.cpp`, split from the shim so the whole
+filesystem-prep path can be compiled and exercised on a desktop host.
+
 The shipped panel shows only what the firmware draws, which means a presentation
 bug has nothing to show itself against. Add
 `-DCROSSPOINT_HARNESS_TEST_PATTERN=ON` for a diagnostic pattern — 1 px gratings,
