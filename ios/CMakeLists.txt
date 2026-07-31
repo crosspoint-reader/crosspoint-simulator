@@ -37,6 +37,41 @@ add_executable(CrossPointX3 MACOSX_BUNDLE
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointFsPrep.cpp
   ${CROSSPOINT_ASSETS})
 
+# Optional bundled font families. Point this at a build-sd-fonts.py output
+# directory (one subdirectory per family, .cpfont files inside) and each family
+# ships inside the app under Resources/SeedFonts/<Family>/. At launch,
+# CrossPointFsPrep copies them into the emulated SD card's visible "fonts/"
+# root, so the phone gets font updates with the app instead of by hand through
+# the Files app. Globbed at configure time — CI configures fresh every run, so
+# a stale glob only affects incremental local builds.
+set(CROSSPOINT_IOS_SEED_FONTS_DIR "" CACHE PATH
+  "Directory of .cpfont font families to bundle and seed at launch")
+if(CROSSPOINT_IOS_SEED_FONTS_DIR)
+  file(GLOB _seed_families RELATIVE "${CROSSPOINT_IOS_SEED_FONTS_DIR}"
+    "${CROSSPOINT_IOS_SEED_FONTS_DIR}/*")
+  set(_seed_count 0)
+  foreach(_family IN LISTS _seed_families)
+    set(_family_dir "${CROSSPOINT_IOS_SEED_FONTS_DIR}/${_family}")
+    if(IS_DIRECTORY "${_family_dir}")
+      file(GLOB _family_fonts "${_family_dir}/*.cpfont")
+      if(_family_fonts)
+        set_source_files_properties(${_family_fonts} PROPERTIES
+          MACOSX_PACKAGE_LOCATION "Resources/SeedFonts/${_family}")
+        target_sources(CrossPointX3 PRIVATE ${_family_fonts})
+        list(LENGTH _family_fonts _n)
+        math(EXPR _seed_count "${_seed_count} + ${_n}")
+        message(STATUS "Seed fonts: ${_family} (${_n} files)")
+      endif()
+    endif()
+  endforeach()
+  if(_seed_count EQUAL 0)
+    message(FATAL_ERROR
+      "CROSSPOINT_IOS_SEED_FONTS_DIR=${CROSSPOINT_IOS_SEED_FONTS_DIR} "
+      "contains no <Family>/*.cpfont files — wrong path, or the font build "
+      "did not run.")
+  endif()
+endif()
+
 if(NOT CROSSPOINT_BUILD_FIRMWARE)
   message(FATAL_ERROR
     "The iOS app needs the firmware source set. Configure with "

@@ -50,6 +50,13 @@ on:
         description: Stop after export + verify (no upload)
         type: boolean
         default: false
+      seed_fonts:
+        description: >-
+          Comma-separated sd-fonts.yaml family names to build and bundle into
+          the app; they seed the phone's fonts/ folder at launch. Blank
+          disables bundling.
+        default: Junicode
+        required: false
 
 env:
   BUNDLE_ID: com.natebunnyfield.crosspoint.x3
@@ -132,6 +139,23 @@ jobs:
           git clone --depth 1 --branch v7.4.2 \
             https://github.com/bblanchon/ArduinoJson "$DEST"
 
+      - name: Build seed fonts
+        # Families named in seed_fonts are built from the firmware's
+        # sd-fonts.yaml and handed to CMake, which bundles them under
+        # Resources/SeedFonts/; ios/CrossPointFsPrep.cpp copies them into the
+        # phone's visible fonts/ root at launch. freetype-py ships macOS
+        # wheels with libfreetype embedded, so no brew dependency.
+        if: ${{ inputs.seed_fonts != '' }}
+        run: |
+          python3 -m pip install --quiet --break-system-packages \
+            -r firmware/lib/EpdFont/scripts/requirements.txt || \
+            python3 -m pip install --quiet \
+              -r firmware/lib/EpdFont/scripts/requirements.txt
+          python3 firmware/lib/EpdFont/scripts/build-sd-fonts.py \
+            --only "${{ inputs.seed_fonts }}" \
+            --output-dir "$RUNNER_TEMP/seed-fonts"
+          ls -laR "$RUNNER_TEMP/seed-fonts"
+
       - name: Install the ASC API key
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
@@ -157,6 +181,10 @@ jobs:
 
       - name: Configure
         run: |
+          SEED_ARG=""
+          if [ -n "${{ inputs.seed_fonts }}" ]; then
+            SEED_ARG="-DCROSSPOINT_IOS_SEED_FONTS_DIR=$RUNNER_TEMP/seed-fonts"
+          fi
           cmake -B build -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
@@ -165,6 +193,7 @@ jobs:
             -DCROSSPOINT_IOS_TEAM_ID="$TEAM_ID" \
             -DCROSSPOINT_IOS_MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
             -DCROSSPOINT_IOS_BUILD_NUMBER="${{ steps.version.outputs.build_number }}" \
+            $SEED_ARG \
             -S simulator
 
       - name: Archive

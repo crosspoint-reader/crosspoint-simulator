@@ -99,6 +99,15 @@ MARKETING_VERSION="${CROSSPOINT_MARKETING_VERSION:-0.1.0}"
 echo "version $MARKETING_VERSION, build $BUILD_NUMBER"
 
 say "Configure"
+# Optional bundled fonts: point CROSSPOINT_SEED_FONTS_DIR at a
+# build-sd-fonts.py output directory to ship those families inside the app
+# (they seed the phone's fonts/ folder at launch). CI builds its own; local
+# deploys opt in explicitly. The ${VAR[@]+...} guard keeps set -u happy on
+# macOS's bash 3.2 when the array is empty.
+SEED_FONTS_ARGS=()
+if [[ -n "${CROSSPOINT_SEED_FONTS_DIR:-}" ]]; then
+  SEED_FONTS_ARGS=(-DCROSSPOINT_IOS_SEED_FONTS_DIR="$CROSSPOINT_SEED_FONTS_DIR")
+fi
 cmake -B "$BUILD_DIR" -G Xcode \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
@@ -106,7 +115,8 @@ cmake -B "$BUILD_DIR" -G Xcode \
   -DCROSSPOINT_BUILD_FIRMWARE=ON \
   -DCROSSPOINT_IOS_TEAM_ID="$TEAM_ID" \
   -DCROSSPOINT_IOS_MARKETING_VERSION="$MARKETING_VERSION" \
-  -DCROSSPOINT_IOS_BUILD_NUMBER="$BUILD_NUMBER" >/dev/null
+  -DCROSSPOINT_IOS_BUILD_NUMBER="$BUILD_NUMBER" \
+  ${SEED_FONTS_ARGS[@]+"${SEED_FONTS_ARGS[@]}"} >/dev/null
 
 say "Archive"
 rm -rf "$ARCHIVE"
