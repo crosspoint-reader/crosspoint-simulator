@@ -76,11 +76,16 @@ jobs:
         working-directory: firmware
         run: |
           python3 - <<'PY'
-          import pathlib, re
+          import os, pathlib, re
           sample = pathlib.Path("../simulator/sample-platformio-macos.ini").read_text()
           # Build against this checkout, not the published git dependency.
+          # Absolute: PlatformIO resolves symlink:// relative to the project
+          # directory, and getting that wrong fails with an unhelpful
+          # "not a directory".
+          target = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "simulator").resolve()
+          assert target.is_dir(), f"simulator checkout missing at {target}"
           patched, n = re.subn(r'^(\s*)simulator=\S+$',
-                               r'\1simulator=symlink://../../simulator',
+                               rf'\1simulator=symlink://{target}',
                                sample, flags=re.M)
           assert n == 1, f"expected one simulator lib_deps line, got {n}"
           ini = pathlib.Path("platformio.ini")
