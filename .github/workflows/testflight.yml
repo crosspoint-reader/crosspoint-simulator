@@ -30,8 +30,8 @@ on:
         description: Firmware repository to build
         default: crosspoint-reader/crosspoint-reader
       firmware_ref:
-        description: Firmware ref (branch, tag, or SHA)
-        default: main
+        description: Firmware ref (branch, tag, or SHA). Blank uses that repo's default branch.
+        default: ""
       pio_env:
         description: PlatformIO environment
         default: simulator_x3
