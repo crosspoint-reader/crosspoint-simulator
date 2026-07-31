@@ -34,6 +34,7 @@ set_source_files_properties(${CROSSPOINT_ASSETS} PROPERTIES
 
 add_executable(CrossPointX3 MACOSX_BUNDLE
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointIOSShim.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointFsPrep.cpp
   ${CROSSPOINT_ASSETS})
 
 if(NOT CROSSPOINT_BUILD_FIRMWARE)
