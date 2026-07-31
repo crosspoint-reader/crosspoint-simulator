@@ -56,7 +56,7 @@ cmake -B build/ios-app -G Xcode \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_OSX_SYSROOT=iphonesimulator \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCROSSPOINT_FIRMWARE_DIR=$HOME/crosspoint/crosspoint-reader \
+  -DCROSSPOINT_FIRMWARE_DIR=$HOME/src/crosspoint-reader \
   -DCROSSPOINT_BUILD_FIRMWARE=ON
 cmake --build build/ios-app --config Debug --target CrossPointX3
 ```
@@ -71,7 +71,7 @@ Install, seed books, and launch:
 
 ```bash
 xcrun simctl install <udid> build/ios-app/ios/Debug-iphonesimulator/CrossPointX3.app
-cp -R $HOME/crosspoint/crosspoint-reader/fs_/books "$(xcrun simctl get_app_container <udid> com.natebunnyfield.crosspoint.x3 data)/Documents/"
+cp -R $HOME/src/crosspoint-reader/fs_/books "$(xcrun simctl get_app_container <udid> com.natebunnyfield.crosspoint.x3 data)/Documents/"
 xcrun simctl launch <udid> com.natebunnyfield.crosspoint.x3
 ```
 
@@ -330,7 +330,7 @@ firmware TUs, 20 simulator TUs, 24 include dirs, 14 defines, derived from the
 PlatformIO env that already works:
 
 ```bash
-cd $HOME/crosspoint/crosspoint-reader
+cd $HOME/src/crosspoint-reader
 pio run -e simulator -t compiledb
 python3 <simulator>/tools/gen_cmake_sources.py --firmware-dir . --compile-db compile_commands.json
 ```
@@ -349,7 +349,7 @@ The desktop build is the canary: green desktop + red iOS means the harness is
 wrong; both red means the HAL drifted. Build desktop first whenever iOS fails.
 
 ```bash
-cd $HOME/crosspoint/crosspoint-reader && pio run -e simulator
+cd $HOME/src/crosspoint-reader && pio run -e simulator
 ```
 
 For that to carry signal it must compile *this* working copy, so the firmware's
