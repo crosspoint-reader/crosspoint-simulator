@@ -248,9 +248,49 @@ custom_macos_app_icon = packaging/macos/CrossPoint.icns
 
 Two things are on you before an upload: `custom_macos_app_bundle_id` must match
 the app record in App Store Connect, and `custom_macos_app_build` must be higher
-than any build already uploaded for that version. The script does not code-sign,
-notarize, or embed the SDL2 dylib — keep those in whatever signing pipeline you
-already use, and run `verify` on the signed bundle as the last step.
+than any build already uploaded for that version.
+
+### Shipping to TestFlight
+
+[packaging/macos/deploy.sh](packaging/macos/deploy.sh) runs the whole chain —
+build, bundle, verify purpose strings, embed dylibs, sign, `productbuild`,
+`altool --upload-app`, tag. Run it on the Mac from the firmware project:
+
+```bash
+BUNDLE_ID=com.example.CrossPointX3 \
+SIGN_APP="Apple Distribution: Your Name (TEAMID)" \
+SIGN_INSTALLER="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
+ASC_KEY_ID=XXXXXXXXXX ASC_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8 \
+  ./packaging/macos/deploy.sh
+```
+
+`DRY_RUN=1` prints every command without running it, and `SKIP_UPLOAD=1` stops
+after signing. `BUILD_NUMBER` auto-bumps from the last `macos-build-N` tag —
+Apple silently rejects a duplicate build number, and build 1 is already consumed.
+
+Signing needs the login keychain, which only a GUI Terminal session has. Firing
+`deploy.sh` from a sandboxed agent shell or a bare SSH session fails partway
+through with `errSecInternalComponent`. Route it through Terminal.app instead:
+
+```bash
+osascript packaging/macos/deploy.applescript
+osascript packaging/macos/deploy.applescript "BUILD_NUMBER=3" "SKIP_UPLOAD=1"
+```
+
+Each argument is a `KEY=VALUE` pair, passed through `env` so it survives into
+the shell Terminal spawns. This needs the Mac logged in and unlocked, and
+`osascript` allowed to control Terminal under Privacy & Security → Automation.
+AppleScript returns as soon as Terminal starts the command; it cannot report
+whether the deploy succeeded.
+
+> [!WARNING]
+> Mac App Store builds must be sandboxed
+> ([packaging/macos/CrossPoint.entitlements](packaging/macos/CrossPoint.entitlements)),
+> and the sandbox blocks spawning binaries outside the bundle. `SimHttpFetch`
+> shells out to `/usr/bin/curl`, so OPDS/catalog downloads, KOReader sync, and
+> SD-font fetches will fail in a TestFlight build until those flows move to an
+> in-process HTTP client. Reading local books is unaffected.
 
 ## Notes
 

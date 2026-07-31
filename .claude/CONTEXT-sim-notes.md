@@ -115,6 +115,14 @@ pio run -e simulator -t run_simulator
 - `run_simulator.py` registers a `package_macos_app` target under its own `builtins` sentinel. All path resolution happens inside the target action, never at script-load time, so a packaging problem cannot break ordinary simulator builds. The library checkout is found via `__file__` first, then a `$PROJECT_LIBDEPS_DIR/$PIOENV` scan, because SCons does not guarantee `__file__` in SConscript globals.
 - Not covered: code signing, notarization, and embedding the SDL2 dylib. Bundle id and build number are caller-supplied — a wrong bundle id or a reused build number fails the upload for reasons unrelated to purpose strings.
 
+### TestFlight deploy path (2026-07-31)
+
+- [packaging/macos/deploy.sh](packaging/macos/deploy.sh) chains build → bundle → verify purpose strings → embed dylibs → sign → `productbuild` → `altool --upload-app` → tag. macOS only.
+- `codesign` needs the login keychain, which only a GUI Terminal session has; firing the deploy from a sandboxed agent shell or bare SSH fails with `errSecInternalComponent`. [packaging/macos/deploy.applescript](packaging/macos/deploy.applescript) hands the command to Terminal.app, which is what lets an agent on the Mac deploy unattended. Pattern and several gates (build-number drift, deploy lock, the 90382 daily cap, the rc-19 expired-agreement diagnosis) are ported from the crds-ios pipeline.
+- Build numbers auto-bump from the last `macos-build-N` tag. Apple silently rejects a duplicate build number, and build 1 is already consumed by the ITMS-90683 rejection, so the floor is 2.
+- **Bundled-app storage root.** A `.app` launched from Finder has cwd `/`, so the default `./fs_` resolved to an unwritable `/fs_` and the library came up empty. `configuredStorageRoot()` now detects `*.app/Contents/MacOS/` via `_NSGetExecutablePath` and returns `$HOME/Library/Application Support/<AppName>/fs_`. Under the App Sandbox, HOME is already the container, so the path stays inside it. `CROSSPOINT_SIM_SD` still wins, and non-bundled dev builds are untouched.
+- **Known sandbox gap:** Mac App Store builds must be sandboxed, and the sandbox blocks spawning binaries outside the bundle. `SimHttpFetch.h` uses `popen("curl ...")`, so OPDS/catalog downloads, KOReader sync, and SD-font fetches cannot work on TestFlight until they move to an in-process HTTP client.
+
 ### HalStorage menu-items fix (commit 40c578e, 2026-04-19)
 
 - Major HalStorage refactor — directory iteration and child-file handling were tightened so menu lists populate correctly.

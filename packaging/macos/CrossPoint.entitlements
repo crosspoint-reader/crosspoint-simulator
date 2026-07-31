@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for a Mac App Store / TestFlight build.
+
+  App Sandbox is mandatory for Mac App Store distribution; an unsandboxed
+  bundle is rejected at upload. The other three keys are the minimum the
+  simulator needs to function once sandboxed.
+
+  Known sandbox limitation: SimHttpFetch.h shells out to /usr/bin/curl via
+  popen(). The sandbox blocks spawning binaries outside the bundle, so
+  OPDS/catalog downloads, KOReader sync, and SD-font fetches fail in a
+  sandboxed build no matter which network entitlement is granted. Those flows
+  need to move to an in-process HTTP client before they work on TestFlight.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Host-backed HTTP/HTTPS fetches. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- The firmware web server / WebDAV routes bind localhost 8080 and 8081. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Importing EPUBs the user picks in an open panel. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

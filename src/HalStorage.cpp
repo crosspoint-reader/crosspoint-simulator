@@ -13,16 +13,72 @@
 #include <sstream>
 #include <vector>
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
 HalStorage HalStorage::instance;
 HalStorage::HalStorage() {}
 
 namespace {
+#ifdef __APPLE__
+// A .app launched from Finder (or from TestFlight) starts with its working
+// directory at "/", so the default relative "./fs_" root would resolve to an
+// unwritable "/fs_" and the library would come up empty. Detect the bundle and
+// move the simulated SD card into Application Support instead. Under the App
+// Sandbox that Mac App Store builds require, HOME already points at the app's
+// container, so the same path stays inside the sandbox.
+//
+// Command-line dev builds are not inside a bundle and keep using "./fs_".
+std::string bundleStorageRoot() {
+  uint32_t size = 0;
+  _NSGetExecutablePath(nullptr, &size);
+  if (size == 0) {
+    return {};
+  }
+  std::vector<char> buffer(size);
+  if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
+    return {};
+  }
+
+  const std::string executable(buffer.data());
+  const std::string marker = ".app/Contents/MacOS/";
+  const size_t at = executable.rfind(marker);
+  if (at == std::string::npos) {
+    return {};
+  }
+
+  const std::string bundle = executable.substr(0, at); // ".../CrossPointX3"
+  const size_t slash = bundle.find_last_of('/');
+  const std::string name =
+      slash == std::string::npos ? bundle : bundle.substr(slash + 1);
+  if (name.empty()) {
+    return {};
+  }
+
+  const char *home = std::getenv("HOME");
+  if (!home || !*home) {
+    return {};
+  }
+  return std::string(home) + "/Library/Application Support/" + name + "/fs_";
+}
+#endif
+
 std::string configuredStorageRoot() {
   const char *root = std::getenv("CROSSPOINT_SIM_SD");
   if (!root || !*root) {
     root = std::getenv("CROSSPOINT_EMU_SD");
   }
-  return (root && *root) ? std::string(root) : std::string("./fs_");
+  if (root && *root) {
+    return std::string(root);
+  }
+#ifdef __APPLE__
+  const std::string bundled = bundleStorageRoot();
+  if (!bundled.empty()) {
+    return bundled;
+  }
+#endif
+  return std::string("./fs_");
 }
 
 bool containsUnsafeSegment(const std::string &path) {
@@ -80,6 +136,13 @@ bool ensureParentDirectories(const std::string &full) {
 
 bool HalStorage::begin() {
   const std::string root = configuredStorageRoot();
+  static bool loggedRoot = false;
+  if (!loggedRoot) {
+    loggedRoot = true;
+    // A bundled app logs to Console.app; this is the only way a tester can
+    // find where to put books.
+    fprintf(stderr, "[SIM] storage root: %s\n", root.c_str());
+  }
   for (size_t i = 1; i < root.size(); ++i) {
     if (root[i] == '/') {
       ::mkdir(root.substr(0, i).c_str(), 0777);
