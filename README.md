@@ -189,6 +189,69 @@ The screenshot contains the SDL renderer output at the host's actual drawable
 resolution, including Retina/HiDPI scaling. BMP is used because it is supported
 directly by SDL2 and adds no image-encoding dependency to the simulator.
 
+## Mac App Store packaging
+
+The native build produces a bare executable at `.pio/build/<env>/program`. The
+Mac App Store needs it inside a `.app` bundle whose `Info.plist` carries privacy
+purpose strings, or App Store Connect rejects the upload:
+
+```
+ITMS-90683: Missing purpose string in Info.plist ... should contain a
+NSCameraUsageDescription key with a user-facing purpose string
+```
+
+The simulator only calls `SDL_Init(SDL_INIT_VIDEO)`; it never opens a camera or
+a Bluetooth device. The rejection comes from Apple's static scan of the linked
+SDL2 library, which references those APIs for camera and game-controller
+support. As Apple's own notice puts it, "While your app might not use these
+APIs, a purpose string is still required."
+
+[packaging/macos/Info.plist.in](packaging/macos/Info.plist.in) holds those
+strings and is the single source of truth for all three subcommands of
+[packaging/macos/package_macos_app.py](packaging/macos/package_macos_app.py):
+
+```bash
+# Wrap a built binary in a bundle that already has the purpose strings.
+python3 packaging/macos/package_macos_app.py build \
+  --binary .pio/build/simulator_x3/program \
+  --device x3 --version 0.1.0 --build 2 \
+  --bundle-id com.example.CrossPointX3 --output-dir dist
+
+# Add missing purpose strings to a bundle built by some other pipeline.
+python3 packaging/macos/package_macos_app.py patch dist/CrossPointX3.app
+
+# Exit non-zero if a bundle would be rejected. Run this before every upload.
+python3 packaging/macos/package_macos_app.py verify dist/CrossPointX3.app
+```
+
+`--device` picks the product and executable name (`x3`, `x4`, `x4-pro`).
+`patch` works on Xcode-built bundles too — it reads binary plists and writes
+them back in the same format, touching only the missing keys.
+
+From a consuming firmware repo, the same packaging runs as a PlatformIO target:
+
+```bash
+pio run -e simulator_x3 -t package_macos_app
+```
+
+The target infers the device from the environment's `SIMULATOR_DEVICE_*` flag
+and reads these optional project options:
+
+```ini
+[env:simulator_x3]
+custom_macos_app_bundle_id = com.example.CrossPointX3
+custom_macos_app_version = 0.1.0
+custom_macos_app_build = 2
+custom_macos_app_output_dir = dist
+custom_macos_app_icon = packaging/macos/CrossPoint.icns
+```
+
+Two things are on you before an upload: `custom_macos_app_bundle_id` must match
+the app record in App Store Connect, and `custom_macos_app_build` must be higher
+than any build already uploaded for that version. The script does not code-sign,
+notarize, or embed the SDL2 dylib — keep those in whatever signing pipeline you
+already use, and run `verify` on the signed bundle as the last step.
+
 ## Notes
 
 **Host-backed network flows**: OPDS/catalog downloads and KOReader sync use the

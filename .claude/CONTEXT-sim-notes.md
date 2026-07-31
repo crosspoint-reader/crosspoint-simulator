@@ -108,6 +108,13 @@ pio run -e simulator -t run_simulator
 - [src/WebServer.cpp](src/WebServer.cpp), [src/WebSocketsServer.cpp](src/WebSocketsServer.cpp), and [src/NetworkClient.cpp](src/NetworkClient.cpp) provide native socket-backed shims for firmware web routes. Firmware servers that bind port 80 are exposed on `http://127.0.0.1:8080/`; WebSocket servers that bind port 81 are exposed on `ws://127.0.0.1:8081/`.
 - The sample PlatformIO files compile the current firmware-owned `network/CrossPointWebServer.cpp` and `network/WebDAVHandler.cpp` with `CROSSPOINT_SIMULATOR_PROJECT_WEBSERVER`, which disables the simulator's legacy reduced substitute. Only embedded updater/flasher paths remain excluded.
 
+### Mac App Store purpose strings (2026-07-31)
+
+- App Store Connect rejected the CrossPoint X3 upload (version 0.1.0, build 1) with ITMS-90683 for a missing `NSCameraUsageDescription`, and warned about `NSBluetoothAlwaysUsageDescription`. The simulator only calls `SDL_Init(SDL_INIT_VIDEO)` — the flagged APIs come from Apple's static scan of the linked SDL2 library, which references camera and game-controller (Bluetooth) APIs. Apple requires the purpose string regardless of whether the app calls them.
+- The repo had no bundle packaging at all, so there was no `Info.plist` to fix. New [packaging/macos/Info.plist.in](packaging/macos/Info.plist.in) holds the strings and is the single source of truth; [packaging/macos/package_macos_app.py](packaging/macos/package_macos_app.py) has `build` (wrap a binary in a `.app`), `patch` (inject missing keys into a bundle built elsewhere, preserving binary-plist format), and `verify` (non-zero exit before upload).
+- `run_simulator.py` registers a `package_macos_app` target under its own `builtins` sentinel. All path resolution happens inside the target action, never at script-load time, so a packaging problem cannot break ordinary simulator builds. The library checkout is found via `__file__` first, then a `$PROJECT_LIBDEPS_DIR/$PIOENV` scan, because SCons does not guarantee `__file__` in SConscript globals.
+- Not covered: code signing, notarization, and embedding the SDL2 dylib. Bundle id and build number are caller-supplied — a wrong bundle id or a reused build number fails the upload for reasons unrelated to purpose strings.
+
 ### HalStorage menu-items fix (commit 40c578e, 2026-04-19)
 
 - Major HalStorage refactor — directory iteration and child-file handling were tightened so menu lists populate correctly.

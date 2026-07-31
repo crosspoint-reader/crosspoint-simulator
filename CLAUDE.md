@@ -49,6 +49,16 @@ The simulator is a collection of host-side reimplementations of the firmware's h
   [sample-platformio-linux-wsl.ini](sample-platformio-linux-wsl.ini). Keep
   both in sync when build flags change. Native Windows is not supported, WSL
   is.
+- Mac App Store packaging: [packaging/macos/Info.plist.in](packaging/macos/Info.plist.in)
+  is the single source of truth for the bundle's privacy purpose strings, and
+  [packaging/macos/package_macos_app.py](packaging/macos/package_macos_app.py)
+  builds, patches, and verifies bundles against it (also exposed as the
+  `package_macos_app` PlatformIO target). The `NS*UsageDescription` keys are
+  required even though the simulator only calls `SDL_Init(SDL_INIT_VIDEO)`:
+  Apple's static scan sees the camera and Bluetooth APIs referenced by the
+  linked SDL2 library and rejects the upload with ITMS-90683. Removing them
+  breaks the next App Store submission. If a future upload flags another key,
+  add it to the template and to `REQUIRED_PRIVACY_KEYS` so `verify` catches it.
 - Linker stubs: [src/firmware_link_stubs.cpp](src/firmware_link_stubs.cpp) provides symbols the firmware expects from other translation units (uzlib checksums, HWCDC Serial shim, LUT stubs). When the firmware adds a new global-extern symbol with no simulator counterpart, add its stub here.
 
 ## Device profiles and input mapping
