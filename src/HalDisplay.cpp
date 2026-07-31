@@ -1,7 +1,9 @@
 #include "HalDisplay.h"
 
 #include <GfxRenderer.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
+
+#include "SimulatorOverlay.h"
 
 #include <array>
 #include <atomic>
@@ -30,6 +32,29 @@ std::atomic<bool> quitRequested{false};
 
 static int currentWindowWidth = 0;
 static int currentWindowHeight = 0;
+
+// Presentation policy.
+//
+// The desktop window is 1:1 with the panel, so letterbox + linear filtering is
+// right there: Bayer-dithered pixels average to a correct-looking grey, which is
+// what the e-ink panel actually reads like to the eye.
+//
+// CROSSPOINT_SIM_PIXEL_EXACT flips both. When the panel is scaled up (the phone
+// presents it at 2x), a fractional scale or a linear filter greys the dither and
+// every rendering judgement made against it is a lie. Integer scale plus
+// nearest-neighbour keeps one framebuffer pixel exactly N screen pixels.
+//
+// Keyed on the intent, not on the platform, so a desktop build can ask for exact
+// pixels too.
+#if defined(CROSSPOINT_SIM_PIXEL_EXACT) && CROSSPOINT_SIM_PIXEL_EXACT
+static constexpr SDL_RendererLogicalPresentation kLogicalPresentation =
+    SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
+static constexpr SDL_ScaleMode kPanelScaleMode = SDL_SCALEMODE_NEAREST;
+#else
+static constexpr SDL_RendererLogicalPresentation kLogicalPresentation =
+    SDL_LOGICAL_PRESENTATION_LETTERBOX;
+static constexpr SDL_ScaleMode kPanelScaleMode = SDL_SCALEMODE_LINEAR;
+#endif
 
 namespace {
 
@@ -100,38 +125,32 @@ bool hasDueScreenshot() {
 bool saveRendererBmp(const std::string &path) {
   int width = 0;
   int height = 0;
-  if (SDL_GetRendererOutputSize(sdl_renderer, &width, &height) != 0 ||
+  if (!SDL_GetCurrentRenderOutputSize(sdl_renderer, &width, &height) ||
       width <= 0 || height <= 0) {
     std::cerr << "[SIM] Cannot determine screenshot size: " << SDL_GetError()
               << std::endl;
     return false;
   }
 
-  std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
-  if (SDL_RenderReadPixels(sdl_renderer, nullptr, SDL_PIXELFORMAT_ARGB8888,
-                           pixels.data(), width * sizeof(uint32_t)) != 0) {
-    std::cerr << "[SIM] Cannot read screenshot pixels: " << SDL_GetError()
-              << std::endl;
-    return false;
-  }
-
-  SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
-      pixels.data(), width, height, 32, width * sizeof(uint32_t),
-      SDL_PIXELFORMAT_ARGB8888);
+  // SDL3's SDL_RenderReadPixels returns a new surface rather than filling a
+  // caller-provided buffer, so the intermediate vector and the
+  // CreateRGBSurfaceWithFormatFrom wrapper the SDL2 path needed are both gone.
+  SDL_Surface *surface = SDL_RenderReadPixels(sdl_renderer, nullptr);
   if (!surface) {
     std::cerr << "[SIM] Cannot create screenshot surface: " << SDL_GetError()
               << std::endl;
     return false;
   }
 
-  const bool saved = SDL_SaveBMP(surface, path.c_str()) == 0;
+  // SDL3 returns true on success where SDL2 returned 0.
+  const bool saved = SDL_SaveBMP(surface, path.c_str());
   if (!saved) {
     std::cerr << "[SIM] Cannot save screenshot " << path << ": "
               << SDL_GetError() << std::endl;
   } else {
     std::cerr << "[SIM] Saved screenshot: " << path << std::endl;
   }
-  SDL_FreeSurface(surface);
+  SDL_DestroySurface(surface);
   return saved;
 }
 
@@ -254,10 +273,24 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
     return;
 
   SDL_SetWindowSize(window, winW, winH);
-  SDL_RenderSetLogicalSize(sdl_renderer, winW, winH);
+  SDL_SetRenderLogicalPresentation(sdl_renderer, winW, winH,
+                                   kLogicalPresentation);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
 }
+
+namespace SimulatorOverlay {
+static DrawFn overlayDraw = nullptr;
+// Packed 0xRRGGBB. White by default, so a host that never calls setClearColor
+// (every desktop build) keeps the blank-page field it has always had.
+static std::atomic<uint32_t> clearColor{0xFFFFFFu};
+void setDrawCallback(DrawFn fn) { overlayDraw = fn; }
+void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
+  clearColor.store((static_cast<uint32_t>(r) << 16) |
+                   (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b));
+}
+void requestPresent() { pendingPresent.store(true); }
+} // namespace SimulatorOverlay
 
 HalDisplay::HalDisplay() {}
 HalDisplay::~HalDisplay() {}
@@ -271,7 +304,21 @@ static constexpr const char *WINDOW_TITLE = "Simulator - XTEINK X4";
 #endif
 
 void HalDisplay::begin() {
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+  // Idempotent, because setup() can run more than once in one process.
+  //
+  // A deep-sleep wake is a chip reset on hardware and a process relaunch on
+  // desktop, so begin() would normally see a clean machine. Where the simulator
+  // instead re-enters setup() in-process (iOS, which cannot exec -- see
+  // SimulatorLifecycle.h), a second call would create a SECOND window and
+  // renderer, leaving the visible one orphaned and the panel frozen. Reuse what
+  // already exists; presentIfNeeded() re-applies the window geometry every
+  // present, so orientation still self-corrects after a wake.
+  if (window && sdl_renderer && texture) {
+    return;
+  }
+
+  // SDL3 returns true on success where SDL2 returned 0.
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
     std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
               << std::endl;
     return;
@@ -282,25 +329,28 @@ void HalDisplay::begin() {
   extern GfxRenderer renderer;
   getLogicalWindowSize(renderer.getOrientation(), &winW, &winH);
 
-  // SDL_WINDOW_ALLOW_HIGHDPI lets the renderer use full Retina/HiDPI pixels on
-  // macOS so we get crisp 1:1 rendering instead of a blurry upscale.
-  window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_UNDEFINED,
-                            SDL_WINDOWPOS_UNDEFINED, winW, winH,
-                            SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
-  sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  // SDL_WINDOW_HIGH_PIXEL_DENSITY lets the renderer use full Retina/HiDPI pixels
+  // on macOS so we get crisp 1:1 rendering instead of a blurry upscale.
+  // SDL3 drops the x/y arguments and shows windows by default.
+  window = SDL_CreateWindow(WINDOW_TITLE, winW, winH,
+                            SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  sdl_renderer = SDL_CreateRenderer(window, nullptr);
 
   // Keep all rendering logic in logical (winW×winH) coordinates; SDL maps to
   // drawable pixels.
-  SDL_RenderSetLogicalSize(sdl_renderer, winW, winH);
+  SDL_SetRenderLogicalPresentation(sdl_renderer, winW, winH,
+                                   kLogicalPresentation);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
 
-  // Linear filtering: Bayer-dithered pixels average to correct gray at scaled
-  // sizes rather than showing harsh black/white patterns.
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
   texture = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, DISPLAY_WIDTH,
                               DISPLAY_HEIGHT);
+
+  // SDL3 replaced the global SDL_HINT_RENDER_SCALE_QUALITY hint with a
+  // per-texture setting, which must therefore come after the texture exists.
+  // See kPanelScaleMode above for why the choice is not unconditional.
+  SDL_SetTextureScaleMode(texture, kPanelScaleMode);
 }
 
 void HalDisplay::begin(bool /*seamless*/) { begin(); }
@@ -397,45 +447,65 @@ void HalDisplay::presentIfNeeded() {
 
   SDL_UpdateTexture(texture, nullptr, pixelBuf,
                     DISPLAY_WIDTH * sizeof(uint32_t));
+  // Clear to the field colour, not the default black. On desktop the window is
+  // exactly panel-sized so this never shows, but wherever the panel is
+  // letterboxed (the phone presents it at 2x inside a taller screen) it is the
+  // surround. It defaults to white, matching a blank e-ink page so the panel
+  // edge is invisible; SimulatorOverlay::setClearColor lets a host that has an
+  // appearance to follow say otherwise.
+  const uint32_t field = SimulatorOverlay::clearColor.load();
+  SDL_SetRenderDrawColor(sdl_renderer, static_cast<Uint8>(field >> 16),
+                         static_cast<Uint8>(field >> 8),
+                         static_cast<Uint8>(field), 255);
   SDL_RenderClear(sdl_renderer);
 
   // For portrait modes the landscape panel texture must be rotated to fill the
-  // portrait window. SDL_RenderCopyEx rotates around the centre of dst, so dst
-  // must stay landscape-oriented and be offset so its centre coincides with the
-  // window centre. After rotation the result fills the portrait window.
+  // portrait window. SDL_RenderTextureRotated rotates around the centre of dst,
+  // so dst must stay landscape-oriented and be offset so its centre coincides
+  // with the window centre. After rotation the result fills the portrait window.
   //
   // Portrait rotateCoordinates stores content rotated 90° CCW in the physical
   // buffer, so we rotate +90° CW here to undo it. PortraitInverted stores
   // content rotated 90° CW → undo with -90°.
+  //
+  // SDL3 renamed RenderCopy/RenderCopyEx to RenderTexture/RenderTextureRotated
+  // and takes float rects; the arithmetic is unchanged.
+  constexpr float kW = static_cast<float>(DISPLAY_WIDTH);
+  constexpr float kH = static_cast<float>(DISPLAY_HEIGHT);
+  const SDL_FRect portraitDst = {(kH - kW) / 2.0f, kW / 2.0f - kH / 2.0f, kW,
+                                 kH};
+  const SDL_FRect landscapeDst = {0.0f, 0.0f, kW, kH};
+
   switch (orientation) {
-  case GfxRenderer::Portrait: {
+  case GfxRenderer::Portrait:
     // dst centre = window centre, landscape-sized panel texture.
-    SDL_Rect dst = {(DISPLAY_HEIGHT - DISPLAY_WIDTH) / 2,
-                    DISPLAY_WIDTH / 2 - DISPLAY_HEIGHT / 2, DISPLAY_WIDTH,
-                    DISPLAY_HEIGHT};
-    SDL_RenderCopyEx(sdl_renderer, texture, nullptr, &dst, 90.0, nullptr,
-                     SDL_FLIP_NONE);
+    SDL_RenderTextureRotated(sdl_renderer, texture, nullptr, &portraitDst, 90.0,
+                             nullptr, SDL_FLIP_NONE);
+    break;
+  case GfxRenderer::PortraitInverted:
+    SDL_RenderTextureRotated(sdl_renderer, texture, nullptr, &portraitDst,
+                             -90.0, nullptr, SDL_FLIP_NONE);
+    break;
+  case GfxRenderer::LandscapeClockwise:
+    SDL_RenderTextureRotated(sdl_renderer, texture, nullptr, &landscapeDst,
+                             180.0, nullptr, SDL_FLIP_NONE);
+    break;
+  default:
+    SDL_RenderTexture(sdl_renderer, texture, nullptr, &landscapeDst);
     break;
   }
-  case GfxRenderer::PortraitInverted: {
-    SDL_Rect dst = {(DISPLAY_HEIGHT - DISPLAY_WIDTH) / 2,
-                    DISPLAY_WIDTH / 2 - DISPLAY_HEIGHT / 2, DISPLAY_WIDTH,
-                    DISPLAY_HEIGHT};
-    SDL_RenderCopyEx(sdl_renderer, texture, nullptr, &dst, -90.0, nullptr,
-                     SDL_FLIP_NONE);
-    break;
-  }
-  case GfxRenderer::LandscapeClockwise: {
-    SDL_Rect dst = {0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT};
-    SDL_RenderCopyEx(sdl_renderer, texture, nullptr, &dst, 180.0, nullptr,
-                     SDL_FLIP_NONE);
-    break;
-  }
-  default: {
-    SDL_Rect dst = {0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT};
-    SDL_RenderCopy(sdl_renderer, texture, nullptr, &dst);
-    break;
-  }
+
+  // Overlay chrome lives in the letterboxed margins, which the panel's logical
+  // coordinate space cannot address -- so drop logical presentation, hand the
+  // painter real pixels, then restore it for the next frame.
+  if (SimulatorOverlay::overlayDraw) {
+    SDL_SetRenderLogicalPresentation(sdl_renderer, 0, 0,
+                                     SDL_LOGICAL_PRESENTATION_DISABLED);
+    int outW = 0, outH = 0;
+    if (SDL_GetCurrentRenderOutputSize(sdl_renderer, &outW, &outH) && outW > 0)
+      SimulatorOverlay::overlayDraw(sdl_renderer, outW, outH);
+    SDL_SetRenderLogicalPresentation(sdl_renderer, currentWindowWidth,
+                                     currentWindowHeight, kLogicalPresentation);
   }
 
   if (screenshotDue) {

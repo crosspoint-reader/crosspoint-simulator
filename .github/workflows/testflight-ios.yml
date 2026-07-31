@@ -1,10 +1,6 @@
 # Build, sign, and upload the iOS CrossPoint X3 to TestFlight from a hosted
 # macOS runner — no Mac, no keychain, no .p12 exports.
 #
-# NOTE: this copy on the default branch exists to REGISTER the workflow so
-# workflow_dispatch can resolve it; dispatch with ref=feat/ios-x3-port runs
-# the copy on that branch against the iOS port sources. Keep the two in sync.
-#
 # Mirrors ios/testflight.sh step-for-step with two deliberate differences:
 #
 #   - No desktop canary. The canary needs PlatformIO + an [env:simulator]

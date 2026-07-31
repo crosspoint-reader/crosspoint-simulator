@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <map>
+#include <string>
 
 #include "FreeRTOS.h"
 
@@ -20,13 +22,41 @@ inline TaskHandle_t xTaskGetCurrentTaskHandle() {
   return tl_currentTaskHandle ? tl_currentTaskHandle : simMainTaskHandle();
 }
 
+// Registry of live tasks by name, so a task is created at most once per name.
+//
+// On real hardware a deep-sleep wake RESETS the chip, so setup() runs against a
+// clean machine and exactly one render task ever exists. Where the simulator
+// re-enters setup() in-process instead of restarting (iOS, which cannot exec),
+// a second xTaskCreate for the same name would spawn a second render thread and
+// orphan the first -- two threads writing one framebuffer. Deduping by name
+// models the reset rather than working around the firmware, which is why this
+// belongs in the shim and not in any caller.
+inline std::map<std::string, SimTaskHandle *> &simTaskRegistry() {
+  static std::map<std::string, SimTaskHandle *> registry;
+  return registry;
+}
+
 // Create a real OS thread. The FreeRTOS task function signature is
 // void(*)(void*).
 inline BaseType_t xTaskCreate(void (*fn)(void *), const char *name,
                               uint32_t /*stackDepth*/, void *param,
                               BaseType_t /*priority*/, TaskHandle_t *handle) {
+  const std::string key = name ? name : "sim-task";
+
+  auto &registry = simTaskRegistry();
+  const auto existing = registry.find(key);
+  if (existing != registry.end()) {
+    // Already running from a previous setup(). Hand back the live task; the
+    // firmware's view ("my task exists") stays true.
+    if (handle)
+      *handle = existing->second;
+    return 1; // pdPASS
+  }
+
   auto *h = new SimTaskHandle();
+  // name is a string literal at every call site; the registry owns the copy.
   h->name = name ? name : "sim-task";
+  registry.emplace(key, h);
   h->thread = std::thread([fn, param, h]() {
     tl_currentTaskHandle = h;
     h->id = std::this_thread::get_id();

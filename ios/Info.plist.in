@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>CrossPoint X3</string>
+  <key>CFBundleDisplayName</key>
+  <string>CrossPoint X3</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <!-- Both are set from CMake so the deploy script can bump them without
+       editing this file. CFBundleVersion must be unique per marketing version,
+       and TestFlight's daily upload cap (error 90382) is ALSO per marketing
+       version, so hitting it means bumping CFBundleShortVersionString, not
+       waiting a day. -->
+  <key>CFBundleShortVersionString</key>
+  <string>@CROSSPOINT_IOS_MARKETING_VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@CROSSPOINT_IOS_BUILD_NUMBER@</string>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+
+  <!-- No encryption beyond what the OS provides. Declaring it here means
+       TestFlight uploads skip the export-compliance prompt every time. -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+
+  <!-- Purpose strings, required by App Store Connect validation (ITMS-90683)
+       even though the app never opens a camera or touches Bluetooth. The
+       linked SDL3 library references those APIs (camera capture subsystem,
+       Bluetooth game controllers), and Apple's static scan demands a purpose
+       string for every referenced API: "While your app might not use these
+       APIs, a purpose string is still required." Build 1 of 0.1.0 was
+       rejected for the camera key and warned about the Bluetooth key.
+       Removing these breaks the next upload. -->
+  <key>NSCameraUsageDescription</key>
+  <string>CrossPoint X3 never takes photos or video and never opens the camera. This notice is required because the SDL library that draws the reader screen and handles input references camera APIs. No image or video data is captured, stored, or sent anywhere.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>CrossPoint X3 never connects to Bluetooth devices. This notice is required because the SDL library that draws the reader screen and handles input references Bluetooth game-controller APIs. No Bluetooth device is scanned for, paired with, or contacted.</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>CrossPoint X3 never connects to Bluetooth devices. This notice is required because the SDL library that draws the reader screen and handles input references Bluetooth game-controller APIs. No Bluetooth device is scanned for, paired with, or contacted.</string>
+
+  <!-- Portrait only. The X3 panel is presented portrait and the control zones
+       are laid out beneath it; rotation would invalidate the integer-scale
+       geometry the 1-bit panel depends on. -->
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+
+  <!-- File sharing, so EPUB/TXT can be sideloaded via Files. The real X3 has no
+       USB port (pogo pins), so this is the only practical way to get books in. -->
+  <key>UIFileSharingEnabled</key>
+  <true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key>
+  <true/>
+
+  <key>UILaunchScreen</key>
+  <dict>
+    <key>UIColorName</key>
+    <string></string>
+  </dict>
+  <key>UIRequiredDeviceCapabilities</key>
+  <array>
+    <string>arm64</string>
+  </array>
+  <key>UIStatusBarHidden</key>
+  <true/>
+  <key>UIViewControllerBasedStatusBarAppearance</key>
+  <false/>
+</dict>
+</plist>

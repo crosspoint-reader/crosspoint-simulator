@@ -2,7 +2,7 @@
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <atomic>
@@ -256,10 +256,10 @@ void requestSimulatorSleep() {
   // Current CrossPoint firmware sleeps on a held physical power button. Keep
   // the compatibility latch above for older consumers, and also drive the
   // current public HalGPIO state so the S shortcut follows the real firmware
-  // sleep path.
-  pressedThisFrame[HalGPIO::BTN_POWER] = true;
-  syntheticButtonDown[HalGPIO::BTN_POWER] = true;
-  buttonPressTime[HalGPIO::BTN_POWER] = SDL_GetTicks();
+  // sleep path. No matching injectButtonUp(): the shortcut has no release, so
+  // POWER stays held until clearButtonState() runs at sleep entry — which is
+  // what makes the firmware's held-duration check pass.
+  gpio.injectButtonDown(HalGPIO::BTN_POWER);
 }
 
 std::string uppercase(std::string value) {
@@ -375,16 +375,10 @@ void processSyntheticEvents() {
     event.handled = true;
     switch (event.action) {
     case SyntheticAction::KeyDown:
-      pressedThisFrame[event.button] = true;
-      syntheticButtonDown[event.button] = true;
-      // Held-time calculations use SDL_GetTicks() for real keyboard events;
-      // synthetic presses must use the same clock origin to avoid unsigned
-      // underflow being mistaken for an immediate long press.
-      buttonPressTime[event.button] = SDL_GetTicks();
+      gpio.injectButtonDown(static_cast<uint8_t>(event.button));
       break;
     case SyntheticAction::KeyUp:
-      releasedThisFrame[event.button] = true;
-      syntheticButtonDown[event.button] = false;
+      gpio.injectButtonUp(static_cast<uint8_t>(event.button));
       break;
     case SyntheticAction::TouchDown:
       beginTouch(event.logicalNx, event.logicalNy);
@@ -489,32 +483,32 @@ void HalGPIO::update() {
   // split between two callers (HalDisplay::presentIfNeeded only renders).
   SDL_Event e;
   while (SDL_PollEvent(&e) != 0) {
-    if (e.type == SDL_QUIT) {
+    if (e.type == SDL_EVENT_QUIT) {
       quitRequested.store(true);
-    } else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-      if (e.key.keysym.scancode == HOME_KEY_SCANCODE) {
+    } else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+      if (e.key.scancode == HOME_KEY_SCANCODE) {
         beginHomeKey();
         continue;
       }
-      if (e.key.keysym.scancode == SIMULATOR_SLEEP_SCANCODE) {
+      if (e.key.scancode == SIMULATOR_SLEEP_SCANCODE) {
         requestSimulatorSleep();
         continue;
       }
-      int btn = scancodeToButton(e.key.keysym.scancode);
+      int btn = scancodeToButton(e.key.scancode);
       if (btn >= 0) {
         pressedThisFrame[btn] = true;
         buttonPressTime[btn] = SDL_GetTicks();
       }
-    } else if (e.type == SDL_KEYUP) {
-      if (e.key.keysym.scancode == HOME_KEY_SCANCODE) {
+    } else if (e.type == SDL_EVENT_KEY_UP) {
+      if (e.key.scancode == HOME_KEY_SCANCODE) {
         endHomeKey();
         continue;
       }
-      int btn = scancodeToButton(e.key.keysym.scancode);
+      int btn = scancodeToButton(e.key.scancode);
       if (btn >= 0) {
         releasedThisFrame[btn] = true;
       }
-    } else if (e.type == SDL_MOUSEBUTTONDOWN &&
+    } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
                e.button.button == SDL_BUTTON_LEFT) {
       const float logicalNx =
           static_cast<float>(e.button.x) /
@@ -523,7 +517,7 @@ void HalGPIO::update() {
           static_cast<float>(e.button.y) /
           std::max(1, static_cast<int>(renderer.getScreenHeight()) - 1);
       beginTouch(logicalNx, logicalNy);
-    } else if (e.type == SDL_MOUSEMOTION && touchState.down) {
+    } else if (e.type == SDL_EVENT_MOUSE_MOTION && touchState.down) {
       const float logicalNx =
           static_cast<float>(e.motion.x) /
           std::max(1, static_cast<int>(renderer.getScreenWidth()) - 1);
@@ -531,7 +525,7 @@ void HalGPIO::update() {
           static_cast<float>(e.motion.y) /
           std::max(1, static_cast<int>(renderer.getScreenHeight()) - 1);
       moveTouch(logicalNx, logicalNy);
-    } else if (e.type == SDL_MOUSEBUTTONUP &&
+    } else if (e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
                e.button.button == SDL_BUTTON_LEFT) {
       const float logicalNx =
           static_cast<float>(e.button.x) /
@@ -549,7 +543,8 @@ void HalGPIO::update() {
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {
   if (buttonIndex >= NUM_BUTTONS)
     return false;
-  const uint8_t *state = SDL_GetKeyboardState(NULL);
+  // SDL3 returns const bool* here; SDL2 returned const Uint8*.
+  const bool *state = SDL_GetKeyboardState(NULL);
   return state[buttonScancode[buttonIndex]] || syntheticButtonDown[buttonIndex];
 }
 
@@ -581,11 +576,33 @@ bool HalGPIO::wasAnyReleased() const {
   return false;
 }
 
+void HalGPIO::injectButtonDown(uint8_t buttonIndex) {
+  if (buttonIndex >= NUM_BUTTONS)
+    return;
+  pressedThisFrame[buttonIndex] = true;
+  // The level bit is the whole point of this entry point: SDL_GetKeyboardState()
+  // is never written for anything the host injects, so isPressed(),
+  // getHeldTime() and getPowerButtonHeldTime() have nothing else to read.
+  syntheticButtonDown[buttonIndex] = true;
+  // Held-time calculations use SDL_GetTicks() for real keyboard events;
+  // injected presses must use the same clock origin to avoid unsigned
+  // underflow being mistaken for an immediate long press.
+  buttonPressTime[buttonIndex] = SDL_GetTicks();
+}
+
+void HalGPIO::injectButtonUp(uint8_t buttonIndex) {
+  if (buttonIndex >= NUM_BUTTONS)
+    return;
+  releasedThisFrame[buttonIndex] = true;
+  syntheticButtonDown[buttonIndex] = false;
+}
+
 unsigned long HalGPIO::getHeldTime() const {
   // Return the longest held time among all currently pressed buttons
   unsigned long now = SDL_GetTicks();
   unsigned long maxHeld = 0;
-  const uint8_t *state = SDL_GetKeyboardState(NULL);
+  // SDL3 returns const bool* here; SDL2 returned const Uint8*.
+  const bool *state = SDL_GetKeyboardState(NULL);
   for (int i = 0; i < NUM_BUTTONS; i++) {
     if ((state[buttonScancode[i]] || syntheticButtonDown[i]) &&
         buttonPressTime[i] > 0) {
@@ -598,7 +615,8 @@ unsigned long HalGPIO::getHeldTime() const {
 }
 
 unsigned long HalGPIO::getPowerButtonHeldTime() const {
-  const uint8_t *state = SDL_GetKeyboardState(NULL);
+  // SDL3 returns const bool* here; SDL2 returned const Uint8*.
+  const bool *state = SDL_GetKeyboardState(NULL);
   if ((!state[buttonScancode[BTN_POWER]] && !syntheticButtonDown[BTN_POWER]) ||
       buttonPressTime[BTN_POWER] == 0)
     return 0;
@@ -709,13 +727,13 @@ void HalGPIO::startDeepSleep() {
 
     SDL_Event e;
     while (SDL_PollEvent(&e) != 0) {
-      if (e.type == SDL_QUIT) {
+      if (e.type == SDL_EVENT_QUIT) {
         quitRequested.store(true);
         return;
       }
 
-      if (e.type == SDL_KEYDOWN && !e.key.repeat &&
-          scancodeToButton(e.key.keysym.scancode) >= 0) {
+      if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat &&
+          scancodeToButton(e.key.scancode) >= 0) {
         clearButtonState();
         SimulatorLifecycle::rebootAsPowerWake();
       }
