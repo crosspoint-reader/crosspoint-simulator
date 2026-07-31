@@ -59,6 +59,16 @@ set_target_properties(CrossPointX3 PROPERTIES
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
   XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+  # Required for `xcodebuild archive` to produce a DISTRIBUTABLE archive.
+  #
+  # CMake generates Xcode targets with SKIP_INSTALL=YES, so archive builds the
+  # app but never installs it into the archive: Products/ comes out empty and
+  # the archive Info.plist has no ApplicationProperties. Xcode then finds no
+  # valid distribution methods and -exportArchive fails with the misleading
+  # `exportOptionsPlist error for key "method" expected one {}` — an EMPTY set
+  # of methods, not a bad method string.
+  XCODE_ATTRIBUTE_SKIP_INSTALL "NO"
+  XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)"
   # A release build for distribution should not carry the simulator's debug
   # assertions; the firmware is noisy enough on a 64-bit host as it is.
   XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH[variant=Release] "NO")
