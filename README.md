@@ -284,6 +284,24 @@ the shell Terminal spawns. This needs the Mac logged in and unlocked, and
 AppleScript returns as soon as Terminal starts the command; it cannot report
 whether the deploy succeeded.
 
+### Shipping without a Mac
+
+[.github/workflows/testflight.yml](.github/workflows/testflight.yml) runs the
+same chain on a GitHub-hosted `macos-latest` runner, so shipping does not depend
+on one machine being awake and unlocked. Trigger it from the Actions tab.
+
+Without secrets it builds, packages, verifies the purpose strings, embeds
+dylibs, and uploads the `.app` as an artifact — a standing check that a bundle
+would pass Apple's validation. Add these repository secrets to enable signing
+and upload: `MACOS_CERT_P12`, `MACOS_CERT_P12_PASSWORD`, `MACOS_INSTALLER_P12`,
+`MACOS_INSTALLER_P12_PASSWORD`, `SIGN_APP`, `SIGN_INSTALLER`, `BUNDLE_ID`,
+`ASC_KEY_ID`, `ASC_ISSUER`, `ASC_KEY_P8`. Produce the blobs with
+`base64 -i cert.p12 | pbcopy`, then re-run with `skip_upload` unchecked.
+
+The runner creates its own keychain and calls `security set-key-partition-list`,
+which is what stops `codesign` from blocking on a GUI prompt. That replaces the
+Terminal.app detour needed on a personal Mac.
+
 > [!WARNING]
 > Mac App Store builds must be sandboxed
 > ([packaging/macos/CrossPoint.entitlements](packaging/macos/CrossPoint.entitlements)),
