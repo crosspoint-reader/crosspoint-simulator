@@ -59,6 +59,20 @@ The simulator is a collection of host-side reimplementations of the firmware's h
   linked SDL2 library and rejects the upload with ITMS-90683. Removing them
   breaks the next App Store submission. If a future upload flags another key,
   add it to the template and to `REQUIRED_PRIVACY_KEYS` so `verify` catches it.
+- TestFlight deploys: [packaging/macos/deploy.sh](packaging/macos/deploy.sh)
+  runs build → bundle → verify → embed dylibs → sign → `productbuild` →
+  `altool` → tag, and must run on macOS from a GUI Terminal session.
+  `codesign` needs the login keychain, so firing it from a sandboxed agent
+  shell fails with `errSecInternalComponent` — route through
+  [packaging/macos/deploy.applescript](packaging/macos/deploy.applescript),
+  which hands the command to Terminal.app. Build numbers auto-bump from the
+  last `macos-build-N` tag because Apple silently rejects a duplicate. A
+  sandboxed build cannot spawn `/usr/bin/curl`, so `SimHttpFetch`-backed
+  network flows do not work on TestFlight.
+- A `.app` launched from Finder starts with its working directory at `/`, so
+  [src/HalStorage.cpp](src/HalStorage.cpp) resolves the simulated SD card to
+  `~/Library/Application Support/<AppName>/fs_` when the executable sits inside
+  a bundle. Command-line dev builds are unaffected and keep using `./fs_`.
 - Linker stubs: [src/firmware_link_stubs.cpp](src/firmware_link_stubs.cpp) provides symbols the firmware expects from other translation units (uzlib checksums, HWCDC Serial shim, LUT stubs). When the firmware adds a new global-extern symbol with no simulator counterpart, add its stub here.
 
 ## Device profiles and input mapping
