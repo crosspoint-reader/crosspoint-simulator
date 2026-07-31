@@ -4,8 +4,14 @@
 # `pio run -e simulator -t compiledb`. Regenerate after any firmware change that
 # adds, removes, or renames a translation unit.
 #
-# firmware   : /Users/natebunnyfield/crosspoint/crosspoint-reader
-# TU counts  : 135 firmware, 20 simulator (6 C, 149 C++)
+# firmware   : /tmp/claude-0/-home-user-crosspoint-simulator/4caa4929-b456-5ca4-aa96-085eb5c6fd4f/scratchpad/fw-regen
+# pinned at  : 1a7f5a9e3828e08565aa055a696ed8f0e9248c28
+# TU counts  : 145 firmware, 20 simulator (6 C, 159 C++)
+
+# The firmware commit this source set was generated from. Upstream restructures
+# its tree frequently; a source list is only valid against the tree it was
+# derived from, so CI builds this commit by default rather than a moving branch.
+set(CROSSPOINT_FIRMWARE_PIN "1a7f5a9e3828e08565aa055a696ed8f0e9248c28")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -34,6 +40,7 @@ set(CROSSPOINT_SIM_SOURCES
 
 # Firmware TUs. Paths relative to CROSSPOINT_FIRMWARE_DIR.
 set(CROSSPOINT_FW_SOURCES
+  freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp
   lib/EpdFont/EpdFont.cpp
   lib/EpdFont/EpdFontFamily.cpp
   lib/EpdFont/FontDecompressor.cpp
@@ -48,6 +55,7 @@ set(CROSSPOINT_FW_SOURCES
   lib/Epub/Epub/blocks/ImageBlock.cpp
   lib/Epub/Epub/blocks/TextBlock.cpp
   lib/Epub/Epub/converters/ImageDecoderFactory.cpp
+  lib/Epub/Epub/converters/ImageDimsProbe.cpp
   lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp
   lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp
   lib/Epub/Epub/converters/PngToFramebufferConverter.cpp
@@ -99,17 +107,15 @@ set(CROSSPOINT_FW_SOURCES
   src/CrossPointSettings.cpp
   src/CrossPointState.cpp
   src/FontInstaller.cpp
-  src/JsonSettingsIO.cpp
   src/MappedInputManager.cpp
   src/OpdsServerStore.cpp
+  src/ReaderFontSizes.cpp
   src/RecentBooksStore.cpp
   src/SdCardFontSystem.cpp
   src/WifiCredentialStore.cpp
   src/activities/Activity.cpp
   src/activities/ActivityManager.cpp
   src/activities/boot_sleep/BootActivity.cpp
-  src/activities/boot_sleep/CalendarSleepScreen.cpp
-  src/activities/boot_sleep/HolidayCalculator.cpp
   src/activities/boot_sleep/SleepActivity.cpp
   src/activities/browser/OpdsBookBrowserActivity.cpp
   src/activities/home/CrashActivity.cpp
@@ -120,6 +126,8 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/network/CrossPointWebServerActivity.cpp
   src/activities/network/NetworkModeSelectionActivity.cpp
   src/activities/network/WifiSelectionActivity.cpp
+  src/activities/reader/DictionaryDefinitionActivity.cpp
+  src/activities/reader/DictionaryWordSelectActivity.cpp
   src/activities/reader/EndOfBookOptions.cpp
   src/activities/reader/EpubReaderActivity.cpp
   src/activities/reader/EpubReaderBookmarksActivity.cpp
@@ -138,7 +146,6 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/settings/ClockOffsetActivity.cpp
   src/activities/settings/ClockSyncActivity.cpp
   src/activities/settings/FontDownloadActivity.cpp
-  src/activities/settings/FontSelectionActivity.cpp
   src/activities/settings/KOReaderAuthActivity.cpp
   src/activities/settings/KOReaderSettingsActivity.cpp
   src/activities/settings/LanguageSelectActivity.cpp
@@ -148,6 +155,8 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/settings/SdFirmwareUpdateActivity.cpp
   src/activities/settings/SettingsActivity.cpp
   src/activities/settings/StatusBarSettingsActivity.cpp
+  src/activities/settings/TextSettingsActivity.cpp
+  src/activities/settings/TextSettingsPreview.cpp
   src/activities/util/BmpViewerActivity.cpp
   src/activities/util/ConfirmationActivity.cpp
   src/activities/util/FullScreenMessageActivity.cpp
@@ -156,15 +165,22 @@ set(CROSSPOINT_FW_SOURCES
   src/components/UITheme.cpp
   src/components/themes/BaseTheme.cpp
   src/components/themes/lyra/Lyra3CoversTheme.cpp
-  src/components/themes/lyra/LyraSixTheme.cpp
   src/components/themes/lyra/LyraTheme.cpp
   src/components/themes/roundedraff/RoundedRaffTheme.cpp
   src/main.cpp
+  src/network/CrossPointWebServer.cpp
   src/network/HttpDownloader.cpp
+  src/network/WebDAVHandler.cpp
   src/util/BookCacheUtils.cpp
+  src/util/BookmarkFile.cpp
   src/util/BookmarkUtil.cpp
   src/util/ButtonNavigator.cpp
+  src/util/DictZip.cpp
+  src/util/Dictionary.cpp
+  src/util/DictionaryRegistry.cpp
+  src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
+  src/util/OpdsFilename.cpp
   src/util/QrUtils.cpp
   src/util/ScreenshotUtil.cpp
   src/util/StringUtils.cpp
@@ -173,7 +189,9 @@ set(CROSSPOINT_FW_SOURCES
 
 # Firmware include dirs. Paths relative to CROSSPOINT_FIRMWARE_DIR.
 set(CROSSPOINT_FW_INCLUDE_DIRS
-  .pio/libdeps/simulator/ArduinoJson/src
+  .pio/libdeps/simulator_x3/ArduinoJson/src
+  freeink-sdk/libs/ui/FreeInkUI/include
+  freeink-sdk/libs/ui/FreeInkUI/src
   lib/EpdFont
   lib/Epub
   lib/FsHelpers
@@ -201,7 +219,7 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
 
 # Compile definitions, verbatim from the working desktop env.
 set(CROSSPOINT_DEFINES
-  ARDUINOJSON_ENABLE_ARDUINO_STRING=1
+  CROSSPOINT_SIMULATOR_PROJECT_WEBSERVER
   CROSSPOINT_VERSION=\"dev-simulator\"
   DESTRUCTOR_CLOSES_FILE=1
   DISABLE_FS_H_WARNING=1

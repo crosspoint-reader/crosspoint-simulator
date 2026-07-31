@@ -23,8 +23,12 @@ on:
   workflow_dispatch:
     inputs:
       firmware_ref:
-        description: Firmware ref to build (crosspoint-reader/crosspoint-reader)
-        default: master
+        description: >-
+          Firmware ref to build (crosspoint-reader/crosspoint-reader). Blank =
+          the commit pinned in cmake/CrossPointSources.cmake, which is the only
+          tree the generated source set is guaranteed to match. Passing a
+          branch here usually also means regenerating the source set first.
+        default: ""
         required: false
       marketing_version:
         description: CFBundleShortVersionString
@@ -73,13 +77,37 @@ jobs:
           path: simulator
           fetch-depth: 0 # full history so build-N tags are visible
 
+      - name: Resolve firmware ref
+        id: fwref
+        run: |
+          REF="${{ inputs.firmware_ref }}"
+          if [ -z "$REF" ]; then
+            REF=$(sed -n 's/^set(CROSSPOINT_FIRMWARE_PIN "\(.*\)")$/\1/p' \
+                  simulator/cmake/CrossPointSources.cmake)
+            [ -n "$REF" ] || { echo "::error::no CROSSPOINT_FIRMWARE_PIN in the source set"; exit 1; }
+            echo "using pinned firmware commit $REF"
+          else
+            echo "using explicit firmware ref $REF"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - name: Check out firmware
         uses: actions/checkout@v4
         with:
           repository: crosspoint-reader/crosspoint-reader
-          ref: ${{ inputs.firmware_ref }}
+          ref: ${{ steps.fwref.outputs.ref }}
           path: firmware
           submodules: recursive
+
+      - name: Provision header-only PlatformIO deps
+        # The generated source set references .pio/libdeps include paths that a
+        # desktop `pio run` would normally populate. CI never runs PlatformIO,
+        # and ArduinoJson is header-only, so a pinned clone is sufficient.
+        run: |
+          DEST=firmware/.pio/libdeps/simulator_x3/ArduinoJson
+          mkdir -p "$(dirname "$DEST")"
+          git clone --depth 1 --branch v7.4.2 \
+            https://github.com/bblanchon/ArduinoJson "$DEST"
 
       - name: Install the ASC API key
         env:
