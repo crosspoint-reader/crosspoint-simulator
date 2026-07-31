@@ -96,7 +96,11 @@ xcodebuild -exportArchive \
   -exportPath "$EXPORT_DIR" \
   "${AUTH[@]}" | tail -5
 
-[[ -f "$IPA" ]] || { echo "ERROR: no IPA at $IPA"; ls -la "$EXPORT_DIR" || true; exit 1; }
+# Xcode names the IPA after CFBundleName, not the target, so it lands as
+# "CrossPoint X3.ipa" -- with a space. Glob rather than assume the target name.
+IPA=$(find "$EXPORT_DIR" -maxdepth 1 -name '*.ipa' | head -1)
+[[ -n "$IPA" && -f "$IPA" ]] || {
+  echo "ERROR: no .ipa in $EXPORT_DIR"; ls -la "$EXPORT_DIR" || true; exit 1; }
 echo "IPA: $IPA ($(du -h "$IPA" | cut -f1))"
 
 if [[ $UPLOAD -eq 0 ]]; then
