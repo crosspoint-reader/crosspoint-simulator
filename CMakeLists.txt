@@ -14,7 +14,7 @@
 #     -DCMAKE_SYSTEM_NAME=iOS \
 #     -DCMAKE_OSX_SYSROOT=iphonesimulator \
 #     -DCMAKE_OSX_ARCHITECTURES=arm64 \
-#     -DCROSSPOINT_FIRMWARE_DIR=$HOME/crosspoint/crosspoint-reader
+#     -DCROSSPOINT_FIRMWARE_DIR=$HOME/src/crosspoint-reader
 #   cmake --build build/ios-sim --config Debug -- -sdk iphonesimulator
 #
 # Configure for a device:
@@ -22,7 +22,7 @@
 #   cmake -B build/ios-dev -G Xcode \
 #     -DCMAKE_SYSTEM_NAME=iOS \
 #     -DCMAKE_OSX_ARCHITECTURES=arm64 \
-#     -DCROSSPOINT_FIRMWARE_DIR=$HOME/crosspoint/crosspoint-reader \
+#     -DCROSSPOINT_FIRMWARE_DIR=$HOME/src/crosspoint-reader \
 #     -DCROSSPOINT_IOS_TEAM_ID=<TEAMID>
 
 cmake_minimum_required(VERSION 3.24)

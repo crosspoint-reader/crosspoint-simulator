@@ -21,7 +21,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIRMWARE_DIR="${CROSSPOINT_FIRMWARE_DIR:-$HOME/crosspoint/crosspoint-reader}"
+FIRMWARE_DIR="${CROSSPOINT_FIRMWARE_DIR:-$HOME/src/crosspoint-reader}"
 
 BUNDLE_ID="com.natebunnyfield.crosspoint.x3"
 TEAM_ID="887M8FR447"
