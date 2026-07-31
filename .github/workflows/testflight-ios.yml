@@ -22,12 +22,19 @@ name: TestFlight iOS
 on:
   workflow_dispatch:
     inputs:
+      firmware_repo:
+        description: >-
+          Repository to build the firmware from (owner/name). The pin and the
+          generated source set must come from THIS repo's history — repo and
+          pin travel together.
+        default: crosspoint-reader/crosspoint-reader
+        required: false
       firmware_ref:
         description: >-
-          Firmware ref to build (crosspoint-reader/crosspoint-reader). Blank =
-          the commit pinned in cmake/CrossPointSources.cmake, which is the only
-          tree the generated source set is guaranteed to match. Passing a
-          branch here usually also means regenerating the source set first.
+          Firmware ref to build within firmware_repo. Blank = the commit
+          pinned in cmake/CrossPointSources.cmake, which is the only tree the
+          generated source set is guaranteed to match. Passing a branch here
+          usually also means regenerating the source set first.
         default: ""
         required: false
       marketing_version:
@@ -94,7 +101,7 @@ jobs:
       - name: Check out firmware
         uses: actions/checkout@v4
         with:
-          repository: crosspoint-reader/crosspoint-reader
+          repository: ${{ inputs.firmware_repo || 'crosspoint-reader/crosspoint-reader' }}
           ref: ${{ steps.fwref.outputs.ref }}
           path: firmware
           submodules: recursive
