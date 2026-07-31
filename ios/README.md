@@ -93,6 +93,43 @@ bug has nothing to show itself against. Add
 a Bayer 4×4 ramp, and per-corner glyphs that identify rotation. It is a build
 flag, not on-screen UI.
 
+## Deploying from your phone
+
+Signing needs the login keychain, which only a GUI Terminal session has — an
+SSH shell fails at codesign with `errSecInternalComponent`. The bridge, same as
+crds-ios: SSH to the Mac and let AppleScript hand the command to Terminal.app,
+which runs it under the logged-in user with the keychain unlocked.
+
+From any phone SSH client (Terminus, Blink):
+
+```bash
+ssh <your-mac> 'osascript ~/src/crosspoint-simulator/ios/deploy.applescript'
+```
+
+That opens a Terminal tab on the Mac running
+[deploy-from-repo.sh](deploy-from-repo.sh), which pulls the current branch
+(`--ff-only`) and runs [testflight.sh](testflight.sh) — so a phone-fired deploy
+ships what was just merged, and the result lands back on the phone as the
+script's ntfy notification. KEY=VALUE arguments pass through `env` into the
+Terminal subshell:
+
+```bash
+ssh <your-mac> 'osascript ~/src/crosspoint-simulator/ios/deploy.applescript "CROSSPOINT_MARKETING_VERSION=0.1.1"'
+```
+
+One-tap version, as an iOS Shortcut (crds-ios `SHORTCUTS_RECIPES.md` pattern):
+
+| step | action | parameters |
+|---|---|---|
+| 1 | Run Script Over SSH | `osascript ~/src/crosspoint-simulator/ios/deploy.applescript` |
+| 2 | Show Notification | "Deploy started — watch ntfy" |
+
+Pin it to the home screen as **"X3 Deploy"**. One-time Mac setup: allow the
+SSH-launched `osascript` to control Terminal (Privacy & Security → Automation —
+the prompt appears on the Mac's screen the first time, so approve it while
+you're at the machine), and the Mac must be logged in and unlocked when you
+fire — a locked screen keeps the keychain shut.
+
 ## Controls
 
 An on-screen pad with one control per physical X3 button — no more, no fewer.
