@@ -71,14 +71,21 @@ Install, seed books, and launch:
 
 ```bash
 xcrun simctl install <udid> build/ios-app/ios/Debug-iphonesimulator/CrossPointX3.app
-cp -R $HOME/crosspoint/crosspoint-reader/fs_ "$(xcrun simctl get_app_container <udid> com.natebunnyfield.crosspoint.x3 data)/Documents/"
+cp -R $HOME/crosspoint/crosspoint-reader/fs_/books "$(xcrun simctl get_app_container <udid> com.natebunnyfield.crosspoint.x3 data)/Documents/"
 xcrun simctl launch <udid> com.natebunnyfield.crosspoint.x3
 ```
 
-`HalStorage` prefixes every path with `./fs_`, which relies on the process CWD.
-On iOS that is the read-only bundle, so the harness `chdir()`s to the app's
-Documents directory before `setup()` touches storage. The Info.plist enables file
-sharing and in-place document opening, so books can also be sideloaded via Files.
+**The app's Documents directory is the emulated SD card.** The harness
+`chdir()`s there (the iOS default CWD is the read-only bundle), points
+`CROSSPOINT_SIM_SD` at it, and creates `books/` on first launch. Because the
+Info.plist enables file sharing and in-place document opening, the card is
+browsable in the Files app as **On My iPhone → CrossPoint X3**, and dropping an
+EPUB into its `books` folder — from Files, iCloud Drive, or AirDrop — is how
+books get onto the phone. Firmware state lives in `.crosspoint`, dot-prefixed,
+which both `HalStorage` iteration and Files keep hidden. Installs that predate
+this layout (which kept the card at `Documents/fs_`) are migrated on launch:
+`fs_/books` and `fs_/.crosspoint` are renamed up a level, so libraries and
+reading positions survive the update.
 
 The shipped panel shows only what the firmware draws, which means a presentation
 bug has nothing to show itself against. Add
