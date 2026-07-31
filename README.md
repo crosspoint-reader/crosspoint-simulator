@@ -295,8 +295,17 @@ dylibs, and uploads the `.app` as an artifact — a standing check that a bundle
 would pass Apple's validation. Add these repository secrets to enable signing
 and upload: `MACOS_CERT_P12`, `MACOS_CERT_P12_PASSWORD`, `MACOS_INSTALLER_P12`,
 `MACOS_INSTALLER_P12_PASSWORD`, `SIGN_APP`, `SIGN_INSTALLER`, `BUNDLE_ID`,
-`ASC_KEY_ID`, `ASC_ISSUER`, `ASC_KEY_P8`. Produce the blobs with
-`base64 -i cert.p12 | pbcopy`, then re-run with `skip_upload` unchecked.
+`ASC_KEY_ID`, `ASC_ISSUER`, `ASC_KEY_P8`, `MACOS_PROVISIONING_PROFILE`. Produce
+the blobs with `base64 -i cert.p12 | pbcopy`, then re-run with `skip_upload`
+unchecked.
+
+`MACOS_PROVISIONING_PROFILE` is base64 of a Mac App Store `.provisionprofile`
+for your bundle ID, whose App ID must have the App Sandbox capability. It is
+embedded at `Contents/embedded.provisionprofile` before signing, because the
+signature seals it. Xcode does this during `-exportArchive`; a hand-assembled
+bundle has to do it explicitly, and the store rejects a build without one even
+though `codesign` succeeds locally. `deploy.sh` takes the same thing as a file
+path in `PROVISIONING_PROFILE`.
 
 The runner creates its own keychain and calls `security set-key-partition-list`,
 which is what stops `codesign` from blocking on a GUI prompt. That replaces the

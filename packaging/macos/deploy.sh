@@ -15,6 +15,8 @@
 #   BUNDLE_ID         must match App Store Connect     (required)
 #   SIGN_APP          "Apple Distribution: ..."        (required)
 #   SIGN_INSTALLER    "3rd Party Mac Developer Installer: ..."  (required)
+#   PROVISIONING_PROFILE  path to a Mac App Store .provisionprofile for
+#                     BUNDLE_ID; required for a store upload
 #   ASC_KEY_ID        App Store Connect API key id     (required to upload)
 #   ASC_ISSUER        App Store Connect issuer id      (required to upload)
 #   ASC_KEY_PATH      path to the .p8 private key      (required to upload)
@@ -177,6 +179,22 @@ if [ "$DRY_RUN" != "1" ]; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXE" 2>/dev/null || true
   echo "remaining external references:"
   otool -L "$EXE" | awk 'NR>1 {print "  " $1}'
+fi
+
+# --- provisioning profile --------------------------------------------------
+#
+# Must happen before signing -- the profile is sealed into the signature. Xcode
+# does this during -exportArchive; a hand-assembled bundle has to do it
+# explicitly. App Store Connect rejects a store build with no embedded profile
+# even though codesign succeeds locally.
+
+say "provisioning profile"
+if [ -n "${PROVISIONING_PROFILE:-}" ]; then
+  [ -f "$PROVISIONING_PROFILE" ] || die "PROVISIONING_PROFILE not found: $PROVISIONING_PROFILE"
+  run cp "$PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+else
+  echo "warning: PROVISIONING_PROFILE not set. Mac App Store uploads normally"
+  echo "require an embedded profile; expect a rejection if this is a store build."
 fi
 
 # --- sign ------------------------------------------------------------------

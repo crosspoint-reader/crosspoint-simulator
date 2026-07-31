@@ -187,6 +187,24 @@ jobs:
           rm -f "$RUNNER_TEMP"/*.p12
           security find-identity -v -p codesigning "$KEYCHAIN"
 
+      - name: Embed provisioning profile
+        if: steps.secrets.outputs.present == 'true'
+        working-directory: firmware
+        env:
+          PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
+        run: |
+          # Must happen BEFORE signing -- the profile is sealed into the
+          # signature. Xcode does this automatically on -exportArchive; a
+          # hand-assembled bundle has to do it explicitly, and App Store
+          # Connect rejects a store build that has no profile even though
+          # codesign succeeds locally.
+          if [ -z "$PROFILE" ]; then
+            echo "::warning::MACOS_PROVISIONING_PROFILE not set. Mac App Store uploads normally require an embedded profile; expect a rejection."
+            exit 0
+          fi
+          echo "$PROFILE" | base64 --decode > "$APP/Contents/embedded.provisionprofile"
+          echo "embedded.provisionprofile: $(wc -c < "$APP/Contents/embedded.provisionprofile") bytes"
+
       - name: Sign
         if: steps.secrets.outputs.present == 'true'
         working-directory: firmware
