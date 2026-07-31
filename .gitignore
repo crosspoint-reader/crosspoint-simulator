@@ -1,0 +1,8 @@
+# CMake build trees (iOS/desktop). SDL3 is fetched into build/*/\_deps.
+build/
+
+# PlatformIO artifacts, when this repo is built in place.
+.pio/
+compile_commands.json
+
+.DS_Store

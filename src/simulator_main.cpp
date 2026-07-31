@@ -1,5 +1,5 @@
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <unistd.h>
 
 #include "Arduino.h"
@@ -7,13 +7,41 @@
 #include "HalGPIO.h"
 #include "SimulatorLifecycle.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+// On iOS, SDL renames main() and calls it from UIApplicationMain, so the entry
+// point below is reached the same way as on desktop -- but the working
+// directory, the input source and the process lifetime all differ. Those three
+// are the only iOS-specific lines in the simulator; HalGPIO and the firmware are
+// untouched.
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+#define CROSSPOINT_SIM_IOS 1
+#include <SDL3/SDL_main.h>
+
+#include "CrossPointHarness.h"
+#else
+#define CROSSPOINT_SIM_IOS 0
+#endif
+
 extern void setup();
 extern void loop();
 extern HalDisplay display; // defined in main.cpp
 
 int main(int argc, char **argv) {
   SimulatorLifecycle::initProcessArgs(argv);
+#if CROSSPOINT_SIM_IOS
+  // HalStorage's ./fs_ prefix relies on the CWD, which on iOS is the read-only
+  // bundle. Must happen before setup() touches storage.
+  CrossPointHarness_prepareFilesystem();
+#endif
   setup();
+#if CROSSPOINT_SIM_IOS
+  // After setup(), because installing the gesture event watch needs SDL
+  // initialised and HalDisplay::begin() is what calls SDL_Init.
+  CrossPointHarness_begin();
+#endif
   while (!display.shouldQuit()) {
     // Clear input edge latches once per frame. update() may be called many
     // times within loop(); edges must survive across those calls and only
@@ -32,6 +60,11 @@ int main(int argc, char **argv) {
     SDL_Delay(1);
   }
   SDL_Quit();
+#if CROSSPOINT_SIM_IOS
+  // iOS treats _exit() as a crash, and an app that kills its own process is
+  // reported as one. Return normally instead.
+  return 0;
+#else
   // Use _exit() instead of return/exit() to bypass C++ global destructors.
   // `activityManager` (and other globals in main.cpp) are constructed before
   // the render task thread starts, and the render task runs a [[noreturn]]
@@ -40,4 +73,5 @@ int main(int argc, char **argv) {
   // SIGSEGV → "quit unexpectedly" dialog.  SDL is already torn down above, so
   // calling _exit(0) here is safe.
   _exit(0);
+#endif
 }
