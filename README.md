@@ -12,20 +12,24 @@ A desktop simulator for [CrossPoint](https://github.com/crosspoint-reader/crossp
 
 ## Prerequisites
 
-SDL2 and `curl` must be installed on the host machine. Linux/WSL users also need OpenSSL development headers for MD5 support.
+SDL3 and `curl` must be installed on the host machine (the sources migrated
+from SDL2 during the iOS port — an SDL2-only host fails compiling
+`HalDisplay.cpp` with `'SDL3/SDL.h' file not found`). Linux/WSL users also
+need OpenSSL development headers for MD5 support.
 
 ```bash
 # macOS
-brew install sdl2
+brew install sdl3
 
-# Linux — Debian/Ubuntu (including WSL)
-sudo apt install libsdl2-dev libssl-dev
+# Linux — Debian/Ubuntu (including WSL): libsdl3-dev where packaged
+# (Ubuntu 24.10+/Debian 13); on older releases build SDL3 from source.
+sudo apt install libsdl3-dev libssl-dev
 
 # Linux — Fedora/RHEL
-sudo dnf install SDL2-devel openssl-devel
+sudo dnf install SDL3-devel openssl-devel
 
 # Linux — Arch
-sudo pacman -S sdl2 openssl
+sudo pacman -S sdl3 openssl
 ```
 
 ## Integration
