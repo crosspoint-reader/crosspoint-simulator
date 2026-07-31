@@ -103,6 +103,32 @@ IPA=$(find "$EXPORT_DIR" -maxdepth 1 -name '*.ipa' | head -1)
   echo "ERROR: no .ipa in $EXPORT_DIR"; ls -la "$EXPORT_DIR" || true; exit 1; }
 echo "IPA: $IPA ($(du -h "$IPA" | cut -f1))"
 
+say "Verify purpose strings"
+# Build 1 was rejected with ITMS-90683: the linked SDL3 library references
+# camera and Bluetooth APIs, so App Store Connect demands purpose strings even
+# though the app never calls them. Check the IPA that will actually be
+# uploaded, not the source template, so a plist-processing regression cannot
+# slip through. Cheap (<1s) next to a wasted upload and a burned build number.
+PURPOSE_KEYS=(NSCameraUsageDescription
+              NSBluetoothAlwaysUsageDescription
+              NSBluetoothPeripheralUsageDescription)
+IPA_PLIST_DIR=$(mktemp -d)
+trap 'rm -rf "$IPA_PLIST_DIR"' EXIT
+unzip -q "$IPA" 'Payload/*.app/Info.plist' -d "$IPA_PLIST_DIR"
+IPA_PLIST=$(find "$IPA_PLIST_DIR" -name Info.plist | head -1)
+[[ -n "$IPA_PLIST" ]] || { echo "ERROR: no Info.plist inside $IPA"; exit 1; }
+MISSING=0
+for key in "${PURPOSE_KEYS[@]}"; do
+  VALUE=$(plutil -extract "$key" raw -o - "$IPA_PLIST" 2>/dev/null) && [[ -n "$VALUE" ]] \
+    && echo "  $key ok" \
+    || { echo "  $key MISSING"; MISSING=1; }
+done
+if [[ $MISSING -ne 0 ]]; then
+  echo "ERROR: the IPA is missing purpose strings and App Store Connect will"
+  echo "reject it with ITMS-90683. Fix ios/Info.plist.in and rebuild."
+  exit 1
+fi
+
 if [[ $UPLOAD -eq 0 ]]; then
   say "Stopping before upload (--no-upload)"
   exit 0
