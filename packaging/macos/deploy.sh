@@ -191,6 +191,35 @@ fi
 say "provisioning profile"
 if [ -n "${PROVISIONING_PROFILE:-}" ]; then
   [ -f "$PROVISIONING_PROFILE" ] || die "PROVISIONING_PROFILE not found: $PROVISIONING_PROFILE"
+
+  # A profile whose App ID does not match BUNDLE_ID signs fine locally and is
+  # only rejected at upload, after a full build. Catch it in a second here.
+  # Parsing is best-effort: warn if the profile cannot be read, but fail hard
+  # on a definite mismatch.
+  if [ "$DRY_RUN" != "1" ]; then
+    PROFILE_PLIST="$(mktemp -t crosspoint-profile)"
+    if security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST" 2>/dev/null; then
+      PROFILE_APP_ID=""
+      for key in ':Entitlements:com.apple.application-identifier' \
+                 ':Entitlements:application-identifier'; do
+        PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c "Print $key" "$PROFILE_PLIST" 2>/dev/null) && break
+      done
+      if [ -n "$PROFILE_APP_ID" ]; then
+        # Stored as TEAMID.bundle.id; a wildcard profile ends in ".*".
+        PROFILE_BUNDLE_ID="${PROFILE_APP_ID#*.}"
+        case "$BUNDLE_ID" in
+          ${PROFILE_BUNDLE_ID}) echo "profile matches $BUNDLE_ID" ;;
+          *) die "profile is for '$PROFILE_BUNDLE_ID' but BUNDLE_ID is '$BUNDLE_ID'. Create a Mac App Store profile for $BUNDLE_ID, or fix BUNDLE_ID." ;;
+        esac
+      else
+        echo "warning: could not read an application-identifier from the profile; skipping the match check."
+      fi
+    else
+      echo "warning: could not decode $PROVISIONING_PROFILE; skipping the match check."
+    fi
+    rm -f "$PROFILE_PLIST"
+  fi
+
   run cp "$PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
 else
   echo "warning: PROVISIONING_PROFILE not set. Mac App Store uploads normally"
