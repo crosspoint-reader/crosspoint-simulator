@@ -93,12 +93,15 @@ bug has nothing to show itself against. Add
 a Bayer 4×4 ramp, and per-corner glyphs that identify rotation. It is a build
 flag, not on-screen UI.
 
-## Deploying from your phone
+## Deploying without touching the Mac
 
 Signing needs the login keychain, which only a GUI Terminal session has — an
 SSH shell fails at codesign with `errSecInternalComponent`. The bridge, same as
-crds-ios: SSH to the Mac and let AppleScript hand the command to Terminal.app,
-which runs it under the logged-in user with the keychain unlocked.
+crds-ios: let AppleScript hand the command to Terminal.app, which runs it under
+the logged-in user with the keychain unlocked. **The usual trigger is a Claude
+session on the Mac** (crds-ios `DEPLOY_BUGS.md` D.12: "agents CAN deploy this
+way") — paste [DISPATCH.md](DISPATCH.md) into one and it ships a build
+end-to-end. A phone SSH client works identically:
 
 From any phone SSH client (Terminus, Blink):
 
