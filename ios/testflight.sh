@@ -44,6 +44,15 @@ AUTH=(-allowProvisioningUpdates
 
 say() { printf '\n=== %s ===\n' "$1"; }
 
+# Phone notification via ntfy.sh, same topic and pattern as crds-ios
+# scripts/notify.sh. Delivery is best-effort and never fails the deploy.
+NTFY_TOPIC="${CROSSPOINT_NTFY_TOPIC:-crds-ios-natebunnyfield-9k3m2p7v}"
+notify() { # notify <priority> <tag> <title> <body>
+  curl -s -m 10 \
+    -H "Title: $3" -H "Priority: $1" -H "Tags: $2" -d "$4" \
+    "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+}
+
 [[ -f "$ASC_KEY_PATH" ]] || { echo "ERROR: no ASC key at $ASC_KEY_PATH"; exit 1; }
 
 say "Desktop canary"
@@ -158,13 +167,21 @@ if [[ $RC -ne 0 ]]; then
     echo "      CROSSPOINT_MARKETING_VERSION=$(echo "$MARKETING_VERSION" |
             awk -F. '{printf "%d.%d.%d", $1, $2, $3+1}') $0"
   fi
+  notify 4 warning "CrossPoint X3 upload FAILED (rc=$RC)" \
+    "$(echo "$OUT" | grep -m2 -i 'error\|ITMS' || echo 'see terminal for details')"
   exit $RC
 fi
 
-# Tag the build so the next run's build number picks up from here.
+# Tag the build so the next run's build number picks up from here, and push the
+# tag so remote observers (agents, other machines) can see the upload happened.
 git -C "$REPO" tag "build-$BUILD_NUMBER" 2>/dev/null \
   && echo "tagged build-$BUILD_NUMBER"
+git -C "$REPO" push origin "build-$BUILD_NUMBER" 2>/dev/null \
+  && echo "pushed build-$BUILD_NUMBER" \
+  || echo "tag push failed (non-fatal) — push it later: git push origin build-$BUILD_NUMBER"
 
 say "Uploaded"
 echo "Apple takes roughly 5-10 minutes to process before the build appears in"
 echo "the TestFlight app."
+notify 4 rocket "CrossPoint X3 $MARKETING_VERSION ($BUILD_NUMBER) uploaded" \
+  "TestFlight processing takes ~5-10 min, then it appears in the TestFlight app."
