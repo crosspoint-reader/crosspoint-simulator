@@ -29,18 +29,36 @@ extern void setup();
 extern void loop();
 extern HalDisplay display; // defined in main.cpp
 
+#if CROSSPOINT_SIM_IOS
+// Survives the wake longjmp, unlike a local, so the harness is installed once
+// no matter how many times setup() re-runs.
+static bool gHarnessInstalled = false;
+#endif
+
 int main(int argc, char **argv) {
   SimulatorLifecycle::initProcessArgs(argv);
 #if CROSSPOINT_SIM_IOS
   // HalStorage's ./fs_ prefix relies on the CWD, which on iOS is the read-only
   // bundle. Must happen before setup() touches storage.
   CrossPointHarness_prepareFilesystem();
+
+  // Where a deep-sleep wake lands. On desktop the wake is a process relaunch;
+  // iOS cannot exec, so rebootAsPowerWake() jumps back here and setup() runs
+  // again against the still-live process. Everything setup() touches has to
+  // tolerate that -- HalDisplay::begin() reuses its window, xTaskCreate()
+  // dedupes by task name.
+  setjmp(SimulatorLifecycle::rebootJumpBuffer());
+  SimulatorLifecycle::armRebootJump();
 #endif
   setup();
 #if CROSSPOINT_SIM_IOS
   // After setup(), because installing the gesture event watch needs SDL
-  // initialised and HalDisplay::begin() is what calls SDL_Init.
-  CrossPointHarness_begin();
+  // initialised and HalDisplay::begin() is what calls SDL_Init. Guarded so a
+  // wake does not install a second watch.
+  if (!gHarnessInstalled) {
+    CrossPointHarness_begin();
+    gHarnessInstalled = true;
+  }
 #endif
   while (!display.shouldQuit()) {
     // Clear input edge latches once per frame. update() may be called many
