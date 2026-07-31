@@ -1,0 +1,514 @@
+From 46fc7091889f89dc4cd5574b4f36e9740573a5d4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 31 Jul 2026 17:15:32 +0000
+Subject: [PATCH] feat: add Calendar Four/Five/Six sleep screens
+
+Three new sleep-screen styles render a calendar grid of 4, 5, or 6 week
+rows (7 columns, weeks start on Sunday). The grid begins on the Sunday of
+the current week, so today always sits in the top row, drawn inverted in
+a filled rounded cell. Known holidays (New Year's Day, Easter Sunday,
+Christmas Day - see HolidayCalculator) get a dot marker.
+
+- CrossPointSettings: SLEEP_SCREEN_MODE gains CALENDAR_FOUR/FIVE/SIX,
+  appended before the COUNT sentinel so persisted indices keep meaning.
+- SettingsList: labels via new StrIds; fromJson's enum clamp picks up the
+  larger option count automatically, and the web settings UI enumerates
+  options from the same list so it needs no changes (its hardcoded
+  QUICK_RESUME=6 constant is untouched by appending).
+- One parameterized renderer (CalendarSleepScreen::render, weeks count as
+  the argument) backs all three styles; SleepActivity dispatches and owns
+  the single HALF refresh, matching the other sleep renderers.
+- HalClock: new getDateTime() exposes the RTC's UTC date; the calendar
+  applies SETTINGS.clockUtcOffsetQ the same way formatTime does, with
+  civil-date arithmetic that is exact across month/year boundaries.
+- No RTC (X4) or failed RTC read falls back to the default sleep screen
+  instead of guessing a date.
+- I18n: new keys in english.yaml only (style names, weekday and month
+  names); other languages fall back to English until translated.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011Y2uNauEmkUi5Fs5Sa573x
+---
+ lib/I18n/translations/english.yaml            |  22 ++
+ lib/hal/HalClock.cpp                          |  20 ++
+ lib/hal/HalClock.h                            |   8 +
+ src/CrossPointSettings.h                      |   6 +
+ src/SettingsList.h                            |   3 +
+ .../boot_sleep/CalendarSleepScreen.cpp        | 203 ++++++++++++++++++
+ .../boot_sleep/CalendarSleepScreen.h          |  21 ++
+ .../boot_sleep/HolidayCalculator.cpp          |  35 +++
+ src/activities/boot_sleep/HolidayCalculator.h |  17 ++
+ src/activities/boot_sleep/SleepActivity.cpp   |  17 ++
+ src/activities/boot_sleep/SleepActivity.h     |   1 +
+ 11 files changed, 353 insertions(+)
+ create mode 100644 src/activities/boot_sleep/CalendarSleepScreen.cpp
+ create mode 100644 src/activities/boot_sleep/CalendarSleepScreen.h
+ create mode 100644 src/activities/boot_sleep/HolidayCalculator.cpp
+ create mode 100644 src/activities/boot_sleep/HolidayCalculator.h
+
+diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
+index 51f1209f..12151307 100644
+--- a/lib/I18n/translations/english.yaml
++++ b/lib/I18n/translations/english.yaml
+@@ -429,3 +429,25 @@ STR_FIRMWARE_WRITE_FAILED: "Firmware write failed"
+ STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Do not power off!"
+ STR_RECOVERY_MODE: "Recovery Mode"
+ STR_RECOVERY_MODE_HINT: "Place firmware.bin on SD card root and select it"
++STR_CALENDAR_FOUR: "Calendar Four"
++STR_CALENDAR_FIVE: "Calendar Five"
++STR_CALENDAR_SIX: "Calendar Six"
++STR_CAL_DOW_SUN: "Sun"
++STR_CAL_DOW_MON: "Mon"
++STR_CAL_DOW_TUE: "Tue"
++STR_CAL_DOW_WED: "Wed"
++STR_CAL_DOW_THU: "Thu"
++STR_CAL_DOW_FRI: "Fri"
++STR_CAL_DOW_SAT: "Sat"
++STR_CAL_MONTH_JANUARY: "January"
++STR_CAL_MONTH_FEBRUARY: "February"
++STR_CAL_MONTH_MARCH: "March"
++STR_CAL_MONTH_APRIL: "April"
++STR_CAL_MONTH_MAY: "May"
++STR_CAL_MONTH_JUNE: "June"
++STR_CAL_MONTH_JULY: "July"
++STR_CAL_MONTH_AUGUST: "August"
++STR_CAL_MONTH_SEPTEMBER: "September"
++STR_CAL_MONTH_OCTOBER: "October"
++STR_CAL_MONTH_NOVEMBER: "November"
++STR_CAL_MONTH_DECEMBER: "December"
+diff --git a/lib/hal/HalClock.cpp b/lib/hal/HalClock.cpp
+index c793c9e2..0d1d948e 100644
+--- a/lib/hal/HalClock.cpp
++++ b/lib/hal/HalClock.cpp
+@@ -39,6 +39,26 @@ bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
+   return true;
+ }
+ 
++bool HalClock::getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const {
++  if (!_available) return false;
++
++  Rtc::DateTime dt;
++  if (!_sdkRtc.now(dt)) return false;
++
++  year = dt.year;
++  month = dt.month;
++  day = dt.day;
++  hour = dt.hour;
++  minute = dt.minute;
++
++  // Refresh getTime()'s cache while we hold a fresh reading.
++  _cachedHour = dt.hour;
++  _cachedMinute = dt.minute;
++  _lastPollMs = millis();
++  _hasCachedTime = true;
++  return true;
++}
++
+ bool HalClock::formatTime(char* buf, size_t bufSize, uint8_t utcOffsetQuarterHoursBiased, bool use12Hour) const {
+   if (bufSize < (use12Hour ? 9u : 6u)) return false;
+   uint8_t h, m;
+diff --git a/lib/hal/HalClock.h b/lib/hal/HalClock.h
+index 7fd2f6bf..270dc023 100644
+--- a/lib/hal/HalClock.h
++++ b/lib/hal/HalClock.h
+@@ -27,6 +27,14 @@ class HalClock {
+   // Returns false if RTC is not available.
+   bool getTime(uint8_t& hour, uint8_t& minute) const;
+ 
++  // Get the current UTC wall-clock date and time straight from the RTC.
++  // Deliberately uncached (unlike getTime): callers are one-shot renderers
++  // (e.g. the calendar sleep screens), not per-frame consumers. Time-zone
++  // conversion is the caller's concern — the HAL stays free of any app-layer
++  // settings dependency, matching syncFromNTP's contract.
++  // Returns false if RTC is not available or the read fails.
++  bool getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const;
++
+   // Format time into a caller-provided buffer.
+   // 24h mode produces "HH:MM" (needs >=6 bytes); 12h mode produces "H:MM AM"/"HH:MM PM" (needs >=9 bytes).
+   // utcOffsetQuarterHoursBiased: biased quarter-hour offset (48 = UTC+0, 0 = UTC-12, 104 = UTC+14).
+diff --git a/src/CrossPointSettings.h b/src/CrossPointSettings.h
+index c61445fc..37570693 100644
+--- a/src/CrossPointSettings.h
++++ b/src/CrossPointSettings.h
+@@ -21,6 +21,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+     COVER_CUSTOM = 4,
+     BLANK = 5,
+     QUICK_RESUME = 6,
++    // Calendar grids showing the current week plus the following weeks.
++    // Persisted by numeric value: new modes must be appended before the
++    // COUNT sentinel, never inserted, or existing saves shift meaning.
++    CALENDAR_FOUR = 7,
++    CALENDAR_FIVE = 8,
++    CALENDAR_SIX = 9,
+     SLEEP_SCREEN_MODE_COUNT
+   };
+   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
+diff --git a/src/SettingsList.h b/src/SettingsList.h
+index 6a5157e1..e4872e0b 100644
+--- a/src/SettingsList.h
++++ b/src/SettingsList.h
+@@ -201,6 +201,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
+     sleepScreenValues[CrossPointSettings::COVER_CUSTOM] = StrId::STR_COVER_CUSTOM;
+     sleepScreenValues[CrossPointSettings::BLANK] = StrId::STR_NONE_OPT;
+     sleepScreenValues[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
++    sleepScreenValues[CrossPointSettings::CALENDAR_FOUR] = StrId::STR_CALENDAR_FOUR;
++    sleepScreenValues[CrossPointSettings::CALENDAR_FIVE] = StrId::STR_CALENDAR_FIVE;
++    sleepScreenValues[CrossPointSettings::CALENDAR_SIX] = StrId::STR_CALENDAR_SIX;
+ 
+     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
+     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
+diff --git a/src/activities/boot_sleep/CalendarSleepScreen.cpp b/src/activities/boot_sleep/CalendarSleepScreen.cpp
+new file mode 100644
+index 00000000..c97288a8
+--- /dev/null
++++ b/src/activities/boot_sleep/CalendarSleepScreen.cpp
+@@ -0,0 +1,203 @@
++#include "CalendarSleepScreen.h"
++
++#include <GfxRenderer.h>
++#include <HalClock.h>
++#include <I18n.h>
++
++#include <cstdio>
++
++#include "CrossPointSettings.h"
++#include "HolidayCalculator.h"
++#include "fontIds.h"
++
++namespace {
++
++// --- Civil-date arithmetic (Howard Hinnant's public-domain algorithms) ----
++// Integer-only and valid across all Gregorian dates, so week rows that cross
++// month and year boundaries need no special cases.
++
++struct CivilDate {
++  int year;
++  unsigned month;  // 1-12
++  unsigned day;    // 1-31
++};
++
++// Days since 1970-01-01 for a civil date.
++constexpr int32_t daysFromCivil(int y, const unsigned m, const unsigned d) {
++  y -= m <= 2;
++  const int32_t era = (y >= 0 ? y : y - 399) / 400;
++  const uint32_t yoe = static_cast<uint32_t>(y - era * 400);
++  const uint32_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
++  const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
++  return era * 146097 + static_cast<int32_t>(doe) - 719468;
++}
++
++// Civil date for days since 1970-01-01.
++constexpr CivilDate civilFromDays(int32_t z) {
++  z += 719468;
++  const int32_t era = (z >= 0 ? z : z - 146096) / 146097;
++  const uint32_t doe = static_cast<uint32_t>(z - era * 146097);
++  const uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
++  const int y = static_cast<int>(yoe) + era * 400;
++  const uint32_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
++  const uint32_t mp = (5 * doy + 2) / 153;
++  const uint32_t d = doy - (153 * mp + 2) / 5 + 1;
++  const uint32_t m = mp + (mp < 10 ? 3 : static_cast<uint32_t>(-9));
++  return {y + (m <= 2), m, d};
++}
++
++// Weekday for days since 1970-01-01; 0=Sunday (matches Rtc::DateTime::weekday).
++constexpr unsigned weekdayFromDays(const int32_t z) {
++  return static_cast<unsigned>(z >= -4 ? (z + 4) % 7 : (z + 5) % 7 + 6);
++}
++
++// Resolve today's local date as days-since-epoch. The RTC runs on UTC (see
++// HalClock::syncFromNTP), so apply the user's clock offset the same way the
++// status-bar clock does before deciding which day "today" is.
++bool resolveLocalToday(int32_t& outDays) {
++  uint16_t year;
++  uint8_t month, day, hour, minute;
++  if (!halClock.getDateTime(year, month, day, hour, minute)) return false;
++
++  uint8_t offsetQ = SETTINGS.clockUtcOffsetQ;
++  if (offsetQ > 104) offsetQ = 104;  // clamp corrupted persisted values, matching HalClock::formatTime
++  const int offsetMinutes = (static_cast<int>(offsetQ) - 48) * 15;
++
++  int32_t days = daysFromCivil(year, month, day);
++  const int localMinutes = static_cast<int>(hour) * 60 + static_cast<int>(minute) + offsetMinutes;
++  if (localMinutes < 0) {
++    days -= 1;
++  } else if (localMinutes >= 24 * 60) {
++    days += 1;
++  }
++  outDays = days;
++  return true;
++}
++
++constexpr StrId kDowIds[7] = {StrId::STR_CAL_DOW_SUN, StrId::STR_CAL_DOW_MON, StrId::STR_CAL_DOW_TUE,
++                              StrId::STR_CAL_DOW_WED, StrId::STR_CAL_DOW_THU, StrId::STR_CAL_DOW_FRI,
++                              StrId::STR_CAL_DOW_SAT};
++
++constexpr StrId kMonthIds[12] = {StrId::STR_CAL_MONTH_JANUARY,   StrId::STR_CAL_MONTH_FEBRUARY,
++                                 StrId::STR_CAL_MONTH_MARCH,     StrId::STR_CAL_MONTH_APRIL,
++                                 StrId::STR_CAL_MONTH_MAY,       StrId::STR_CAL_MONTH_JUNE,
++                                 StrId::STR_CAL_MONTH_JULY,      StrId::STR_CAL_MONTH_AUGUST,
++                                 StrId::STR_CAL_MONTH_SEPTEMBER, StrId::STR_CAL_MONTH_OCTOBER,
++                                 StrId::STR_CAL_MONTH_NOVEMBER,  StrId::STR_CAL_MONTH_DECEMBER};
++
++// Title for the rendered span: "July 2026", "July - August 2026", or
++// "December 2026 - January 2027" when the rows cross a boundary.
++void formatTitle(char* buf, const size_t bufSize, const CivilDate& first, const CivilDate& last) {
++  const char* firstMonth = I18N.get(kMonthIds[first.month - 1]);
++  const char* lastMonth = I18N.get(kMonthIds[last.month - 1]);
++  if (first.year != last.year) {
++    snprintf(buf, bufSize, "%s %d - %s %d", firstMonth, first.year, lastMonth, last.year);
++  } else if (first.month != last.month) {
++    snprintf(buf, bufSize, "%s - %s %d", firstMonth, lastMonth, first.year);
++  } else {
++    snprintf(buf, bufSize, "%s %d", firstMonth, first.year);
++  }
++}
++
++}  // namespace
++
++bool CalendarSleepScreen::render(GfxRenderer& renderer, uint8_t weeks) {
++  if (weeks < 1) weeks = 1;
++  if (weeks > 8) weeks = 8;
++
++  int32_t today;
++  if (!resolveLocalToday(today)) return false;
++
++  const int screenW = renderer.getScreenWidth();
++  const int screenH = renderer.getScreenHeight();
++  const int rows = weeks;
++  constexpr int kCols = 7;
++
++  // First cell: Sunday of the current week; today always sits in the top row.
++  const int32_t firstDay = today - static_cast<int32_t>(weekdayFromDays(today));
++
++  // --- Layout ------------------------------------------------------------
++  const int marginX = screenW / 20;
++  const int cellW = (screenW - 2 * marginX) / kCols;
++  const int gridW = cellW * kCols;
++  const int gridX = (screenW - gridW) / 2;
++
++  const int titleH = renderer.getLineHeight(UI_12_FONT_ID);
++  const int headerH = renderer.getLineHeight(SMALL_FONT_ID);
++  const int footerH = renderer.getLineHeight(SMALL_FONT_ID);
++  constexpr int kTitleGap = 18;
++  constexpr int kHeaderGap = 8;
++  constexpr int kFooterGap = 26;
++
++  int cellH = 64;
++  const int fixedH = titleH + kTitleGap + headerH + kHeaderGap + kFooterGap + footerH;
++  const int maxGridH = screenH - fixedH - 40;  // keep >=20px breathing room top and bottom
++  if (rows * cellH > maxGridH) cellH = maxGridH / rows;
++
++  const int blockH = fixedH + rows * cellH;
++  const int blockY = (screenH - blockH) / 2;
++
++  const int headerY = blockY + titleH + kTitleGap;
++  const int gridY = headerY + headerH + kHeaderGap;
++  const int footerY = gridY + rows * cellH + kFooterGap;
++
++  // --- Chrome ------------------------------------------------------------
++  renderer.clearScreen();
++
++  char title[64];
++  formatTitle(title, sizeof(title), civilFromDays(firstDay), civilFromDays(firstDay + rows * kCols - 1));
++  renderer.drawCenteredText(UI_12_FONT_ID, blockY, title, true, EpdFontFamily::BOLD);
++
++  for (int col = 0; col < kCols; col++) {
++    const char* label = I18N.get(kDowIds[col]);
++    const int labelX = gridX + col * cellW + (cellW - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2;
++    renderer.drawText(SMALL_FONT_ID, labelX, headerY, label);
++  }
++
++  // Grid lines.
++  for (int row = 0; row <= rows; row++) {
++    renderer.drawLine(gridX, gridY + row * cellH, gridX + gridW, gridY + row * cellH);
++  }
++  for (int col = 0; col <= kCols; col++) {
++    renderer.drawLine(gridX + col * cellW, gridY, gridX + col * cellW, gridY + rows * cellH);
++  }
++
++  // --- Day cells ---------------------------------------------------------
++  const int dayLineH = renderer.getLineHeight(UI_10_FONT_ID);
++  for (int row = 0; row < rows; row++) {
++    for (int col = 0; col < kCols; col++) {
++      const int32_t dayIndex = firstDay + row * kCols + col;
++      const CivilDate date = civilFromDays(dayIndex);
++      const bool isToday = dayIndex == today;
++      const bool isHoliday = HolidayCalculator::isHoliday(static_cast<uint16_t>(date.year),
++                                                          static_cast<uint8_t>(date.month),
++                                                          static_cast<uint8_t>(date.day));
++
++      const int cellX = gridX + col * cellW;
++      const int cellY = gridY + row * cellH;
++
++      if (isToday) {
++        // Inset so the highlight does not swallow the 1px grid lines.
++        renderer.fillRoundedRect(cellX + 3, cellY + 3, cellW - 5, cellH - 5, 8, Black);
++      }
++
++      char dayText[4];
++      snprintf(dayText, sizeof(dayText), "%u", date.day);
++      const int textX = cellX + (cellW - renderer.getTextWidth(UI_10_FONT_ID, dayText)) / 2;
++      const int textY = cellY + (cellH - dayLineH) / 2;
++      renderer.drawText(UI_10_FONT_ID, textX, textY, dayText, !isToday);
++
++      if (isHoliday) {
++        constexpr int kDotSize = 6;
++        const int dotY = cellY + cellH - kDotSize - 5;
++        if (dotY > textY + dayLineH - 4) {  // only when the cell is tall enough to fit it under the number
++          renderer.fillRoundedRect(cellX + (cellW - kDotSize) / 2, dotY, kDotSize, kDotSize, kDotSize / 2,
++                                   isToday ? White : Black);
++        }
++      }
++    }
++  }
++
++  renderer.drawCenteredText(SMALL_FONT_ID, footerY, tr(STR_SLEEPING));
++  return true;
++}
+diff --git a/src/activities/boot_sleep/CalendarSleepScreen.h b/src/activities/boot_sleep/CalendarSleepScreen.h
+new file mode 100644
+index 00000000..28da4362
+--- /dev/null
++++ b/src/activities/boot_sleep/CalendarSleepScreen.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++#include <cstdint>
++
++class GfxRenderer;
++
++// Draws the calendar sleep screens ("Calendar Four/Five/Six" in Settings).
++//
++// One parameterized renderer backs all three styles: a grid of `weeks` rows
++// by 7 columns starting on the Sunday of the current week, today highlighted,
++// holidays (see HolidayCalculator) marked with a dot. Draws into the frame
++// buffer only — the caller owns the displayBuffer() call, like the other
++// SleepActivity render helpers own theirs.
++namespace CalendarSleepScreen {
++
++// Renders the calendar into the frame buffer. Returns false without touching
++// the buffer when no usable date exists (no RTC, or the RTC read failed) so
++// the caller can fall back to another sleep screen.
++bool render(GfxRenderer& renderer, uint8_t weeks);
++
++}  // namespace CalendarSleepScreen
+diff --git a/src/activities/boot_sleep/HolidayCalculator.cpp b/src/activities/boot_sleep/HolidayCalculator.cpp
+new file mode 100644
+index 00000000..556652d5
+--- /dev/null
++++ b/src/activities/boot_sleep/HolidayCalculator.cpp
+@@ -0,0 +1,35 @@
++#include "HolidayCalculator.h"
++
++namespace {
++
++// Anonymous Gregorian computus (Meeus/Jones/Butcher): Easter Sunday for a
++// given year, valid for all Gregorian years. Integer-only, no tables.
++void easterSunday(const uint16_t year, uint8_t& month, uint8_t& day) {
++  const int a = year % 19;
++  const int b = year / 100;
++  const int c = year % 100;
++  const int d = b / 4;
++  const int e = b % 4;
++  const int f = (b + 8) / 25;
++  const int g = (b - f + 1) / 3;
++  const int h = (19 * a + b - d - g + 15) % 30;
++  const int i = c / 4;
++  const int k = c % 4;
++  const int l = (32 + 2 * e + 2 * i - h - k) % 7;
++  const int m = (a + 11 * h + 22 * l) / 451;
++  month = static_cast<uint8_t>((h + l - 7 * m + 114) / 31);
++  day = static_cast<uint8_t>((h + l - 7 * m + 114) % 31 + 1);
++}
++
++}  // namespace
++
++bool HolidayCalculator::isHoliday(const uint16_t year, const uint8_t month, const uint8_t day) {
++  // Fixed-date holidays.
++  if (month == 1 && day == 1) return true;    // New Year's Day
++  if (month == 12 && day == 25) return true;  // Christmas Day
++
++  // Movable feast: Western Easter Sunday.
++  uint8_t easterMonth, easterDay;
++  easterSunday(year, easterMonth, easterDay);
++  return month == easterMonth && day == easterDay;
++}
+diff --git a/src/activities/boot_sleep/HolidayCalculator.h b/src/activities/boot_sleep/HolidayCalculator.h
+new file mode 100644
+index 00000000..74113de2
+--- /dev/null
++++ b/src/activities/boot_sleep/HolidayCalculator.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++#include <cstdint>
++
++// Holiday lookup for the calendar sleep screens.
++//
++// Deliberately minimal: only dates that are holidays across most of the world,
++// so the marker never claims a locale-specific holiday it cannot know about.
++// Pure computation, no allocation, no storage access — safe to call from any
++// render path.
++namespace HolidayCalculator {
++
++// True when the given Gregorian calendar date is a holiday this calculator
++// knows about (New Year's Day, Easter Sunday, Christmas Day).
++bool isHoliday(uint16_t year, uint8_t month, uint8_t day);
++
++}  // namespace HolidayCalculator
+diff --git a/src/activities/boot_sleep/SleepActivity.cpp b/src/activities/boot_sleep/SleepActivity.cpp
+index ff1069a5..52ed904c 100644
+--- a/src/activities/boot_sleep/SleepActivity.cpp
++++ b/src/activities/boot_sleep/SleepActivity.cpp
+@@ -9,6 +9,7 @@
+ #include <Txt.h>
+ #include <Xtc.h>
+ 
++#include "CalendarSleepScreen.h"
+ #include "CrossPointSettings.h"
+ #include "CrossPointState.h"
+ #include "activities/reader/ReaderUtils.h"
+@@ -51,11 +52,27 @@ void SleepActivity::onEnter() {
+       } else {
+         return renderCustomSleepScreen();
+       }
++    case (CrossPointSettings::SLEEP_SCREEN_MODE::CALENDAR_FOUR):
++      return renderCalendarSleepScreen(4);
++    case (CrossPointSettings::SLEEP_SCREEN_MODE::CALENDAR_FIVE):
++      return renderCalendarSleepScreen(5);
++    case (CrossPointSettings::SLEEP_SCREEN_MODE::CALENDAR_SIX):
++      return renderCalendarSleepScreen(6);
+     default:
+       return renderDefaultSleepScreen();
+   }
+ }
+ 
++void SleepActivity::renderCalendarSleepScreen(const uint8_t weeks) const {
++  // Without an RTC (X4) or with a failed RTC read there is no date to draw:
++  // fall back to the default sleep screen rather than showing a wrong month.
++  if (!CalendarSleepScreen::render(renderer, weeks)) {
++    return renderDefaultSleepScreen();
++  }
++  // Single HALF refresh for stock parity — see renderDefaultSleepScreen's note.
++  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
++}
++
+ void SleepActivity::renderCustomSleepScreen() const {
+   // Check if we have a /.sleep (preferred) or /sleep directory
+   const char* sleepDir = nullptr;
+diff --git a/src/activities/boot_sleep/SleepActivity.h b/src/activities/boot_sleep/SleepActivity.h
+index e74a7d62..a1b74b48 100644
+--- a/src/activities/boot_sleep/SleepActivity.h
++++ b/src/activities/boot_sleep/SleepActivity.h
+@@ -16,6 +16,7 @@ class SleepActivity final : public Activity {
+   void renderBitmapSleepScreen(const Bitmap& bitmap) const;
+   void renderLastScreenSleepScreen() const;
+   void renderBlankSleepScreen() const;
++  void renderCalendarSleepScreen(uint8_t weeks) const;
+ 
+   bool fromTimeout = false;
+ };
+-- 
+2.43.0
+
