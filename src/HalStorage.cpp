@@ -441,9 +441,26 @@ bool HalStorage::openFileForRead(const char *moduleName, const String &path,
                                  HalFile &file) {
   return openFileForRead(moduleName, path.c_str(), file);
 }
+// O_RDWR, not O_WRONLY, and that is not a nicety: the firmware reads back
+// through this handle. The SD card opens it read-write --
+// freeink-sdk/libs/hardware/SDCardManager/src/SDCardManager.cpp:286
+// `vol().open(path, O_RDWR | O_CREAT | O_TRUNC)` -- so a write handle on the
+// device is also readable, and Section relies on exactly that:
+// Section::loadPageDuringBuild() (lib/Epub/Epub/Section.cpp:691-697) serves the
+// page being displayed by seeking BACK in the .bin the build is still writing
+// ("The .bin is open O_RDWR for the build"), reading it, and restoring the write
+// cursor.
+//
+// Under O_WRONLY every ::read() on that fd fails with EBADF and returns -1.
+// Page::deserialize() then yields an EMPTY page rather than an error, so the
+// reader drew a blank screen for any chapter whose build had not finalized --
+// i.e. every chapter big enough to need a windowed build. Changing the font
+// family or size is the everyday way to land in that state: the new font ID
+// invalidates the section cache ("Deserialization failed: Parameters do not
+// match"), the rebuild starts, and the page comes back empty.
 bool HalStorage::openFileForWrite(const char *moduleName, const char *path,
                                   HalFile &file) {
-  file = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+  file = open(path, O_RDWR | O_CREAT | O_TRUNC);
   return file.isOpen();
 }
 bool HalStorage::openFileForWrite(const char *moduleName,

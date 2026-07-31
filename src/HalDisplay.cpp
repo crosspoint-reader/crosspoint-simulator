@@ -304,6 +304,19 @@ static constexpr const char *WINDOW_TITLE = "Simulator - XTEINK X4";
 #endif
 
 void HalDisplay::begin() {
+  // Idempotent, because setup() can run more than once in one process.
+  //
+  // A deep-sleep wake is a chip reset on hardware and a process relaunch on
+  // desktop, so begin() would normally see a clean machine. Where the simulator
+  // instead re-enters setup() in-process (iOS, which cannot exec -- see
+  // SimulatorLifecycle.h), a second call would create a SECOND window and
+  // renderer, leaving the visible one orphaned and the panel frozen. Reuse what
+  // already exists; presentIfNeeded() re-applies the window geometry every
+  // present, so orientation still self-corrects after a wake.
+  if (window && sdl_renderer && texture) {
+    return;
+  }
+
   // SDL3 returns true on success where SDL2 returned 0.
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
