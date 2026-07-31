@@ -75,6 +75,36 @@ pio run -e simulator -t run_simulator
 
 **Time.** [Arduino.h](src/Arduino.h) `millis()` and `micros()` use `std::chrono::steady_clock`, not `system_clock`, so wall-clock changes don't affect timing. (Was `system_clock` originally; switched for predictability across host systems.)
 
+## Grayscale preview (text anti-aliasing)
+
+The panel pipeline is two 1bpp planes over a 1bpp base, not an N-bpp
+framebuffer. The firmware's reader renders each page three times when Text
+Anti-Aliasing is on: a BW base frame (every non-white glyph pixel painted
+black), then a GRAYSCALE_LSB and a GRAYSCALE_MSB plane where a set bit means
+"update this pixel toward a gray target" (MSB only = light gray, MSB+LSB =
+dark gray; on hardware these planes select dedicated grayscale LUT waveforms).
+[src/HalDisplay.cpp](src/HalDisplay.cpp) mirrors that exactly: `refreshDisplay`
+snapshots the BW base and clears the planes, `copyGrayscale*Buffers` /
+`writeGrayscalePlaneStrip` fill them (full-frame and tiled strip paths both
+land in the same `GrayscalePreviewState`), and `displayGrayBuffer` composes
+base+planes into 4-level ARGB via the pure decoder in
+[src/GrayscalePreview.h](src/GrayscalePreview.h) (255/200/96/0). The decode is
+deliberately a free function with no SDL or HAL state so a plain host test can
+assert the plane-bit contract against the firmware's glyph-level mapping.
+
+What is still 1bpp, on purpose: everything outside the reader's grayscale
+passes — UI chrome, menus, and the reader with AA off — renders through
+`renderBwPixels` only, which is exactly what the hardware shows (2-bit glyphs
+are crushed to black in BW mode by the firmware renderer itself, not by the
+simulator). Do not "improve" that path; panel truthfulness is the point.
+
+The firmware side of this feature (vendored patch
+`firmware-patches/03-text-antialiasing.patch`) turns the Text Anti-Aliasing
+toggle into Off / On / Crisp / Dark. The strengths only change which glyph
+gray levels get flagged into which plane (GfxRenderer::GrayscaleAaStrength);
+the simulator needs no per-mode knowledge — all three mappings compose
+correctly through the same two planes.
+
 ## Recent Changes (since 2026-03-17)
 
 ### Linux / WSL support (PR #1, merged 2026-04-23)

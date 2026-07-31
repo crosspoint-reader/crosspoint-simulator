@@ -1,0 +1,294 @@
+From f369d19ecbcbc1be618433ff5d8e264f0c95fe11 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 31 Jul 2026 17:23:33 +0000
+Subject: [PATCH] feat: text anti-aliasing strength options (Off / On / Crisp /
+ Dark)
+
+Text Anti-Aliasing grows from a toggle into a 4-value enum. Values 0/1 keep
+the legacy Off/On meaning so persisted settings from older builds round-trip
+unchanged; the new strengths append (same append-only rule as
+LONG_PRESS_MENU_FUNCTION).
+
+The panel's grayscale pipeline offers exactly two gray targets per pixel
+(MSB plane only = light gray, MSB+LSB = dark gray) over a BW base that
+paints every non-white glyph pixel black, and the 2-bit fonts carry exactly
+two edge levels. A strength therefore is a mapping from glyph edge level to
+plane membership, applied in renderCharImpl's grayscale branches:
+
+  On (Standard): glyph dark -> panel dark, glyph light -> panel light
+  Crisp:         glyph dark -> black,      glyph light -> panel light
+  Dark:          glyph dark -> black,      glyph light -> panel dark
+
+These are the only distinct monotone mappings the hardware supports; going
+lighter than Standard is impossible because planes can only lighten pixels
+the BW base already painted black. The mapping lives on GfxRenderer as
+renderer state (GrayscaleAaStrength, parallel to RenderMode) so reader
+activities set it once from SETTINGS; image rendering (drawBitmap) keeps its
+fixed mapping, and the BW pass is untouched byte-for-byte, so AA Off output
+is identical to before.
+
+UI: the Text Settings Style row cycles Off -> On -> Crisp -> Dark; the web
+settings API serves the same values as an enum under the unchanged
+textAntiAliasing key. New builds load old 0/1 files as-is; old builds clamp
+the new values back to their default (AA on).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011Y2uNauEmkUi5Fs5Sa573x
+---
+ lib/GfxRenderer/GfxRenderer.cpp               | 36 +++++++++++++++----
+ lib/GfxRenderer/GfxRenderer.h                 | 18 ++++++++++
+ lib/I18n/translations/english.yaml            |  2 ++
+ src/CrossPointSettings.h                      | 17 ++++++++-
+ src/SettingsList.h                            |  7 ++--
+ src/activities/reader/EpubReaderActivity.cpp  |  5 ++-
+ src/activities/reader/ReaderUtils.h           | 14 ++++++++
+ .../settings/TextSettingsActivity.cpp         | 15 ++++++--
+ 8 files changed, 101 insertions(+), 13 deletions(-)
+
+diff --git a/lib/GfxRenderer/GfxRenderer.cpp b/lib/GfxRenderer/GfxRenderer.cpp
+index 4120fd4..74fd063 100644
+--- a/lib/GfxRenderer/GfxRenderer.cpp
++++ b/lib/GfxRenderer/GfxRenderer.cpp
+@@ -425,6 +425,30 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode
+     }
+ 
+     if (is2Bit) {
++      // Plane membership per glyph gray level, chosen by the configured AA
++      // strength. planeMask bit N set = glyph level N flags the current plane
++      // (glyph levels after the swap below: 1 = dark gray, 2 = light gray; the
++      // BW base pass has already painted every non-white pixel black, so an
++      // unflagged level simply stays black).
++      //   STANDARD: MSB {1,2}, LSB {1}  -> dark stays dark, light stays light
++      //   CRISP:    MSB {2},   LSB {}   -> dark hardens to black, light kept
++      //   DARK:     MSB {2},   LSB {2}  -> dark to black, light to dark
++      uint8_t planeMask = 0;
++      if (renderMode == GfxRenderer::GRAYSCALE_MSB || renderMode == GfxRenderer::GRAYSCALE_LSB) {
++        const bool msb = renderMode == GfxRenderer::GRAYSCALE_MSB;
++        switch (renderer.getGrayscaleAaStrength()) {
++          case GfxRenderer::AA_CRISP:
++            planeMask = msb ? 0b0100 : 0b0000;
++            break;
++          case GfxRenderer::AA_DARK:
++            planeMask = 0b0100;
++            break;
++          case GfxRenderer::AA_STANDARD:
++          default:
++            planeMask = msb ? 0b0110 : 0b0010;
++            break;
++        }
++      }
+       int pixelPosition = 0;
+       for (int glyphY = 0; glyphY < height; glyphY++) {
+         const int outerCoord = outerBase + glyphY;
+@@ -448,13 +472,11 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode
+           if (renderMode == GfxRenderer::BW && bmpVal < 3) {
+             // Black (also paints over the grays in BW mode)
+             renderer.drawPixel(screenX, screenY, pixelState);
+-          } else if (renderMode == GfxRenderer::GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
+-            // Light gray (also mark the MSB if it's going to be a dark gray too)
+-            // Dedicated X3 gray LUTs now provide proper 4-level gray on both devices
+-            // We have to flag pixels in reverse for the gray buffers, as 0 leave alone, 1 update
+-            renderer.drawPixel(screenX, screenY, false);
+-          } else if (renderMode == GfxRenderer::GRAYSCALE_LSB && bmpVal == 1) {
+-            // Dark gray
++          } else if ((planeMask >> bmpVal) & 1) {
++            // Grayscale pass: flag this pixel in the active plane. Dedicated X3
++            // gray LUTs now provide proper 4-level gray on both devices. We
++            // have to flag pixels in reverse for the gray buffers, as 0 leave
++            // alone, 1 update.
+             renderer.drawPixel(screenX, screenY, false);
+           }
+         }
+diff --git a/lib/GfxRenderer/GfxRenderer.h b/lib/GfxRenderer/GfxRenderer.h
+index c237b85..41ac998 100644
+--- a/lib/GfxRenderer/GfxRenderer.h
++++ b/lib/GfxRenderer/GfxRenderer.h
+@@ -30,6 +30,18 @@ class GfxRenderer {
+  public:
+   enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };
+ 
++  // How the 2-bit glyph edge levels (1 = dark gray, 2 = light gray) map onto
++  // the panel's two grayscale planes during the GRAYSCALE_LSB/MSB text passes.
++  // The panel offers exactly two gray targets (light via MSB-only, dark via
++  // MSB+LSB); an unflagged glyph pixel keeps the black laid down by the BW base
++  // pass, so "stronger" AA means flagging fewer/darker targets. Text-only:
++  // image rendering (drawBitmap) keeps its fixed mapping.
++  enum GrayscaleAaStrength : uint8_t {
++    AA_STANDARD,  // glyph dark -> panel dark, glyph light -> panel light
++    AA_CRISP,     // glyph dark -> black, glyph light -> panel light
++    AA_DARK       // glyph dark -> black, glyph light -> panel dark
++  };
++
+   // Logical screen orientation from the perspective of callers
+   enum Orientation {
+     Portrait,                  // 480x800 logical coordinates (current default)
+@@ -43,6 +55,7 @@ class GfxRenderer {
+ 
+   HalDisplay& display;
+   RenderMode renderMode;
++  GrayscaleAaStrength grayscaleAaStrength = AA_STANDARD;
+   Orientation orientation;
+   bool fadingFix;
+   uint8_t* frameBuffer = nullptr;
+@@ -276,6 +289,11 @@ class GfxRenderer {
+   // Grayscale functions
+   void setRenderMode(const RenderMode mode) { this->renderMode = mode; }
+   RenderMode getRenderMode() const { return renderMode; }
++  // Text AA strength for the grayscale passes. Renderer state (like renderMode)
++  // rather than a drawText parameter so reader activities can set it once from
++  // SETTINGS.textAntiAliasing without threading it through every call site.
++  void setGrayscaleAaStrength(const GrayscaleAaStrength s) { this->grayscaleAaStrength = s; }
++  GrayscaleAaStrength getGrayscaleAaStrength() const { return grayscaleAaStrength; }
+   // Grayscale preconditioning settle pass (no-op on X4). The rect overload
+   // takes the gray region in LOGICAL screen coordinates and rotates it to the
+   // panel; the no-arg overload settles the full frame. Call after the BW base
+diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
+index 51f1209..bd8956c 100644
+--- a/lib/I18n/translations/english.yaml
++++ b/lib/I18n/translations/english.yaml
+@@ -84,6 +84,8 @@ STR_SLEEP_COVER_MODE: "Sleep Screen Cover Mode"
+ STR_HIDE_BATTERY: "Hide Battery %"
+ STR_EXTRA_SPACING: "Extra Paragraph Spacing"
+ STR_TEXT_AA: "Text Anti-Aliasing"
++STR_AA_CRISP: "Crisp"
++STR_AA_DARK: "Dark"
+ STR_IMAGES: "Images"
+ STR_IMAGES_DISPLAY: "Display"
+ STR_IMAGES_PLACEHOLDER: "Placeholder"
+diff --git a/src/CrossPointSettings.h b/src/CrossPointSettings.h
+index c61445f..8361af7 100644
+--- a/src/CrossPointSettings.h
++++ b/src/CrossPointSettings.h
+@@ -171,6 +171,19 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+     QUICK_RESUME_SLEEP_SCREEN_COUNT
+   };
+ 
++  // Text anti-aliasing strength. Values 0/1 are the legacy Off/On toggle and
++  // MUST keep their meaning so persisted settings from older builds round-trip;
++  // new strengths append at the END (same rule as LONG_PRESS_MENU_FUNCTION).
++  // The strengths pick how the 2-bit glyph gray levels map onto the panel's two
++  // grayscale planes — see GfxRenderer::GrayscaleAaStrength.
++  enum TEXT_ANTIALIASING {
++    TEXT_AA_OFF = 0,       // 1-bit text, no grayscale passes
++    TEXT_AA_STANDARD = 1,  // legacy On: light-gray + dark-gray edge pixels
++    TEXT_AA_CRISP = 2,     // dark-gray edge pixels harden to black, light kept
++    TEXT_AA_DARK = 3,      // all edge pixels darken one level (boldest)
++    TEXT_ANTIALIASING_COUNT
++  };
++
+   // Sleep screen settings
+   uint8_t sleepScreen = DARK;
+   // Sleep screen cover mode settings
+@@ -198,7 +211,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+   uint8_t clockHasBeenSynced = 0;
+   // Text rendering settings
+   uint8_t extraParagraphSpacing = 1;
+-  uint8_t textAntiAliasing = 1;
++  // TEXT_ANTIALIASING value (0=Off, 1=Standard, 2=Crisp, 3=Dark). Non-zero
++  // still reads as "AA enabled" everywhere the old toggle was tested as a bool.
++  uint8_t textAntiAliasing = TEXT_AA_STANDARD;
+   // Short power button click behaviour
+   uint8_t shortPwrBtn = IGNORE;
+   // EPUB reading orientation settings
+diff --git a/src/SettingsList.h b/src/SettingsList.h
+index 6a5157e..059acdd 100644
+--- a/src/SettingsList.h
++++ b/src/SettingsList.h
+@@ -272,8 +272,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
+         SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
+                             "extraParagraphSpacing", StrId::STR_CAT_READER)
+             .withTextSettings(),
+-        SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
+-                            StrId::STR_CAT_READER)
++        // Values follow CrossPointSettings::TEXT_ANTIALIASING: 0/1 are the
++        // legacy Off/On toggle (persisted files round-trip), 2+ appended.
++        SettingInfo::Enum(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing,
++                          {StrId::STR_STATE_OFF, StrId::STR_STATE_ON, StrId::STR_AA_CRISP, StrId::STR_AA_DARK},
++                          "textAntiAliasing", StrId::STR_CAT_READER)
+             .withTextSettings(),
+         SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
+                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
+diff --git a/src/activities/reader/EpubReaderActivity.cpp b/src/activities/reader/EpubReaderActivity.cpp
+index ca9af6e..3136b9d 100644
+--- a/src/activities/reader/EpubReaderActivity.cpp
++++ b/src/activities/reader/EpubReaderActivity.cpp
+@@ -1506,8 +1506,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
+   // retained frame after a silent restart (for example, when returning from
+   // KOReader sync), leaving the old UI mixed with the image.
+   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
+-  const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
++  const bool needsTextGrayscale = SETTINGS.textAntiAliasing != CrossPointSettings::TEXT_AA_OFF;
+   const bool needsAnyGrayscale = needsTextGrayscale || pageHasImages;
++  // Pick the glyph-gray -> plane mapping for every grayscale pass below (text
++  // only; drawBitmap's image mapping is fixed).
++  renderer.setGrayscaleAaStrength(ReaderUtils::textAaStrength());
+   const bool tiledGrayscale = needsAnyGrayscale && renderer.supportsStripGrayscale();
+   // Whole-plane buffering only pays when the BW refresh genuinely runs async
+   // underneath it; on blocking panels (X3) it would just spend ~50 KB for the
+diff --git a/src/activities/reader/ReaderUtils.h b/src/activities/reader/ReaderUtils.h
+index 9ef55c2..b2d25fa 100644
+--- a/src/activities/reader/ReaderUtils.h
++++ b/src/activities/reader/ReaderUtils.h
+@@ -129,12 +129,26 @@ inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntil
+   }
+ }
+ 
++// Map the persisted TEXT_ANTIALIASING value onto the renderer's plane-mapping
++// strength. TEXT_AA_OFF has no grayscale pass, so it maps to the default.
++inline GfxRenderer::GrayscaleAaStrength textAaStrength() {
++  switch (SETTINGS.textAntiAliasing) {
++    case CrossPointSettings::TEXT_AA_CRISP:
++      return GfxRenderer::AA_CRISP;
++    case CrossPointSettings::TEXT_AA_DARK:
++      return GfxRenderer::AA_DARK;
++    default:
++      return GfxRenderer::AA_STANDARD;
++  }
++}
++
+ // Grayscale anti-aliasing pass. Renders content twice (LSB + MSB) to build
+ // the grayscale buffer. Only the content callback is re-rendered — status bars
+ // and other overlays should be drawn before calling this.
+ // Kept as a template to avoid std::function overhead; instantiated once per reader type.
+ template <typename RenderFn>
+ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
++  renderer.setGrayscaleAaStrength(textAaStrength());
+   if (!renderer.storeBwBuffer()) {
+     LOG_ERR("READER", "Failed to store BW buffer for anti-aliasing");
+     return;
+diff --git a/src/activities/settings/TextSettingsActivity.cpp b/src/activities/settings/TextSettingsActivity.cpp
+index 4825dfc..dbfa1b2 100644
+--- a/src/activities/settings/TextSettingsActivity.cpp
++++ b/src/activities/settings/TextSettingsActivity.cpp
+@@ -451,7 +451,9 @@ void TextSettingsActivity::confirmStyleRow(int row) {
+       SETTINGS.embeddedStyle = !SETTINGS.embeddedStyle;
+       break;
+     case StyleRow::AntiAliasing:
+-      SETTINGS.textAntiAliasing = !SETTINGS.textAntiAliasing;
++      // Cycles Off -> On -> Crisp -> Dark -> Off (TEXT_ANTIALIASING order).
++      SETTINGS.textAntiAliasing =
++          static_cast<uint8_t>((SETTINGS.textAntiAliasing + 1) % CrossPointSettings::TEXT_ANTIALIASING_COUNT);
+       break;
+ 
+     default:
+@@ -470,7 +472,16 @@ std::string TextSettingsActivity::styleValueText(int row) const {
+     case StyleRow::EmbeddedStyle:
+       return SETTINGS.embeddedStyle ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+     case StyleRow::AntiAliasing:
+-      return SETTINGS.textAntiAliasing ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
++      switch (SETTINGS.textAntiAliasing) {
++        case CrossPointSettings::TEXT_AA_OFF:
++          return tr(STR_STATE_OFF);
++        case CrossPointSettings::TEXT_AA_CRISP:
++          return tr(STR_AA_CRISP);
++        case CrossPointSettings::TEXT_AA_DARK:
++          return tr(STR_AA_DARK);
++        default:
++          return tr(STR_STATE_ON);
++      }
+ 
+     default:
+       return "";
+-- 
+2.43.0
+

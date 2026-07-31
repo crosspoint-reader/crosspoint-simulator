@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <SDL3/SDL.h>
 
+#include "GrayscalePreview.h"
 #include "SimulatorOverlay.h"
 
 #include <array>
@@ -66,11 +67,6 @@ struct GrayscalePreviewState {
   bool lsbValid = false;
   bool msbValid = false;
 };
-
-constexpr uint8_t kGrayWhite = 255;
-constexpr uint8_t kGrayLight = 200;
-constexpr uint8_t kGrayDark = 96;
-constexpr uint8_t kGrayBlack = 0;
 
 GrayscalePreviewState grayscalePreviewState;
 std::array<uint8_t, HalDisplay::BUFFER_SIZE> frameBufferStorage{};
@@ -225,16 +221,8 @@ void composeGrayscalePreview() {
           grayscalePreviewState.msbValid &&
           getBit(grayscalePreviewState.msbPlane.data(), x, y);
 
-      uint8_t level = kGrayWhite;
-      if (!baseWhite) {
-        if (msbActive) {
-          level = lsbActive ? kGrayDark : kGrayLight;
-        } else if (lsbActive) {
-          level = kGrayDark;
-        } else {
-          level = kGrayBlack;
-        }
-      }
+      uint8_t level =
+          GrayscalePreview::previewLevel(baseWhite, msbActive, lsbActive);
 
       if (display.isInverted())
         level = static_cast<uint8_t>(255 - level);
