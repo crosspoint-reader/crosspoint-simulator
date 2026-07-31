@@ -55,6 +55,27 @@ notify() { # notify <priority> <tag> <title> <body>
 
 [[ -f "$ASC_KEY_PATH" ]] || { echo "ERROR: no ASC key at $ASC_KEY_PATH"; exit 1; }
 
+# pio lives outside PATH in non-login shells (a direct wrapper invocation, an
+# agent shell). The osascript -> Terminal route gets the login profile, which
+# is why the same script finds it there. Resolve the standard install
+# locations before declaring the canary red for the wrong reason.
+if ! command -v pio >/dev/null; then
+  for candidate in "$HOME/.platformio/penv/bin" "$HOME/.local/bin" \
+                   /opt/homebrew/bin /usr/local/bin; do
+    if [[ -x "$candidate/pio" ]]; then
+      export PATH="$candidate:$PATH"
+      echo "pio resolved at $candidate/pio"
+      break
+    fi
+  done
+fi
+command -v pio >/dev/null || {
+  echo "ERROR: pio not found on PATH or in known install locations."
+  echo "  Install PlatformIO, or run via osascript ios/deploy.applescript"
+  echo "  (Terminal's login shell carries your full PATH)."
+  exit 1
+}
+
 say "Desktop canary"
 # The desktop build is the canary: green desktop + red iOS means the harness is
 # wrong, both red means the HAL drifted. Catch it here rather than 140 TUs into
