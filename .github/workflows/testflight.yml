@@ -1,0 +1,263 @@
+# TestFlight build on a GitHub-hosted macOS runner.
+#
+# Exists so shipping does not depend on one physical Mac being awake, unlocked,
+# and holding the login keychain. A hosted runner has its own keychain, so the
+# Terminal.app/AppleScript detour that packaging/macos/deploy.applescript needs
+# does not apply here -- the runner imports the signing identity into a fresh
+# keychain it fully controls.
+#
+# Required repository secrets for the signing and upload steps. Without them
+# the workflow still builds, packages, and verifies the bundle, then stops --
+# which is a useful check on its own.
+#
+#   MACOS_CERT_P12         base64 of the Apple Distribution .p12
+#   MACOS_CERT_P12_PASSWORD  password for that .p12
+#   MACOS_INSTALLER_P12    base64 of the 3rd Party Mac Developer Installer .p12
+#   MACOS_INSTALLER_P12_PASSWORD
+#   SIGN_APP               "Apple Distribution: Name (TEAMID)"
+#   SIGN_INSTALLER         "3rd Party Mac Developer Installer: Name (TEAMID)"
+#   BUNDLE_ID              must match the App Store Connect record
+#   ASC_KEY_ID / ASC_ISSUER / ASC_KEY_P8  App Store Connect API key
+#
+# Create the base64 values with:  base64 -i cert.p12 | pbcopy
+
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      firmware_repo:
+        description: Firmware repository to build
+        default: crosspoint-reader/crosspoint-reader
+      firmware_ref:
+        description: Firmware ref (branch, tag, or SHA). Blank uses that repo's default branch.
+        default: ""
+      pio_env:
+        description: PlatformIO environment
+        default: simulator_x3
+      marketing_version:
+        description: CFBundleShortVersionString
+        default: 0.1.0
+      build_number:
+        description: CFBundleVersion (must be unused; build 1 is consumed)
+        default: "2"
+      skip_upload:
+        description: Build and sign but do not upload
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out simulator
+        uses: actions/checkout@v4
+        with:
+          path: simulator
+
+      - name: Check out firmware
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.firmware_repo }}
+          ref: ${{ inputs.firmware_ref }}
+          submodules: recursive
+          path: firmware
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install toolchain
+        run: |
+          brew install sdl2
+          python3 -m pip install --upgrade platformio
+
+      - name: Add the simulator environment to the firmware
+        working-directory: firmware
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          sample = pathlib.Path("../simulator/sample-platformio-macos.ini").read_text()
+          # Build against this checkout, not the published git dependency.
+          # Absolute: PlatformIO resolves symlink:// relative to the project
+          # directory, and getting that wrong fails with an unhelpful
+          # "not a directory".
+          target = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "simulator").resolve()
+          assert target.is_dir(), f"simulator checkout missing at {target}"
+          patched, n = re.subn(r'^(\s*)simulator=\S+$',
+                               rf'\1simulator=symlink://{target}',
+                               sample, flags=re.M)
+          assert n == 1, f"expected one simulator lib_deps line, got {n}"
+          ini = pathlib.Path("platformio.ini")
+          ini.write_text(ini.read_text().rstrip() + "\n\n" + patched)
+          PY
+          grep -n 'simulator=' platformio.ini
+
+      - name: Build
+        working-directory: firmware
+        run: pio run -e ${{ inputs.pio_env }}
+
+      - name: Package and verify bundle
+        working-directory: firmware
+        env:
+          BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+        run: |
+          case "${{ inputs.pio_env }}" in
+            *x4_pro|*x4-pro) DEVICE=x4-pro ;;
+            *x3)             DEVICE=x3 ;;
+            *)               DEVICE=x4 ;;
+          esac
+          PACKAGER=../simulator/packaging/macos/package_macos_app.py
+          python3 "$PACKAGER" build \
+            --binary ".pio/build/${{ inputs.pio_env }}/program" \
+            --device "$DEVICE" \
+            --version "${{ inputs.marketing_version }}" \
+            --build "${{ inputs.build_number }}" \
+            ${BUNDLE_ID:+--bundle-id "$BUNDLE_ID"} \
+            --output-dir dist
+          APP=$(ls -d dist/*.app)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          # The check that keeps ITMS-90683 from coming back.
+          python3 "$PACKAGER" verify "$APP"
+
+      - name: Embed dylibs
+        working-directory: firmware
+        run: |
+          EXE="$APP/Contents/MacOS/$(basename "$APP" .app)"
+          mkdir -p "$APP/Contents/Frameworks"
+          otool -L "$EXE" | awk 'NR>1 {print $1}' | while read -r lib; do
+            case "$lib" in /usr/lib/*|/System/*|@*) continue ;; esac
+            base="$(basename "$lib")"
+            echo "embedding $lib"
+            cp -f "$lib" "$APP/Contents/Frameworks/$base"
+            chmod u+w "$APP/Contents/Frameworks/$base"
+            install_name_tool -id "@rpath/$base" "$APP/Contents/Frameworks/$base"
+            install_name_tool -change "$lib" "@rpath/$base" "$EXE"
+          done
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXE" || true
+          otool -L "$EXE"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.pio_env }}-app
+          path: firmware/dist/*.app
+
+      - name: Check for signing secrets
+        id: secrets
+        env:
+          # Via env, not inline interpolation: the cert is a multi-KB base64
+          # blob and would otherwise be pasted into the command line.
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          SIGN_APP: ${{ secrets.SIGN_APP }}
+        run: |
+          if [ -n "$CERT_P12" ] && [ -n "$SIGN_APP" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signing secrets absent - stopping after the unsigned bundle."
+          fi
+
+      - name: Import signing identities
+        if: steps.secrets.outputs.present == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+          INSTALLER_P12: ${{ secrets.MACOS_INSTALLER_P12 }}
+          INSTALLER_PASSWORD: ${{ secrets.MACOS_INSTALLER_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          if [ -n "$INSTALLER_P12" ]; then
+            echo "$INSTALLER_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+            security import "$RUNNER_TEMP/installer.p12" -k "$KEYCHAIN" \
+              -P "$INSTALLER_PASSWORD" -T /usr/bin/productbuild
+          fi
+          # Without this, codesign blocks on a GUI prompt no one can answer.
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          rm -f "$RUNNER_TEMP"/*.p12
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Embed provisioning profile
+        if: steps.secrets.outputs.present == 'true'
+        working-directory: firmware
+        env:
+          PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
+        run: |
+          # Must happen BEFORE signing -- the profile is sealed into the
+          # signature. Xcode does this automatically on -exportArchive; a
+          # hand-assembled bundle has to do it explicitly, and App Store
+          # Connect rejects a store build that has no profile even though
+          # codesign succeeds locally.
+          if [ -z "$PROFILE" ]; then
+            echo "::warning::MACOS_PROVISIONING_PROFILE not set. Mac App Store uploads normally require an embedded profile; expect a rejection."
+            exit 0
+          fi
+          echo "$PROFILE" | base64 --decode > "$APP/Contents/embedded.provisionprofile"
+          echo "embedded.provisionprofile: $(wc -c < "$APP/Contents/embedded.provisionprofile") bytes"
+
+      - name: Sign
+        if: steps.secrets.outputs.present == 'true'
+        working-directory: firmware
+        env:
+          SIGN_APP: ${{ secrets.SIGN_APP }}
+        run: |
+          ENTITLEMENTS=../simulator/packaging/macos/CrossPoint.entitlements
+          # Inside-out: nested code first, or signing it invalidates the outer seal.
+          find "$APP/Contents/Frameworks" -type f -name '*.dylib' -print0 2>/dev/null |
+            while IFS= read -r -d '' lib; do
+              codesign --force --timestamp --options runtime --sign "$SIGN_APP" "$lib"
+            done
+          codesign --force --timestamp --options runtime \
+            --entitlements "$ENTITLEMENTS" --sign "$SIGN_APP" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Build installer package
+        if: steps.secrets.outputs.present == 'true'
+        working-directory: firmware
+        env:
+          SIGN_INSTALLER: ${{ secrets.SIGN_INSTALLER }}
+        run: |
+          PKG="dist/$(basename "$APP" .app)-${{ inputs.marketing_version }}-${{ inputs.build_number }}.pkg"
+          productbuild --component "$APP" /Applications --sign "$SIGN_INSTALLER" "$PKG"
+          echo "PKG=$PKG" >> "$GITHUB_ENV"
+
+      - name: Upload to App Store Connect
+        if: steps.secrets.outputs.present == 'true' && inputs.skip_upload != true
+        working-directory: firmware
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.ASC_ISSUER }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "$ASC_KEY_P8" > "$KEY_PATH"
+          set +e
+          OUT=$(xcrun altool --upload-app -f "$PKG" -t macos \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER" \
+            --private-key "@file:$KEY_PATH" 2>&1)
+          RC=$?
+          set -e
+          rm -f "$KEY_PATH"
+          echo "$OUT"
+          if [ $RC -ne 0 ]; then
+            # Diagnoses ported from the crds-ios pipeline.
+            echo "$OUT" | grep -qE "90382|Upload limit reached" && \
+              echo "::error::TestFlight daily cap for this marketing version. Bump marketing_version."
+            echo "$OUT" | grep -qE "Cannot determine the Apple ID|\(19\)" && \
+              echo "::error::rc 19 is usually an expired App Store Connect agreement, not a key bug."
+            echo "$OUT" | grep -q "ITMS-90683" && \
+              echo "::error::A purpose string is missing from Info.plist."
+            exit $RC
+          fi
+          echo "::notice::Uploaded. Processing takes 5-15 min before it appears in TestFlight."

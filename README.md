@@ -189,6 +189,137 @@ The screenshot contains the SDL renderer output at the host's actual drawable
 resolution, including Retina/HiDPI scaling. BMP is used because it is supported
 directly by SDL2 and adds no image-encoding dependency to the simulator.
 
+## Mac App Store packaging
+
+The native build produces a bare executable at `.pio/build/<env>/program`. The
+Mac App Store needs it inside a `.app` bundle whose `Info.plist` carries privacy
+purpose strings, or App Store Connect rejects the upload:
+
+```
+ITMS-90683: Missing purpose string in Info.plist ... should contain a
+NSCameraUsageDescription key with a user-facing purpose string
+```
+
+The simulator only calls `SDL_Init(SDL_INIT_VIDEO)`; it never opens a camera or
+a Bluetooth device. The rejection comes from Apple's static scan of the linked
+SDL2 library, which references those APIs for camera and game-controller
+support. As Apple's own notice puts it, "While your app might not use these
+APIs, a purpose string is still required."
+
+[packaging/macos/Info.plist.in](packaging/macos/Info.plist.in) holds those
+strings and is the single source of truth for all three subcommands of
+[packaging/macos/package_macos_app.py](packaging/macos/package_macos_app.py):
+
+```bash
+# Wrap a built binary in a bundle that already has the purpose strings.
+python3 packaging/macos/package_macos_app.py build \
+  --binary .pio/build/simulator_x3/program \
+  --device x3 --version 0.1.0 --build 2 \
+  --bundle-id com.example.CrossPointX3 --output-dir dist
+
+# Add missing purpose strings to a bundle built by some other pipeline.
+python3 packaging/macos/package_macos_app.py patch dist/CrossPointX3.app
+
+# Exit non-zero if a bundle would be rejected. Run this before every upload.
+python3 packaging/macos/package_macos_app.py verify dist/CrossPointX3.app
+```
+
+`--device` picks the product and executable name (`x3`, `x4`, `x4-pro`).
+`patch` works on Xcode-built bundles too — it reads binary plists and writes
+them back in the same format, touching only the missing keys.
+
+From a consuming firmware repo, the same packaging runs as a PlatformIO target:
+
+```bash
+pio run -e simulator_x3 -t package_macos_app
+```
+
+The target infers the device from the environment's `SIMULATOR_DEVICE_*` flag
+and reads these optional project options:
+
+```ini
+[env:simulator_x3]
+custom_macos_app_bundle_id = com.example.CrossPointX3
+custom_macos_app_version = 0.1.0
+custom_macos_app_build = 2
+custom_macos_app_output_dir = dist
+custom_macos_app_icon = packaging/macos/CrossPoint.icns
+```
+
+Two things are on you before an upload: `custom_macos_app_bundle_id` must match
+the app record in App Store Connect, and `custom_macos_app_build` must be higher
+than any build already uploaded for that version.
+
+### Shipping to TestFlight
+
+[packaging/macos/deploy.sh](packaging/macos/deploy.sh) runs the whole chain —
+build, bundle, verify purpose strings, embed dylibs, sign, `productbuild`,
+`altool --upload-app`, tag. Run it on the Mac from the firmware project:
+
+```bash
+BUNDLE_ID=com.example.CrossPointX3 \
+SIGN_APP="Apple Distribution: Your Name (TEAMID)" \
+SIGN_INSTALLER="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
+ASC_KEY_ID=XXXXXXXXXX ASC_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8 \
+  ./packaging/macos/deploy.sh
+```
+
+`DRY_RUN=1` prints every command without running it, and `SKIP_UPLOAD=1` stops
+after signing. `BUILD_NUMBER` auto-bumps from the last `macos-build-N` tag —
+Apple silently rejects a duplicate build number, and build 1 is already consumed.
+
+Signing needs the login keychain, which only a GUI Terminal session has. Firing
+`deploy.sh` from a sandboxed agent shell or a bare SSH session fails partway
+through with `errSecInternalComponent`. Route it through Terminal.app instead:
+
+```bash
+osascript packaging/macos/deploy.applescript
+osascript packaging/macos/deploy.applescript "BUILD_NUMBER=3" "SKIP_UPLOAD=1"
+```
+
+Each argument is a `KEY=VALUE` pair, passed through `env` so it survives into
+the shell Terminal spawns. This needs the Mac logged in and unlocked, and
+`osascript` allowed to control Terminal under Privacy & Security → Automation.
+AppleScript returns as soon as Terminal starts the command; it cannot report
+whether the deploy succeeded.
+
+### Shipping without a Mac
+
+[.github/workflows/testflight.yml](.github/workflows/testflight.yml) runs the
+same chain on a GitHub-hosted `macos-latest` runner, so shipping does not depend
+on one machine being awake and unlocked. Trigger it from the Actions tab.
+
+Without secrets it builds, packages, verifies the purpose strings, embeds
+dylibs, and uploads the `.app` as an artifact — a standing check that a bundle
+would pass Apple's validation. Add these repository secrets to enable signing
+and upload: `MACOS_CERT_P12`, `MACOS_CERT_P12_PASSWORD`, `MACOS_INSTALLER_P12`,
+`MACOS_INSTALLER_P12_PASSWORD`, `SIGN_APP`, `SIGN_INSTALLER`, `BUNDLE_ID`,
+`ASC_KEY_ID`, `ASC_ISSUER`, `ASC_KEY_P8`, `MACOS_PROVISIONING_PROFILE`. Produce
+the blobs with `base64 -i cert.p12 | pbcopy`, then re-run with `skip_upload`
+unchecked.
+
+`MACOS_PROVISIONING_PROFILE` is base64 of a Mac App Store `.provisionprofile`
+for your bundle ID. App Sandbox is not a portal capability — it comes from
+`CrossPoint.entitlements` and needs nothing enabled on the App ID. It is
+embedded at `Contents/embedded.provisionprofile` before signing, because the
+signature seals it. Xcode does this during `-exportArchive`; a hand-assembled
+bundle has to do it explicitly, and the store rejects a build without one even
+though `codesign` succeeds locally. `deploy.sh` takes the same thing as a file
+path in `PROVISIONING_PROFILE`.
+
+The runner creates its own keychain and calls `security set-key-partition-list`,
+which is what stops `codesign` from blocking on a GUI prompt. That replaces the
+Terminal.app detour needed on a personal Mac.
+
+> [!WARNING]
+> Mac App Store builds must be sandboxed
+> ([packaging/macos/CrossPoint.entitlements](packaging/macos/CrossPoint.entitlements)),
+> and the sandbox blocks spawning binaries outside the bundle. `SimHttpFetch`
+> shells out to `/usr/bin/curl`, so OPDS/catalog downloads, KOReader sync, and
+> SD-font fetches will fail in a TestFlight build until those flows move to an
+> in-process HTTP client. Reading local books is unaffected.
+
 ## Notes
 
 **Host-backed network flows**: OPDS/catalog downloads and KOReader sync use the

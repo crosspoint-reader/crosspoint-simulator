@@ -108,6 +108,21 @@ pio run -e simulator -t run_simulator
 - [src/WebServer.cpp](src/WebServer.cpp), [src/WebSocketsServer.cpp](src/WebSocketsServer.cpp), and [src/NetworkClient.cpp](src/NetworkClient.cpp) provide native socket-backed shims for firmware web routes. Firmware servers that bind port 80 are exposed on `http://127.0.0.1:8080/`; WebSocket servers that bind port 81 are exposed on `ws://127.0.0.1:8081/`.
 - The sample PlatformIO files compile the current firmware-owned `network/CrossPointWebServer.cpp` and `network/WebDAVHandler.cpp` with `CROSSPOINT_SIMULATOR_PROJECT_WEBSERVER`, which disables the simulator's legacy reduced substitute. Only embedded updater/flasher paths remain excluded.
 
+### Mac App Store purpose strings (2026-07-31)
+
+- App Store Connect rejected the CrossPoint X3 upload (version 0.1.0, build 1) with ITMS-90683 for a missing `NSCameraUsageDescription`, and warned about `NSBluetoothAlwaysUsageDescription`. The simulator only calls `SDL_Init(SDL_INIT_VIDEO)` — the flagged APIs come from Apple's static scan of the linked SDL2 library, which references camera and game-controller (Bluetooth) APIs. Apple requires the purpose string regardless of whether the app calls them.
+- The repo had no bundle packaging at all, so there was no `Info.plist` to fix. New [packaging/macos/Info.plist.in](packaging/macos/Info.plist.in) holds the strings and is the single source of truth; [packaging/macos/package_macos_app.py](packaging/macos/package_macos_app.py) has `build` (wrap a binary in a `.app`), `patch` (inject missing keys into a bundle built elsewhere, preserving binary-plist format), and `verify` (non-zero exit before upload).
+- `run_simulator.py` registers a `package_macos_app` target under its own `builtins` sentinel. All path resolution happens inside the target action, never at script-load time, so a packaging problem cannot break ordinary simulator builds. The library checkout is found via `__file__` first, then a `$PROJECT_LIBDEPS_DIR/$PIOENV` scan, because SCons does not guarantee `__file__` in SConscript globals.
+- Not covered: code signing, notarization, and embedding the SDL2 dylib. Bundle id and build number are caller-supplied — a wrong bundle id or a reused build number fails the upload for reasons unrelated to purpose strings.
+
+### TestFlight deploy path (2026-07-31)
+
+- [packaging/macos/deploy.sh](packaging/macos/deploy.sh) chains build → bundle → verify purpose strings → embed dylibs → sign → `productbuild` → `altool --upload-app` → tag. macOS only.
+- `codesign` needs the login keychain, which only a GUI Terminal session has; firing the deploy from a sandboxed agent shell or bare SSH fails with `errSecInternalComponent`. [packaging/macos/deploy.applescript](packaging/macos/deploy.applescript) hands the command to Terminal.app, which is what lets an agent on the Mac deploy unattended. Pattern and several gates (build-number drift, deploy lock, the 90382 daily cap, the rc-19 expired-agreement diagnosis) are ported from the crds-ios pipeline.
+- Build numbers auto-bump from the last `macos-build-N` tag. Apple silently rejects a duplicate build number, and build 1 is already consumed by the ITMS-90683 rejection, so the floor is 2.
+- **Bundled-app storage root.** A `.app` launched from Finder has cwd `/`, so the default `./fs_` resolved to an unwritable `/fs_` and the library came up empty. `configuredStorageRoot()` now detects `*.app/Contents/MacOS/` via `_NSGetExecutablePath` and returns `$HOME/Library/Application Support/<AppName>/fs_`. Under the App Sandbox, HOME is already the container, so the path stays inside it. `CROSSPOINT_SIM_SD` still wins, and non-bundled dev builds are untouched.
+- **Known sandbox gap:** Mac App Store builds must be sandboxed, and the sandbox blocks spawning binaries outside the bundle. `SimHttpFetch.h` uses `popen("curl ...")`, so OPDS/catalog downloads, KOReader sync, and SD-font fetches cannot work on TestFlight until they move to an in-process HTTP client.
+
 ### HalStorage menu-items fix (commit 40c578e, 2026-04-19)
 
 - Major HalStorage refactor — directory iteration and child-file handling were tightened so menu lists populate correctly.

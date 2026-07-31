@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist template for a CrossPoint macOS app bundle.
+
+  This file is the single source of truth for the bundle's privacy purpose
+  strings. package_macos_app.py substitutes the ${...} placeholders when it
+  builds a bundle, and reads the NS*UsageDescription values straight out of
+  this file when it patches or verifies a bundle produced by another pipeline.
+
+  The NS*UsageDescription keys are NOT optional, even though the simulator
+  never touches a camera or a Bluetooth device. App Store Connect rejects
+  uploads with ITMS-90683 when the linked SDL2 library references those APIs
+  and the bundle has no matching purpose string. Removing them will break the
+  next upload.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>${PRODUCT_NAME}</string>
+	<key>CFBundleExecutable</key>
+	<string>${EXECUTABLE_NAME}</string>
+	<key>CFBundleIconFile</key>
+	<string>${ICON_FILE}</string>
+	<key>CFBundleIdentifier</key>
+	<string>${BUNDLE_IDENTIFIER}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>${PRODUCT_NAME}</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${BUNDLE_SHORT_VERSION_STRING}</string>
+	<key>CFBundleVersion</key>
+	<string>${BUNDLE_VERSION}</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.books</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>${MINIMUM_SYSTEM_VERSION}</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>${COPYRIGHT}</string>
+	<key>NSCameraUsageDescription</key>
+	<string>${PRODUCT_NAME} never takes photos or video and never opens a camera. This notice is required because the SDL media library that draws the e-ink screen and reads your keyboard links Apple frameworks that reference the camera. No image or video data is captured, stored, or sent anywhere.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>${PRODUCT_NAME} never connects to Bluetooth devices. This notice is required because the SDL media library that handles the window, keyboard, and pointer links Apple frameworks that reference Bluetooth game controllers. No Bluetooth device is scanned for, paired with, or contacted.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>${PRODUCT_NAME} never connects to Bluetooth devices. This notice is required because the SDL media library that handles the window, keyboard, and pointer links Apple frameworks that reference Bluetooth game controllers. No Bluetooth device is scanned for, paired with, or contacted.</string>
+</dict>
+</plist>
