@@ -4,14 +4,14 @@
 # `pio run -e simulator -t compiledb`. Regenerate after any firmware change that
 # adds, removes, or renames a translation unit.
 #
-# firmware   : /tmp/claude-0/-home-user-crosspoint-simulator/4caa4929-b456-5ca4-aa96-085eb5c6fd4f/scratchpad/fw-assembly
-# pinned at  : 1a7f5a9e3828e08565aa055a696ed8f0e9248c28
-# TU counts  : 147 firmware, 20 simulator (6 C, 161 C++)
+# firmware   : /workspace/crosspoint-reader
+# pinned at  : a253e3097aa88262ae82d9227f89c7dc03b7ec35
+# TU counts  : 149 firmware, 20 simulator (6 C, 163 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "1a7f5a9e3828e08565aa055a696ed8f0e9248c28")
+set(CROSSPOINT_FIRMWARE_PIN "a253e3097aa88262ae82d9227f89c7dc03b7ec35")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -148,6 +148,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/settings/ClockOffsetActivity.cpp
   src/activities/settings/ClockSyncActivity.cpp
   src/activities/settings/FontDownloadActivity.cpp
+  src/activities/settings/FontSelectionActivity.cpp
   src/activities/settings/KOReaderAuthActivity.cpp
   src/activities/settings/KOReaderSettingsActivity.cpp
   src/activities/settings/LanguageSelectActivity.cpp
@@ -167,6 +168,7 @@ set(CROSSPOINT_FW_SOURCES
   src/components/UITheme.cpp
   src/components/themes/BaseTheme.cpp
   src/components/themes/lyra/Lyra3CoversTheme.cpp
+  src/components/themes/lyra/LyraSixTheme.cpp
   src/components/themes/lyra/LyraTheme.cpp
   src/components/themes/roundedraff/RoundedRaffTheme.cpp
   src/main.cpp
@@ -228,7 +230,6 @@ set(CROSSPOINT_DEFINES
   EINK_DISPLAY_SINGLE_BUFFER_MODE=1
   ENABLE_SERIAL_LOG
   LOG_LEVEL=2
-  MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1
   PNG_MAX_BUFFERED_PIXELS=16416
   SIMULATOR
   SIMULATOR_DEVICE_X3
