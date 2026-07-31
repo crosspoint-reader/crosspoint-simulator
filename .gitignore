@@ -6,3 +6,6 @@ build/
 compile_commands.json
 
 .DS_Store
+
+# Session-local agent worktrees (Claude Code). Transient working copies.
+.claude/worktrees/
