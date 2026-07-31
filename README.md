@@ -300,7 +300,8 @@ the blobs with `base64 -i cert.p12 | pbcopy`, then re-run with `skip_upload`
 unchecked.
 
 `MACOS_PROVISIONING_PROFILE` is base64 of a Mac App Store `.provisionprofile`
-for your bundle ID, whose App ID must have the App Sandbox capability. It is
+for your bundle ID. App Sandbox is not a portal capability — it comes from
+`CrossPoint.entitlements` and needs nothing enabled on the App ID. It is
 embedded at `Contents/embedded.provisionprofile` before signing, because the
 signature seals it. Xcode does this during `-exportArchive`; a hand-assembled
 bundle has to do it explicitly, and the store rejects a build without one even
