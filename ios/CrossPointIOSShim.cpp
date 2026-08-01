@@ -260,44 +260,51 @@ constexpr Palette kDarkPalette{{0x00, 0x00, 0x00},
 bool g_dark = false;
 const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
 
-// THE FIELD FOLLOWS THE APPEARANCE; THE PANEL NEVER DOES.
+// THE FIELD AND THE PANEL BOTH FOLLOW THE APPEARANCE.
 //
 // In light mode the field is white because a blank e-ink page is white, so the
-// panel edge disappears. That seamlessness is a coincidence of light mode, not
-// a requirement -- in dark mode the honest reading of the surround is the one
-// every e-reader actually has: a bezel. So the field goes to systemBackground
-// dark and the panel keeps showing exactly what the firmware drew.
+// panel edge disappears. In dark mode the field goes to systemBackground dark
+// and the panel renders white-on-black: this app is a reading surface first
+// and a simulator second, and a full-brightness white page inside a dark UI is
+// exactly what dark appearance exists to prevent.
 //
-// The tempting alternative -- darken the panel too, via HalDisplay's
-// setInverted -- is wrong twice over, both checked rather than assumed:
+// The inversion is a HOST presentation choice layered on the device's output,
+// not a device behaviour -- a fact worth keeping straight, both halves checked
+// rather than assumed: no X3 can invert its panel, and nothing in the firmware
+// or the SDK calls setInverted/toggleInverted/isInverted; the trio exists only
+// in the simulator's HalDisplay, which applies the flip while converting the
+// 1bpp framebuffer to pixels. The device layer keeps drawing black-on-white
+// and cannot tell the difference, so no firmware path changes underneath us.
 //
-//   1. It is not "the firmware's own inversion". The firmware's HAL header
-//      (lib/hal/HalDisplay.h) has no inversion API at all, and nothing in the
-//      firmware or the SDK calls setInverted/toggleInverted/isInverted --
-//      the trio exists only in the simulator's HalDisplay. Driving it from the
-//      host appearance would make the DEVICE layer answer to a property of the
-//      phone, which is the one thing this harness exists not to do, and would
-//      show a panel state no X3 can produce.
-//   2. It would not even work live. Inversion is applied while converting the
-//      framebuffer to pixels (HalDisplay.cpp renderBwPixels /
-//      composeGrayscalePreview), which runs on the render task only when the
-//      firmware refreshes. Flipping the flag on a theme change re-presents the
-//      already-converted pixel buffer, so the panel would not change until the
-//      next page render -- which on e-ink may be never.
+// Immediacy lives inside HalDisplay, not here. Conversion runs on the render
+// task only when the firmware refreshes, so flipping the flag alone would not
+// show until the next page render -- which on e-ink may be never. setInverted
+// therefore posts an atomic reconvert request that presentIfNeeded (main
+// thread) services from HalDisplay's cached last frame, so the new polarity
+// lands on the very next present. SimulatorOverlay::setPanelDark is the single
+// entry point; it also honours the CROSSPOINT_SIM_DARK override, which is what
+// lets the headless desktop tests drive the exact mechanics this path uses.
+//
+// Known cost, accepted for now: inversion is polarity-blind, so book covers
+// and other images render as negatives in dark mode.
 void applyTheme() {
   g_dark = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
   const Palette &p = palette();
   SimulatorOverlay::setClearColor(p.field[0], p.field[1], p.field[2]);
+  SimulatorOverlay::setPanelDark(g_dark);
   // The firmware presents only when it has new panel content, which on an e-ink
   // device is rare, so without this the new appearance would not appear until
-  // the next page render.
+  // the next page render. (setPanelDark's reconvert also raises a present, but
+  // only when the polarity actually changed; the field colour must repaint
+  // regardless.)
   SimulatorOverlay::requestPresent();
 }
 
 // A watch of its own, deliberately not a case inside padWatch: this is a
 // painting concern and reads no input. SDL raises the theme change from UIKit's
 // traitCollectionDidChange on the UI thread, and applyTheme only writes a flag
-// and two atomics -- no renderer call happens here.
+// and a handful of atomics -- no renderer call happens here; the reconvert and
+// repaint both run later on the main thread inside presentIfNeeded.
 bool SDLCALL themeWatch(void * /*userdata*/, SDL_Event *e) {
   if (e->type == SDL_EVENT_SYSTEM_THEME_CHANGED) applyTheme();
   return true;  // never filter anything out

@@ -2,6 +2,8 @@
 #include <Arduino.h>
 #include <EInkDisplay.h>
 
+#include <atomic>
+
 class HalDisplay {
 public:
   // Constructor with pin configuration
@@ -92,7 +94,11 @@ public:
 
 private:
   EInkDisplay einkDisplay;
-  bool inverted = false;
+  // Atomic because polarity is written from the main thread (host appearance /
+  // CROSSPOINT_SIM_DARK via SimulatorOverlay::setPanelDark) while the render
+  // task reads it during framebuffer conversion. Private member only -- the
+  // public surface above still mirrors the firmware HAL exactly.
+  std::atomic<bool> inverted{false};
 };
 
 extern HalDisplay display;

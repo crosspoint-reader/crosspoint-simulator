@@ -32,4 +32,21 @@ void setClearColor(unsigned char r, unsigned char g, unsigned char b);
 // would not appear until the next page render.
 void requestPresent();
 
+// Panel polarity driven by the host appearance: dark renders the panel
+// white-on-black through HalDisplay's inversion flag. A free hook rather than
+// a HAL method for the same reason as the rest of this namespace -- following
+// a host theme has no analog on real hardware, and the HAL surface must stay
+// the firmware's shape.
+//
+// Takes effect on the very next present, not the next firmware refresh:
+// inversion is applied while converting the 1bpp framebuffer to pixels, so
+// HalDisplay re-runs that conversion from its cached last frame when the flag
+// changes (see reconvertLastFrame in HalDisplay.cpp).
+//
+// CROSSPOINT_SIM_DARK overrides the argument: "1" forces dark, "0" forces
+// normal, unset follows the caller. Both the platform-theme path (the iOS
+// harness) and the env path land here, so exercising either verifies the
+// other's mechanics.
+void setPanelDark(bool dark);
+
 } // namespace SimulatorOverlay

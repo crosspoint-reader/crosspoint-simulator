@@ -107,6 +107,43 @@ correctly through the same two planes.
 
 ## Recent Changes (since 2026-03-17)
 
+### Dark-mode panel inversion with instant re-present (2026-08-01)
+
+- The iOS app now follows the system appearance onto the panel itself: dark
+  appearance renders the e-ink panel white-on-black, light stays
+  black-on-white. `applyTheme()` in [ios/CrossPointIOSShim.cpp](../ios/CrossPointIOSShim.cpp)
+  drives it through the new `SimulatorOverlay::setPanelDark(bool)` — the single
+  entry point for panel polarity. `CROSSPOINT_SIM_DARK` (unset = follow
+  platform, `1` = force inverted, `0` = force normal) is applied inside that
+  same function, so a headless desktop run exercises the exact mechanics the
+  iOS theme path uses.
+- The design decision worth recording is immediacy. Inversion is applied while
+  converting the 1bpp framebuffer to ARGB (`renderBwPixels` /
+  `composeGrayscalePreview`), which runs on the render task only when the
+  firmware refreshes — and an e-ink firmware presents rarely, so flipping the
+  flag alone would not show until the next page turn, which may be never.
+  `HalDisplay::setInverted` therefore posts an atomic `pendingReconvert`
+  request, and `presentIfNeeded` (main thread — the only place SDL upload and
+  present may happen) services it by re-running the conversion from the cached
+  last frame (`reconvertLastFrame`): the BW base snapshot, plus the grayscale
+  AA planes when the last present was the gray compose. Plane validity tells
+  which conversion was last, because `snapshotBwBase` clears the planes on
+  every fresh BW frame. A flip that races a mid-write plane can show one torn
+  frame; the render task's own compose lands right after and corrects it.
+- The polarity is a host presentation choice, not a device behaviour: nothing
+  in the firmware or the SDK calls the inversion trio (it is sim-only), so the
+  device layer keeps drawing black-on-white and no firmware path changes.
+  Known cost, accepted for now: inversion is polarity-blind, so book covers
+  and other images render as negatives in dark mode.
+- `inverted` became a private `std::atomic<bool>` (HAL public surface
+  unchanged) because the main thread now writes it while the render task reads
+  it during conversion.
+- Verified headless with X3 screenshots: dark runs are exact pointwise
+  complements of normal runs (BW 0 ↔ 255; AA grays 96 → 159 and 200 → 55),
+  normal mode stays byte-identical to pre-change output, and a standalone host
+  test flips polarity mid-session with no refresh in between and gets the
+  complement on the very next present, on both the BW and gray-compose paths.
+
 ### Linux / WSL support (PR #1, merged 2026-04-23)
 
 - New [src/MD5Builder_linux.h](src/MD5Builder_linux.h): OpenSSL-backed `MD5Builder` for Linux. macOS keeps using [src/MD5Builder.h](src/MD5Builder.h) (CommonCrypto). Downstream firmware swaps which one it includes per host.

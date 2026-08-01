@@ -27,6 +27,11 @@ static constexpr int SIMULATOR_WINDOW_SCALE = 1;
 static uint32_t
     pixelBuf[HalDisplay::DISPLAY_WIDTH * HalDisplay::DISPLAY_HEIGHT];
 static std::atomic<bool> pendingPresent{false};
+// Set when the inversion flag changes so presentIfNeeded (main thread) re-runs
+// the framebuffer-to-pixel conversion from the cached last frame. Without it a
+// polarity flip would wait for the next firmware refresh -- which on an e-ink
+// device may never come.
+static std::atomic<bool> pendingReconvert{false};
 // Written by HalGPIO::update() (which owns SDL event polling); read by
 // shouldQuit().
 std::atomic<bool> quitRequested{false};
@@ -232,6 +237,27 @@ void composeGrayscalePreview() {
   pendingPresent.store(true);
 }
 
+// Re-run the last framebuffer-to-pixel conversion after an inversion change,
+// from the cached copies snapshotted by the render task. Runs on the main
+// thread (presentIfNeeded); safe because the pixel/state buffers already
+// tolerate the render task racing a present -- worst case is one torn frame
+// that the next real render replaces.
+//
+// If grayscale AA planes were composited after the BW base, they are still
+// cached alongside it (snapshotBwBase clears them on every fresh BW frame), so
+// the reconversion keeps the AA gray levels instead of degrading to the BW
+// base. If the render task happens to be mid-way through writing new planes,
+// the recompose may briefly show them partially applied; the render task's own
+// compose lands right after and corrects it.
+void reconvertLastFrame() {
+  if (!grayscalePreviewState.bwBaseValid)
+    return; // nothing presented yet; the first real render reads the new flag
+  if (grayscalePreviewState.lsbValid || grayscalePreviewState.msbValid)
+    composeGrayscalePreview();
+  else
+    renderBwPixels(grayscalePreviewState.bwBase.data());
+}
+
 } // namespace
 
 static bool isPortraitOrientation(GfxRenderer::Orientation orientation) {
@@ -278,6 +304,20 @@ void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
                    (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b));
 }
 void requestPresent() { pendingPresent.store(true); }
+// The single entry point for panel polarity (see SimulatorOverlay.h). The env
+// override is applied here, on every call, so a forced polarity survives any
+// number of platform theme changes, and so the headless env path and the iOS
+// theme path exercise identical mechanics from this line down.
+void setPanelDark(bool dark) {
+  if (const char *forced = std::getenv("CROSSPOINT_SIM_DARK")) {
+    if (forced[0] == '1' && forced[1] == '\0')
+      dark = true;
+    else if (forced[0] == '0' && forced[1] == '\0')
+      dark = false;
+    // Anything else (including empty) is treated as unset: follow the caller.
+  }
+  display.setInverted(dark);
+}
 } // namespace SimulatorOverlay
 
 HalDisplay::HalDisplay() {}
@@ -339,6 +379,13 @@ void HalDisplay::begin() {
   // per-texture setting, which must therefore come after the texture exists.
   // See kPanelScaleMode above for why the choice is not unconditional.
   SDL_SetTextureScaleMode(texture, kPanelScaleMode);
+
+  // Default appearance is light, so a desktop build stays byte-identical to
+  // what it always rendered; CROSSPOINT_SIM_DARK is applied inside
+  // setPanelDark, which is what lets a headless run force either polarity. A
+  // host with a real appearance to follow (the iOS harness) calls
+  // setPanelDark again with it once the harness installs.
+  SimulatorOverlay::setPanelDark(false);
 }
 
 void HalDisplay::begin(bool /*seamless*/) { begin(); }
@@ -384,14 +431,22 @@ void HalDisplay::drawImageTransparent(const uint8_t *imageData, uint16_t x,
   }
 }
 
-void HalDisplay::setInverted(bool value) { inverted = value; }
-
-bool HalDisplay::toggleInverted() {
-  inverted = !inverted;
-  return inverted;
+void HalDisplay::setInverted(bool value) {
+  if (inverted.exchange(value) == value)
+    return;
+  // Inversion is applied at conversion time, so already-presented pixels keep
+  // the old polarity until reconverted. Ask the main thread to redo the
+  // conversion from the cached frame so the change is visible immediately.
+  pendingReconvert.store(true);
 }
 
-bool HalDisplay::isInverted() const { return inverted; }
+bool HalDisplay::toggleInverted() {
+  const bool value = !inverted.load();
+  setInverted(value);
+  return value;
+}
+
+bool HalDisplay::isInverted() const { return inverted.load(); }
 
 void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   refreshDisplay(mode, turnOffScreen);
@@ -421,6 +476,12 @@ void HalDisplay::refreshDisplay(RefreshMode /*mode*/, bool /*turnOffScreen*/) {
 
 // Called from the main thread (simulator_main.cpp) to push pixels to SDL.
 void HalDisplay::presentIfNeeded() {
+  // Service inversion changes first: reconverting sets pendingPresent, so the
+  // repolarized pixels ride the present below instead of waiting for the
+  // firmware to refresh.
+  if (pendingReconvert.exchange(false))
+    reconvertLastFrame();
+
   const bool screenshotDue = hasDueScreenshot();
   if (!pendingPresent.load() && !screenshotDue)
     return;
