@@ -42,6 +42,14 @@ void requestPresent();
 // floors to an integer scale.
 void setBottomInset(int px);
 
+// Reserve the top `px` device pixels for the host's own furniture -- on a phone
+// the status bar and, on an Island/notch device, the cut-out. The manual fit is
+// TOP-ALIGNED, so without this the page starts within 16px of y=0 and the first
+// lines of text are drawn under the Island. Same units and same effect as
+// setBottomInset: with either band set, the panel is fitted into the space
+// BETWEEN them. 0 (the default) is what every desktop build uses.
+void setTopInset(int px);
+
 // Where the panel's bottom edge landed on the last present, in device pixels
 // (0 until the first manual-placement present). The pad anchors to this so it
 // hugs the page for thumb reach instead of sinking to the screen bottom.

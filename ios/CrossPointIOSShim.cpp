@@ -186,6 +186,20 @@ void layoutPad(int outW, int outH) {
   // inset -- a constant keeps the two from chasing each other.
   SimulatorOverlay::setBottomInset(static_cast<int>(
       (kPanelGap + 2 * kSquare + kRowGap + kBelowPad) * S));
+
+  // Keep the page clear of the status bar and the Dynamic Island. The panel's
+  // manual fit is top-aligned, so without a top band it starts at the very top
+  // of the screen and the first lines render under the cut-out. Taken from the
+  // system rather than a constant like kHomeInset because the top inset is what
+  // varies most across devices (Island vs notch vs neither). SDL reports the
+  // safe area in window (point) coordinates, hence the * S into device pixels.
+  int topInsetPx = 0;
+  if (SDL_Window *win = SDL_GetWindowFromID(g_windowId)) {
+    SDL_Rect safe{};
+    if (SDL_GetWindowSafeArea(win, &safe) && safe.y > 0)
+      topInsetPx = static_cast<int>(safe.y * S);
+  }
+  SimulatorOverlay::setTopInset(topInsetPx);
 }
 
 // --- Appearance ------------------------------------------------------------

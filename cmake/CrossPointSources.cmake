@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : 9494d88e839079846a9a104f1e95940c67a05f44
-# TU counts  : 135 firmware, 20 simulator (6 C, 149 C++)
+# pinned at  : e0509aef9e7d525a50ffc3ed551b273bfd1f1efd
+# TU counts  : 123 firmware, 20 simulator (6 C, 137 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "9494d88e839079846a9a104f1e95940c67a05f44")
+set(CROSSPOINT_FIRMWARE_PIN "e0509aef9e7d525a50ffc3ed551b273bfd1f1efd")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -79,11 +79,6 @@ set(CROSSPOINT_FW_SOURCES
   lib/I18n/I18nStrings.cpp
   lib/InflateReader/InflateReader.cpp
   lib/JpegToBmpConverter/JpegToBmpConverter.cpp
-  lib/KOReaderSync/ChapterXPathResolver.cpp
-  lib/KOReaderSync/KOReaderCredentialStore.cpp
-  lib/KOReaderSync/KOReaderDocumentId.cpp
-  lib/KOReaderSync/KOReaderSyncClient.cpp
-  lib/KOReaderSync/ProgressMapper.cpp
   lib/Logging/Logging.cpp
   lib/Memory/BuildScratch.cpp
   lib/MiniBidi/BidiUtils.cpp
@@ -124,7 +119,6 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/home/FileBrowserActivity.cpp
   src/activities/home/HomeActivity.cpp
   src/activities/home/RecentBooksActivity.cpp
-  src/activities/network/CalibreConnectActivity.cpp
   src/activities/network/CrossPointWebServerActivity.cpp
   src/activities/network/NetworkModeSelectionActivity.cpp
   src/activities/network/WifiSelectionActivity.cpp
@@ -132,26 +126,20 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/reader/EpubReaderActivity.cpp
   src/activities/reader/EpubReaderChapterSelectionActivity.cpp
   src/activities/reader/EpubReaderFootnotesActivity.cpp
-  src/activities/reader/KOReaderSyncActivity.cpp
   src/activities/reader/ReaderActivity.cpp
   src/activities/reader/TxtReaderActivity.cpp
   src/activities/reader/XtcReaderActivity.cpp
   src/activities/reader/XtcReaderChapterSelectionActivity.cpp
   src/activities/settings/ButtonRemapActivity.cpp
   src/activities/settings/ClearCacheActivity.cpp
-  src/activities/settings/ClockOffsetActivity.cpp
-  src/activities/settings/ClockSyncActivity.cpp
   src/activities/settings/FontDownloadActivity.cpp
   src/activities/settings/FontSelectionActivity.cpp
-  src/activities/settings/KOReaderAuthActivity.cpp
-  src/activities/settings/KOReaderSettingsActivity.cpp
   src/activities/settings/LanguageSelectActivity.cpp
   src/activities/settings/OpdsServerListActivity.cpp
   src/activities/settings/OpdsSettingsActivity.cpp
   src/activities/settings/OtaUpdateActivity.cpp
   src/activities/settings/SdFirmwareUpdateActivity.cpp
   src/activities/settings/SettingsActivity.cpp
-  src/activities/settings/StatusBarSettingsActivity.cpp
   src/activities/util/BmpViewerActivity.cpp
   src/activities/util/ConfirmationActivity.cpp
   src/activities/util/FullScreenMessageActivity.cpp
@@ -189,7 +177,6 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
   lib/I18n
   lib/InflateReader
   lib/JpegToBmpConverter
-  lib/KOReaderSync
   lib/Logging
   lib/Memory
   lib/MiniBidi

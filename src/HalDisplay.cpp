@@ -322,6 +322,9 @@ static DrawFn overlayDraw = nullptr;
 static std::atomic<uint32_t> clearColor{0xFBFBF9u};
 // Bottom band (device px) reserved for overlay chrome; see SimulatorOverlay.h.
 static std::atomic<int> bottomInset{0};
+// Top band (device px) reserved for host furniture -- status bar / Dynamic
+// Island; see SimulatorOverlay.h.
+static std::atomic<int> topInset{0};
 void setDrawCallback(DrawFn fn) { overlayDraw = fn; }
 void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
   clearColor.store((static_cast<uint32_t>(r) << 16) |
@@ -329,6 +332,11 @@ void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
 }
 void setBottomInset(int px) {
   if (bottomInset.exchange(px > 0 ? px : 0) != px)
+    requestPresent();
+}
+void setTopInset(int px) {
+  const int v = px > 0 ? px : 0;
+  if (topInset.exchange(v) != v)
     requestPresent();
 }
 // Written by presentIfNeeded (main thread) on the manual-placement path.
@@ -568,7 +576,8 @@ void HalDisplay::presentIfNeeded() {
   // landscape it IS the display area, for portrait the rotation about its
   // centre turns it into one.
   const int inset = SimulatorOverlay::bottomInset.load();
-  const bool manualPlacement = inset > 0;
+  const int topBand = SimulatorOverlay::topInset.load();
+  const bool manualPlacement = inset > 0 || topBand > 0;
   if (manualPlacement) {
     SDL_SetRenderLogicalPresentation(sdl_renderer, 0, 0,
                                      SDL_LOGICAL_PRESENTATION_DISABLED);
@@ -577,7 +586,8 @@ void HalDisplay::presentIfNeeded() {
     const bool portrait = isPortraitOrientation(orientation);
     const float logW = portrait ? kH : kW;
     const float logH = portrait ? kW : kH;
-    const float availH = SDL_max(1.0f, static_cast<float>(outH - inset));
+    const float availH =
+        SDL_max(1.0f, static_cast<float>(outH - inset - topBand));
     float scale = SDL_min(static_cast<float>(outW) / logW, availH / logH);
     // Keep the pixel-exact policy honest on this path too.
     if (kLogicalPresentation == SDL_LOGICAL_PRESENTATION_INTEGER_SCALE &&
@@ -585,8 +595,11 @@ void HalDisplay::presentIfNeeded() {
       scale = SDL_floorf(scale);
     // TOP-ALIGNED, not centred: the pad sits directly under the panel's
     // bottom edge (published below), so slack space goes under the pad
-    // instead of splitting above and below the page.
-    const float topMargin = SDL_min(16.0f, (availH - logH * scale) / 2.0f);
+    // instead of splitting above and below the page. The alignment is to the
+    // BOTTOM of the reserved top band, never to y=0 -- on a phone that band is
+    // the status bar and the Island, and the page must start below it.
+    const float topMargin =
+        topBand + SDL_min(16.0f, (availH - logH * scale) / 2.0f);
     const float cx = static_cast<float>(outW) / 2.0f;
     const float cy = topMargin + logH * scale / 2.0f;
     portraitDst = {cx - kW * scale / 2.0f, cy - kH * scale / 2.0f, kW * scale,
