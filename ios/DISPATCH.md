@@ -9,7 +9,7 @@ context assumed.
 
 Ship the next CrossPoint X3 iOS TestFlight build.
 
-Repo: `~/src/crosspoint-simulator`, branch `feat/ios-x3-port`.
+Repo: `~/src/crosspoint-simulator`, branch `main`.
 
 Run:
 
