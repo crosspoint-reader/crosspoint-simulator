@@ -104,6 +104,41 @@ deep-sleep loop must also process synthetic input. Process relaunch promotes
 the optional `*_AFTER_WAKE` schedules and clears the pre-sleep schedules so
 automation cannot enter an infinite sleep/relaunch cycle.
 
+**Navigating to a screen from a headless script.** Work these out by watching
+`[ACT] Entering activity:` log lines — that is the reliable way to confirm where
+a script actually landed, because a screenshot of the wrong screen looks a lot
+like a screenshot of a screen that never changed.
+
+- The app boots into **Home**, not the reader. Under the Lyra Six theme Home
+  renders the current book's page, so a startup screenshot looks exactly like
+  the reader. Do not read that as "the reader is open."
+- On Home, **Back** opens the most recently read book and **Confirm/ENTER**
+  activates the selected row. Home lists the recent books followed by the menu
+  items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
+  with no wrap-around — so `DOWN` x15 then `ENTER` reaches Settings regardless
+  of how many books are listed.
+- Inside the reader the reader menu opens on **Confirm release**. Sending
+  `ENTER` while still on Home merely opens a book, which logs a page render and
+  is easily misread as the menu failing to open.
+- In Settings, `ENTER` on the first row cycles the category tab, so repeated
+  `ENTER` + screenshot walks every tab.
+
+```bash
+CROSSPOINT_SIM_INPUT_SCRIPT='2000:DOWN;2200:DOWN;…;4800:DOWN;5400:ENTER;6800:ENTER;11500:QUIT' \
+CROSSPOINT_SIM_SCREENSHOTS='6300:./qa/tab1.bmp;7700:./qa/tab2.bmp' \
+  .pio/build/simulator/program
+```
+
+Screenshots are BMP; convert with `sips -s format png in.bmp --out out.png` to
+view them.
+
+**Fonts come from two roots.** `SdCardFontRegistry` scans both `fs_/.fonts/`
+(hidden) and `fs_/fonts/` (visible) and dedupes by family name, so an installed
+set is routinely split across the two. Check both before concluding a family is
+missing, and take both when copying a set out. The log line
+`SD font system ready (N families discovered)` is the quickest confirmation that
+a card layout is well-formed.
+
 ## When making changes
 
 - Adding a new HAL method? Mirror the firmware signature exactly and stub it (usually no-op) in the matching `Hal*.cpp/.h`. Do not invent new public methods that don't exist in the firmware HAL.
