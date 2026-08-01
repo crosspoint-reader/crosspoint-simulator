@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : 1d37cb851f6d3177119ceda746ef0db4d79cb593
-# TU counts  : 136 firmware, 20 simulator (6 C, 150 C++)
+# pinned at  : 9494d88e839079846a9a104f1e95940c67a05f44
+# TU counts  : 135 firmware, 20 simulator (6 C, 149 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "1d37cb851f6d3177119ceda746ef0db4d79cb593")
+set(CROSSPOINT_FIRMWARE_PIN "9494d88e839079846a9a104f1e95940c67a05f44")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -130,6 +130,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/network/WifiSelectionActivity.cpp
   src/activities/reader/EndOfBookOptions.cpp
   src/activities/reader/EpubReaderActivity.cpp
+  src/activities/reader/EpubReaderChapterSelectionActivity.cpp
   src/activities/reader/EpubReaderFootnotesActivity.cpp
   src/activities/reader/KOReaderSyncActivity.cpp
   src/activities/reader/ReaderActivity.cpp
@@ -167,8 +168,6 @@ set(CROSSPOINT_FW_SOURCES
   src/network/HttpDownloader.cpp
   src/network/WebDAVHandler.cpp
   src/util/BookCacheUtils.cpp
-  src/util/BookmarkFile.cpp
-  src/util/BookmarkUtil.cpp
   src/util/ButtonNavigator.cpp
   src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
