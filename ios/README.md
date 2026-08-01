@@ -149,16 +149,27 @@ fire — a locked screen keeps the keychain shut.
 ## Controls
 
 An on-screen pad with one control per physical X3 button — no more, no fewer.
-There are no gestures: every control is down-on-touch and up-on-lift, so it
-carries a real hold, which is what page-turn autorepeat and long-press power-off
-need and what a tap or swipe cannot express. Dragging off a control cancels it.
+PURE PASSTHROUGH: every control is down-on-touch and up-on-lift and nothing
+else, so it carries a real hold — page-turn autorepeat and hold-to-sleep both
+work exactly as on hardware. Dragging off a control cancels it. The
+finger→button decisions live in `ios/PadCore.{h,cpp}`, a pure, SDL-free,
+clock-free unit (`tests/pad_core_test.cpp`); the API cannot express time, so
+time-based gesture invention (an earlier POWER tap-stretch held the injected
+button 600 ms past the finger and read as a stuck control) cannot return
+without changing that header.
 
-Two bottom-aligned rows in a five-wide grid; blank slots stay empty.
+Two rows of 60 pt squares anchored directly under the panel's bottom edge
+(`SimulatorOverlay::panelBottomPx`), clamped clear of the home indicator:
 
 ```
-Left      —      Power      —      Right
-Back    Select     —       Up      Down
+[Up]          [Power]          [Down]      <- side pair + power
+[Back|Select]          [Left|Right]        <- front buttons, two fused rockers
 ```
+
+UP/DOWN are the X3's SIDE buttons (fixed page-turn pair); BACK/SELECT and
+LEFT/RIGHT are the FRONT buttons, and each front pair paints as one capsule —
+rounded outer corners only, a hairline divider, no pinched notch between two
+rounded squares.
 
 | Control | Button index | Glyph |
 |---|---|---|
@@ -182,13 +193,13 @@ where the buttons physically sit on the X3 chassis; the SDK describes them only
 electrically (six on a resistor ladder across two ADC pins, POWER on its own
 digital pin — `BoardConfig` `InputPins`, `InputStyle::XteinkAdcLadder`).
 
-Sizing follows Apple's Human Interface Guidelines: targets are 69.6 × 46 pt
-against the 44 × 44 pt minimum, separated by 8 pt, with the lower row on the
-bottom of the safe area rather than the physical edge — below that line is the
-home indicator, and a control there would fight the system's own swipe. Layout is
-computed in points and converted once, so targets keep their real physical size
-at any device scale. The panel edge the rows sit under is derived from the same
-integer-scale rule the renderer uses, so the two cannot drift apart.
+Sizing: 60 pt squares (owner-picked, vs the 44 pt HIG minimum), 16 pt between
+rows, fused pairs touching. Layout is computed in points and converted once, so
+targets keep their real physical size at any device scale. The panel is
+top-aligned in the space above a fixed reserved bottom band
+(`SimulatorOverlay::setBottomInset`), presents at an integer scale, and
+publishes its bottom edge; the pad anchors to that edge with a fallback to
+bottom-anchoring before the first present.
 
 ## How the harness attaches
 

@@ -320,7 +320,50 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
   // held, so the face changing tone reads as the control moving rather than as
   // the control being redrawn. Pressed paint comes straight from PadCore's
   // finger state -- the moment no finger holds a control, it paints released.
+
+  // Fill one half of a rocker: rounded on the outer end, SQUARE on the shared
+  // edge -- a rounded fill then a square patch over the inner end's corners.
+  auto fillHalf = [&](const SDL_FRect &half, bool leftHalf, float rad) {
+    fillRoundRect(r, half, rad);
+    const SDL_FRect patch{leftHalf ? half.x + half.w - rad : half.x, half.y,
+                          rad, half.h};
+    SDL_RenderFillRect(r, &patch);
+  };
+
+  // The two front-button pairs paint as ONE capsule each -- a single hairline
+  // ring around the union with only the outer corners rounded (no pinched
+  // notch where two rounded squares would meet), a hairline divider marking
+  // the two targets, and the pressed half shading independently.
+  const int pairs[2][2] = {{kPadBack, kPadConfirm}, {kPadLeft, kPadRight}};
+  bool inPair[kPadCount] = {};
+  for (const auto &pr : pairs) {
+    const SDL_FRect &a = g_pad[pr[0]].rect;
+    const SDL_FRect &b = g_pad[pr[1]].rect;
+    inPair[pr[0]] = inPair[pr[1]] = true;
+
+    const SDL_FRect uni{a.x, a.y, (b.x + b.w) - a.x, a.h};
+    setRGB(r, p.hairline);
+    fillRoundRect(r, uni, radius);
+
+    const float innerR = radius - hairline;
+    const SDL_FRect innerL{a.x + hairline, a.y + hairline,
+                           a.w - hairline - hairline / 2, a.h - 2 * hairline};
+    const SDL_FRect innerRt{b.x + hairline / 2, b.y + hairline,
+                            b.w - hairline - hairline / 2, b.h - 2 * hairline};
+    setRGB(r, g_core.isDown(pr[0]) ? p.faceDown : p.face);
+    fillHalf(innerL, /*leftHalf=*/true, innerR);
+    setRGB(r, g_core.isDown(pr[1]) ? p.faceDown : p.face);
+    fillHalf(innerRt, /*leftHalf=*/false, innerR);
+
+    // Divider between the two targets, same tone as the ring.
+    setRGB(r, p.hairline);
+    const SDL_FRect div{b.x - hairline / 2, a.y + hairline, hairline,
+                        a.h - 2 * hairline};
+    SDL_RenderFillRect(r, &div);
+  }
+
   for (int i = 0; i < kPadCount; i++) {
+    if (inPair[i]) continue;
     const PadButton &b = g_pad[i];
     setRGB(r, p.hairline);
     fillRoundRect(r, b.rect, radius);

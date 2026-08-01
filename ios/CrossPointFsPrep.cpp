@@ -243,6 +243,34 @@ void seedBundledFontFamilies() {
   }
 }
 
+// Default books ship under Resources/SeedBooks (ios/CMakeLists.txt) and are
+// copied into books/ ONLY when the file is absent. Books are user data: unlike
+// the font families above, an existing copy is never overwritten (the user's
+// reading position keys off the file) and nothing is ever pruned.
+void seedBundledBooks() {
+  const char *base = SDL_GetBasePath();
+  if (!base) return;
+  const std::string seedRoot = std::string(base) + "SeedBooks";
+  DIR *dir = ::opendir(seedRoot.c_str());
+  if (!dir) return;
+
+  ::mkdir("books", 0777);
+  while (struct dirent *entry = ::readdir(dir)) {
+    if (entry->d_name[0] == '.') continue;
+    const std::string src = seedRoot + "/" + entry->d_name;
+    if (isDirectory(src.c_str())) continue;
+    const std::string dst = std::string("books/") + entry->d_name;
+    struct stat st{};
+    if (::stat(dst.c_str(), &st) == 0) continue;  // exists: hands off
+    if (copyFile(src.c_str(), dst.c_str())) {
+      SDL_Log("[harness] seeded book %s", dst.c_str());
+    } else {
+      SDL_Log("[harness] seeding book %s FAILED", dst.c_str());
+    }
+  }
+  ::closedir(dir);
+}
+
 } // namespace
 
 void CrossPointHarness_prepareFilesystem() {
@@ -300,4 +328,5 @@ void CrossPointHarness_prepareFilesystem() {
   // After migration, so a bundled family lands in its final home and the
   // bundle-wins comparison sees the migrated copy rather than missing it.
   seedBundledFontFamilies();
+  seedBundledBooks();
 }

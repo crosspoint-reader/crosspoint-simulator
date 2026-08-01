@@ -73,6 +73,18 @@ if(CROSSPOINT_IOS_SEED_FONTS_DIR)
   endif()
 endif()
 
+# Default books, always bundled (small public-domain testers checked into
+# ios/seedbooks/). CrossPointFsPrep copies each into books/ ONLY when absent —
+# books are user data, so unlike fonts they are never overwritten or pruned.
+file(GLOB _seed_books "${CMAKE_CURRENT_SOURCE_DIR}/seedbooks/*.epub")
+if(_seed_books)
+  set_source_files_properties(${_seed_books} PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources/SeedBooks")
+  target_sources(CrossPointX3 PRIVATE ${_seed_books})
+  list(LENGTH _seed_books _n)
+  message(STATUS "Seed books: ${_n}")
+endif()
+
 if(NOT CROSSPOINT_BUILD_FIRMWARE)
   message(FATAL_ERROR
     "The iOS app needs the firmware source set. Configure with "
