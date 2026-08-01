@@ -148,11 +148,40 @@ void layoutPad(int outW, int outH) {
   const float H = static_cast<float>(outH) / S;
 
   constexpr float kMargin = 20.0f;      // side inset
-  constexpr float kSquare = 60.0f;      // owner-picked target size
+  constexpr float kMinSquare = 60.0f;   // owner-picked target size, the floor
+  constexpr float kMaxSquare = 96.0f;   // guard only, see note below
   constexpr float kRowGap = 16.0f;      // vertical separation between rows
   constexpr float kPanelGap = 12.0f;    // breathing room under the panel
   constexpr float kHomeInset = 34.0f;   // never sink into the home indicator
   constexpr float kBelowPad = 24.0f;    // slack under the lower row
+
+  // The pad is a 5x2 grid of SQUARE cells: three singles on the upper row
+  // (columns 1/3/5) and two fused rockers on the lower one (columns 1-2 and
+  // 4-5), so a rocker is two cells wide. The cell is the largest square that
+  // fits five across the row, which is what makes the grid real rather than
+  // implied -- at a fixed 60 the row was edge-anchored and ~80pt of slack
+  // pooled in the middle gaps.
+  //
+  // The cell sets the band height (below), the band comes out of the panel's
+  // space, and the panel scale is floored to an integer
+  // (CROSSPOINT_SIM_PIXEL_EXACT) -- so a cell too big costs the page a whole
+  // scale step. kMaxSquare guards that, but on this app it never binds: the
+  // build is iPhone-only and portrait-only (TARGETED_DEVICE_FAMILY 1,
+  // UISupportedInterfaceOrientations = Portrait), so the column width runs
+  // 67pt (SE / 13 mini) to 80pt (16 Pro Max), and a sweep to 160pt regressed
+  // none of them.
+  //
+  // It exists because the margin is NOT universal. The panel is portrait
+  // whatever the device does -- the firmware has no landscape -- so a landscape
+  // window is wider but SHORTER, and the portrait page has less room, not more.
+  // On iPad that bites: with this band stacked below the panel, every iPad in
+  // landscape falls to 1x (a 264x396pt page), and only the 13" Pro can hold 2x,
+  // and only at a cell of 82 or less. If iPad (family 2) is ever enabled, the
+  // fix is not a smaller cell -- it is to put the pad BESIDE the panel in a
+  // landscape window, where the spare width is, so the band stops costing
+  // height at all.
+  const float kSquare =
+      SDL_max(kMinSquare, SDL_min((W - 2 * kMargin) / 5.0f, kMaxSquare));
 
   const int panelBottomPx = SimulatorOverlay::panelBottomPx();
   float upperY;
