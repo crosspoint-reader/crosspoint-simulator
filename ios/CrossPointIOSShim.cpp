@@ -190,12 +190,20 @@ bool anyOtherButtonDown(int except) {
 // five wide so the occupied cells land where they do, not because there are ten
 // controls:
 //
-//     Left    .     Power    .     Right
-//     Back  Select    .     Up     Down
+//     Back    .     Power    .      Up
+//     Left  Select   Right   .     Down
 //
-// The lower row sits on the bottom of the safe area rather than the physical
-// bottom edge: below that line is the home indicator, and a control there would
-// fight the system's own swipe.
+// The arrangement mirrors the chassis, not a gamepad: UP/DOWN are the X3's
+// physical SIDE-BUTTON pair (firmware calls BTN_UP the "left side button";
+// MappedInputManager keeps them fixed as page-turn/Up/Down), so they stack
+// vertically on the right edge where a thumb rests -- Up above Down. The
+// front-button group (Back, Confirm, Left, Right) fills the rest, with the
+// Left/Select/Right nav run contiguous on the lower row.
+//
+// The lower row sits kHomeInset above the physical bottom edge: below that is
+// the home indicator, and iOS both draws its swipe affordance there and eats
+// touches near it -- taps that land short of a control read as false taps, so
+// the pad keeps extra clearance beyond the bare safe-area minimum.
 void layoutPad(int outW, int outH) {
   const float S = g_ptScale;
   const float W = static_cast<float>(outW) / S;
@@ -203,8 +211,9 @@ void layoutPad(int outW, int outH) {
 
   constexpr float kMargin = 20.0f;     // side inset
   constexpr float kGap = 8.0f;         // minimum separation between targets
+  constexpr float kRowGap = 16.0f;     // vertical separation between the rows
   constexpr float kRow = 46.0f;        // >= the 44 pt minimum target height
-  constexpr float kHomeInset = 34.0f;  // home-indicator safe area
+  constexpr float kHomeInset = 52.0f;  // clearance over the home indicator
   constexpr int kCols = 5;
 
   const float colW = (W - 2 * kMargin - (kCols - 1) * kGap) / kCols;
@@ -212,20 +221,27 @@ void layoutPad(int outW, int outH) {
   for (int i = 0; i < kCols; i++) colX[i] = kMargin + i * (colW + kGap);
 
   const float lowerY = H - kHomeInset - kRow;
-  const float upperY = lowerY - kGap - kRow;
+  const float upperY = lowerY - kRowGap - kRow;
 
   auto place = [&](int idx, int col, float y) {
     g_pad[idx].rect = {colX[col] * S, y * S, colW * S, kRow * S};
   };
 
-  place(kPadLeft, 0, upperY);
+  place(kPadBack, 0, upperY);
   place(kPadPower, 2, upperY);
-  place(kPadRight, 4, upperY);
+  place(kPadUp, 4, upperY);
 
-  place(kPadBack, 0, lowerY);
+  place(kPadLeft, 0, lowerY);
   place(kPadConfirm, 1, lowerY);
-  place(kPadUp, 3, lowerY);
+  place(kPadRight, 2, lowerY);
   place(kPadDown, 4, lowerY);
+
+  // Reserve the pad's band (plus breathing room) out of the panel's space, so
+  // the panel -- and the button-hint bar the firmware draws along its bottom
+  // edge -- always ends above the pad instead of underneath it.
+  constexpr float kPadClearance = 12.0f;
+  SimulatorOverlay::setBottomInset(
+      static_cast<int>(static_cast<float>(outH) - (upperY - kPadClearance) * S));
 }
 
 // --- Appearance ------------------------------------------------------------
@@ -248,11 +264,15 @@ struct Palette {
   Uint8 faceDown[3];  // button face while held: systemGray4
 };
 
-constexpr Palette kLightPalette{{0xFF, 0xFF, 0xFF},
+// The field matches the panel's paper tone (HalDisplay's PanelPalette:
+// 2D2D2D-on-FBFBF9 light, E0E0DE-on-121212 dark — change them together), so
+// the page floats edgeless in the field in both appearances. The button greys
+// stay Apple's system ramp.
+constexpr Palette kLightPalette{{0xFB, 0xFB, 0xF9},
                                 {0xE5, 0xE5, 0xEA},
                                 {0xF2, 0xF2, 0xF7},
                                 {0xD1, 0xD1, 0xD6}};
-constexpr Palette kDarkPalette{{0x00, 0x00, 0x00},
+constexpr Palette kDarkPalette{{0x12, 0x12, 0x12},
                                {0x2C, 0x2C, 0x2E},
                                {0x1C, 0x1C, 0x1E},
                                {0x3A, 0x3A, 0x3C}};

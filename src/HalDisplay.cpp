@@ -165,9 +165,28 @@ void captureDueScreenshots() {
   }
 }
 
-uint32_t argbGray(uint8_t level) {
-  return 0xFF000000u | (static_cast<uint32_t>(level) << 16) |
-         (static_cast<uint32_t>(level) << 8) | level;
+// Panel palette: the 1bpp/AA framebuffer is presented as tinted ink on tinted
+// paper rather than raw #000-on-#FFF. One palette per polarity; "inverted"
+// (dark mode) swaps to light ink on dark paper, so the grayscale ramp needs no
+// separate 255-level flip -- the ink->paper lerp direction IS the inversion.
+// Values are shared with the iOS harness field colours (CrossPointIOSShim.cpp);
+// change them together.
+struct PanelPalette {
+  uint8_t ink[3];    // a fully-black source pixel
+  uint8_t paper[3];  // a fully-white source pixel
+};
+constexpr PanelPalette kPanelLight{{0x2D, 0x2D, 0x2D}, {0xFB, 0xFB, 0xF9}};
+constexpr PanelPalette kPanelDark{{0xE0, 0xE0, 0xDE}, {0x12, 0x12, 0x12}};
+
+// level: 0 = ink, 255 = paper (the pre-inversion grayscale convention).
+uint32_t panelColor(uint8_t level, const PanelPalette &p) {
+  uint32_t argb = 0xFF000000u;
+  for (int c = 0; c < 3; c++) {
+    const uint8_t v = static_cast<uint8_t>(
+        p.ink[c] + (static_cast<int>(p.paper[c]) - p.ink[c]) * level / 255);
+    argb |= static_cast<uint32_t>(v) << (16 - 8 * c);
+  }
+  return argb;
 }
 
 bool getBit(const uint8_t *buffer, int x, int y) {
@@ -177,12 +196,13 @@ bool getBit(const uint8_t *buffer, int x, int y) {
 }
 
 void renderBwPixels(const uint8_t *fb) {
-  const bool invert = display.isInverted();
+  const PanelPalette &pal = display.isInverted() ? kPanelDark : kPanelLight;
+  const uint32_t ink = panelColor(0, pal);
+  const uint32_t paper = panelColor(255, pal);
   for (int y = 0; y < HalDisplay::DISPLAY_HEIGHT; y++) {
     for (int x = 0; x < HalDisplay::DISPLAY_WIDTH; x++) {
       const bool white = getBit(fb, x, y);
-      pixelBuf[y * HalDisplay::DISPLAY_WIDTH + x] =
-          (white != invert) ? 0xFFFFFFFFu : 0xFF000000u;
+      pixelBuf[y * HalDisplay::DISPLAY_WIDTH + x] = white ? paper : ink;
     }
   }
   pendingPresent.store(true);
@@ -213,6 +233,7 @@ void copyPlane(std::array<uint8_t, HalDisplay::BUFFER_SIZE> &dst,
 }
 
 void composeGrayscalePreview() {
+  const PanelPalette &pal = display.isInverted() ? kPanelDark : kPanelLight;
   const uint8_t *bwBase = grayscalePreviewState.bwBaseValid
                               ? grayscalePreviewState.bwBase.data()
                               : display.getFrameBuffer();
@@ -226,12 +247,12 @@ void composeGrayscalePreview() {
           grayscalePreviewState.msbValid &&
           getBit(grayscalePreviewState.msbPlane.data(), x, y);
 
-      uint8_t level =
+      const uint8_t level =
           GrayscalePreview::previewLevel(baseWhite, msbActive, lsbActive);
 
-      if (display.isInverted())
-        level = static_cast<uint8_t>(255 - level);
-      pixelBuf[y * HalDisplay::DISPLAY_WIDTH + x] = argbGray(level);
+      // No 255-level flip for inversion: the dark palette's ink->paper
+      // direction already runs light-on-dark (see PanelPalette above).
+      pixelBuf[y * HalDisplay::DISPLAY_WIDTH + x] = panelColor(level, pal);
     }
   }
   pendingPresent.store(true);
@@ -295,13 +316,20 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
 
 namespace SimulatorOverlay {
 static DrawFn overlayDraw = nullptr;
-// Packed 0xRRGGBB. White by default, so a host that never calls setClearColor
-// (every desktop build) keeps the blank-page field it has always had.
-static std::atomic<uint32_t> clearColor{0xFFFFFFu};
+// Packed 0xRRGGBB. Defaults to the light panel's paper tone, so a host that
+// never calls setClearColor (every desktop build) shows the panel seamlessly
+// against its field.
+static std::atomic<uint32_t> clearColor{0xFBFBF9u};
+// Bottom band (device px) reserved for overlay chrome; see SimulatorOverlay.h.
+static std::atomic<int> bottomInset{0};
 void setDrawCallback(DrawFn fn) { overlayDraw = fn; }
 void setClearColor(unsigned char r, unsigned char g, unsigned char b) {
   clearColor.store((static_cast<uint32_t>(r) << 16) |
                    (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b));
+}
+void setBottomInset(int px) {
+  if (bottomInset.exchange(px > 0 ? px : 0) != px)
+    requestPresent();
 }
 void requestPresent() { pendingPresent.store(true); }
 // The single entry point for panel polarity (see SimulatorOverlay.h). The env
@@ -316,6 +344,11 @@ void setPanelDark(bool dark) {
       dark = false;
     // Anything else (including empty) is treated as unset: follow the caller.
   }
+  // The field follows the panel's paper tone, so the page has no visible edge
+  // in either polarity. Hosts that call setClearColor themselves (the iOS
+  // harness) use the same values, so the double write is idempotent.
+  const PanelPalette &pal = dark ? kPanelDark : kPanelLight;
+  setClearColor(pal.paper[0], pal.paper[1], pal.paper[2]);
   display.setInverted(dark);
 }
 } // namespace SimulatorOverlay
@@ -521,9 +554,38 @@ void HalDisplay::presentIfNeeded() {
   // and takes float rects; the arithmetic is unchanged.
   constexpr float kW = static_cast<float>(DISPLAY_WIDTH);
   constexpr float kH = static_cast<float>(DISPLAY_HEIGHT);
-  const SDL_FRect portraitDst = {(kH - kW) / 2.0f, kW / 2.0f - kH / 2.0f, kW,
-                                 kH};
-  const SDL_FRect landscapeDst = {0.0f, 0.0f, kW, kH};
+  SDL_FRect portraitDst = {(kH - kW) / 2.0f, kW / 2.0f - kH / 2.0f, kW, kH};
+  SDL_FRect landscapeDst = {0.0f, 0.0f, kW, kH};
+
+  // With a reserved bottom band (SimulatorOverlay::setBottomInset), SDL's
+  // letterbox cannot be used -- it always centres in the WHOLE output -- so
+  // logical presentation is dropped and the panel is fitted manually into the
+  // space above the band, in device pixels. The dst rect is landscape-shaped
+  // and centred on the panel's display centre in both orientations: for
+  // landscape it IS the display area, for portrait the rotation about its
+  // centre turns it into one.
+  const int inset = SimulatorOverlay::bottomInset.load();
+  const bool manualPlacement = inset > 0;
+  if (manualPlacement) {
+    SDL_SetRenderLogicalPresentation(sdl_renderer, 0, 0,
+                                     SDL_LOGICAL_PRESENTATION_DISABLED);
+    int outW = 0, outH = 0;
+    SDL_GetCurrentRenderOutputSize(sdl_renderer, &outW, &outH);
+    const bool portrait = isPortraitOrientation(orientation);
+    const float logW = portrait ? kH : kW;
+    const float logH = portrait ? kW : kH;
+    const float availH = SDL_max(1.0f, static_cast<float>(outH - inset));
+    float scale = SDL_min(static_cast<float>(outW) / logW, availH / logH);
+    // Keep the pixel-exact policy honest on this path too.
+    if (kLogicalPresentation == SDL_LOGICAL_PRESENTATION_INTEGER_SCALE &&
+        scale >= 1.0f)
+      scale = SDL_floorf(scale);
+    const float cx = static_cast<float>(outW) / 2.0f;
+    const float cy = availH / 2.0f;
+    portraitDst = {cx - kW * scale / 2.0f, cy - kH * scale / 2.0f, kW * scale,
+                   kH * scale};
+    landscapeDst = portraitDst;
+  }
 
   switch (orientation) {
   case GfxRenderer::Portrait:
