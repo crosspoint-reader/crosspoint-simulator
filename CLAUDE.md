@@ -125,9 +125,9 @@ like a screenshot of a screen that never changed.
   items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
   with no wrap-around — so `DOWN` x15 then `ENTER` reaches Settings regardless
   of how many books are listed.
-- Inside the reader the reader menu opens on **Confirm release**. Sending
-  `ENTER` while still on Home merely opens a book, which logs a page render and
-  is easily misread as the menu failing to open.
+- Inside the reader **Confirm does nothing** — there is no reader menu. Sending
+  `ENTER` while still on Home opens a book, which logs a page render; that is
+  the only thing ENTER does on either screen.
 - In Settings, `ENTER` on the first row cycles the category tab, so repeated
   `ENTER` + screenshot walks every tab.
 

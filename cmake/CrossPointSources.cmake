@@ -4,14 +4,14 @@
 # `pio run -e simulator -t compiledb`. Regenerate after any firmware change that
 # adds, removes, or renames a translation unit.
 #
-# firmware   : /workspace/crosspoint-reader
-# pinned at  : 4e5e54d14d1d52494e443f15c1bdbbed73079695
-# TU counts  : 147 firmware, 20 simulator (6 C, 161 C++)
+# firmware   : /Users/natebunnyfield/src/crosspoint-reader
+# pinned at  : 1d37cb851f6d3177119ceda746ef0db4d79cb593
+# TU counts  : 136 firmware, 20 simulator (6 C, 150 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "4e5e54d14d1d52494e443f15c1bdbbed73079695")
+set(CROSSPOINT_FIRMWARE_PIN "1d37cb851f6d3177119ceda746ef0db4d79cb593")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -128,17 +128,10 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/network/CrossPointWebServerActivity.cpp
   src/activities/network/NetworkModeSelectionActivity.cpp
   src/activities/network/WifiSelectionActivity.cpp
-  src/activities/reader/DictionaryDefinitionActivity.cpp
-  src/activities/reader/DictionaryWordSelectActivity.cpp
   src/activities/reader/EndOfBookOptions.cpp
   src/activities/reader/EpubReaderActivity.cpp
-  src/activities/reader/EpubReaderBookmarksActivity.cpp
-  src/activities/reader/EpubReaderChapterSelectionActivity.cpp
   src/activities/reader/EpubReaderFootnotesActivity.cpp
-  src/activities/reader/EpubReaderMenuActivity.cpp
-  src/activities/reader/EpubReaderPercentSelectionActivity.cpp
   src/activities/reader/KOReaderSyncActivity.cpp
-  src/activities/reader/QrDisplayActivity.cpp
   src/activities/reader/ReaderActivity.cpp
   src/activities/reader/TxtReaderActivity.cpp
   src/activities/reader/XtcReaderActivity.cpp
@@ -177,21 +170,17 @@ set(CROSSPOINT_FW_SOURCES
   src/util/BookmarkFile.cpp
   src/util/BookmarkUtil.cpp
   src/util/ButtonNavigator.cpp
-  src/util/DictZip.cpp
-  src/util/Dictionary.cpp
-  src/util/DictionaryRegistry.cpp
   src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
   src/util/OpdsFilename.cpp
   src/util/QrUtils.cpp
-  src/util/ScreenshotUtil.cpp
   src/util/StringUtils.cpp
   src/util/UrlUtils.cpp
 )
 
 # Firmware include dirs. Paths relative to CROSSPOINT_FIRMWARE_DIR.
 set(CROSSPOINT_FW_INCLUDE_DIRS
-  .pio/libdeps/simulator_x3/ArduinoJson/src
+  .pio/libdeps/simulator/ArduinoJson/src
   freeink-sdk/libs/ui/FreeInkUI/include
   freeink-sdk/libs/ui/FreeInkUI/src
   lib/EpdFont
@@ -230,7 +219,6 @@ set(CROSSPOINT_DEFINES
   LOG_LEVEL=2
   PNG_MAX_BUFFERED_PIXELS=16416
   SIMULATOR
-  SIMULATOR_DEVICE_X3
   USE_UTF8_LONG_NAMES=1
   XML_CONTEXT_BYTES=1024
   XML_GE=0
