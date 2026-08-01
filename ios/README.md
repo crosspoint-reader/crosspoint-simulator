@@ -286,21 +286,21 @@ code the pad now calls, driven through `CROSSPOINT_SIM_INPUT_SCRIPT`:
 - `6000:DOWN:150` (a tap) stepped `fontSize` 0 → 1 and left the family alone, so
   the edge path is not regressed and hold/tap still disambiguate.
 
-### Still open on the wake path: `rebootAsPowerWake()` cannot exec on iOS
+### Closed: the wake path no longer execs on iOS
 
-Waking from deep sleep is a process restart — `SimulatorLifecycle.cpp:61`
-`execvp(gArgv[0], gArgv)`, because a deep-sleep wake on the real device is a chip
-reset. The iOS sandbox denies `process-exec`, so on a device that call should
-fail and fall through to `std::perror("execvp"); _exit(1)` — the app dies instead
-of waking, and `_exit()` is itself reported as a crash (the reason
-`simulator_main.cpp` returns 0 rather than `_exit(0)` on iOS).
+This section previously described `rebootAsPowerWake()`'s `execvp()` as an open
+problem on iOS. It was closed by `10a8c5a` ("fix(ios): wake from deep sleep
+without exec"): `SimulatorLifecycle.h` defines `CROSSPOINT_SIM_REBOOT_IN_PROCESS`
+for `__APPLE__ && TARGET_OS_IPHONE`, and `SimulatorLifecycle.cpp` takes a
+`std::longjmp` back to the armed jump buffer before the `execvp()` line can be
+reached. The exec is still compiled into the iOS binary but is unreachable there.
 
-This is independent of the injection bug above and survives its fix: both the
-`syntheticButtonDown[]` scan and the `SDL_PollEvent` fallback in
-`HalGPIO::startDeepSleep()` funnel into the same `rebootAsPowerWake()`.
-**Unverified** — it has not been observed on a device or simulator here, and the
-iOS Simulator's weaker sandbox may permit the `exec` where a device would not.
-Confirm before designing around it.
+Leaving the stale text in place cost a later investigation real time — it is the
+first suspect anyone reads. The actual iOS wake bug was downstream of the jump:
+the firmware's inactivity clock was a `loop()`-local static, so it survived the
+longjmp holding its pre-sleep value and the first post-wake `loop()` immediately
+auto-slept again. Fixed in the firmware by hoisting it to file scope and
+resetting it in `setup()`, next to the same reset for `deepSleepInProgress`.
 
 ## Resolved along the way
 

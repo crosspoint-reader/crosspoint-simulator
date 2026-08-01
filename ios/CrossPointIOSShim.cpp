@@ -150,8 +150,12 @@ void layoutPad(int outW, int outH) {
   constexpr float kMargin = 20.0f;      // side inset
   constexpr float kMinSquare = 60.0f;   // owner-picked target size, the floor
   constexpr float kMaxSquare = 96.0f;   // guard only, see note below
-  constexpr float kRowGap = 16.0f;      // vertical separation between rows
-  constexpr float kPanelGap = 12.0f;    // breathing room under the panel
+  // ONE vertical gap, used both under the panel and between the two rows, so
+  // the pad reads as evenly spaced stack rather than three different rhythms.
+  // These were 12 and 16; keep them equal.
+  constexpr float kGap = 16.0f;
+  constexpr float kRowGap = kGap;       // row -> row
+  constexpr float kPanelGap = kGap;     // panel -> first row
   constexpr float kHomeInset = 34.0f;   // never sink into the home indicator
   constexpr float kBelowPad = 24.0f;    // slack under the lower row
 
@@ -466,7 +470,12 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
       break;
     }
 
+    // CANCELED alongside UP: iOS cancels touches for its own gestures (home
+    // indicator swipe, Control Center pull, an incoming call). Without this the
+    // slot stays latched down forever, and PadCore ignores every later press on
+    // it — a second, permanent way for POWER to stop working until force quit.
     case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_CANCELED:
       applyActions(g_core.fingerUp(e->tfinger.fingerID));
       break;
 
