@@ -331,6 +331,9 @@ void setBottomInset(int px) {
   if (bottomInset.exchange(px > 0 ? px : 0) != px)
     requestPresent();
 }
+// Written by presentIfNeeded (main thread) on the manual-placement path.
+static std::atomic<int> panelBottom{0};
+int panelBottomPx() { return panelBottom.load(); }
 void requestPresent() { pendingPresent.store(true); }
 // The single entry point for panel polarity (see SimulatorOverlay.h). The env
 // override is applied here, on every call, so a forced polarity survives any
@@ -580,11 +583,17 @@ void HalDisplay::presentIfNeeded() {
     if (kLogicalPresentation == SDL_LOGICAL_PRESENTATION_INTEGER_SCALE &&
         scale >= 1.0f)
       scale = SDL_floorf(scale);
+    // TOP-ALIGNED, not centred: the pad sits directly under the panel's
+    // bottom edge (published below), so slack space goes under the pad
+    // instead of splitting above and below the page.
+    const float topMargin = SDL_min(16.0f, (availH - logH * scale) / 2.0f);
     const float cx = static_cast<float>(outW) / 2.0f;
-    const float cy = availH / 2.0f;
+    const float cy = topMargin + logH * scale / 2.0f;
     portraitDst = {cx - kW * scale / 2.0f, cy - kH * scale / 2.0f, kW * scale,
                    kH * scale};
     landscapeDst = portraitDst;
+    SimulatorOverlay::panelBottom.store(
+        static_cast<int>(topMargin + logH * scale));
   }
 
   switch (orientation) {

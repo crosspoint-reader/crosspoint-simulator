@@ -33,13 +33,19 @@ void setClearColor(unsigned char r, unsigned char g, unsigned char b);
 void requestPresent();
 
 // Reserve the bottom `px` device pixels of the output for overlay chrome: the
-// panel is fitted and centred in the space ABOVE the band instead of the whole
-// output, so a button pad never overlaps panel content (the firmware draws its
-// own button-hint bar along the panel's bottom edge). 0 (the default) keeps
-// the plain SDL letterbox path, which is what every desktop build uses.
-// Honours the pixel-exact policy: with INTEGER_SCALE presentation the manual
-// fit also floors to an integer scale.
+// panel is fitted TOP-ALIGNED in the space ABOVE the band instead of centred
+// in the whole output, so a button pad can sit directly under the panel's
+// bottom edge without ever overlapping panel content (the firmware draws its
+// own button-hint bar along that edge). 0 (the default) keeps the plain SDL
+// letterbox path, which is what every desktop build uses. Honours the
+// pixel-exact policy: with INTEGER_SCALE presentation the manual fit also
+// floors to an integer scale.
 void setBottomInset(int px);
+
+// Where the panel's bottom edge landed on the last present, in device pixels
+// (0 until the first manual-placement present). The pad anchors to this so it
+// hugs the page for thumb reach instead of sinking to the screen bottom.
+int panelBottomPx();
 
 // Panel polarity driven by the host appearance: dark renders the panel
 // white-on-black through HalDisplay's inversion flag. A free hook rather than

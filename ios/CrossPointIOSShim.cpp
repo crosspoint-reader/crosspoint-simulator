@@ -126,59 +126,66 @@ void applyActions(const std::vector<PadCore::Action> &actions) {
 // All dimensions in points, converted once. HIG minimums are expressed in
 // points, so laying out in pixels would silently shrink the targets on a device
 // with a different scale factor.
-// Two rows of five slots, bottom-aligned. Blank slots stay empty -- the grid is
-// five wide so the occupied cells land where they do, not because there are ten
-// controls:
+// Two rows of 60 pt squares, anchored directly under the panel's bottom edge
+// (owner-approved mockup A + fused pairs, 2026-08-01):
 //
-//     Up      .     Power    .     Down
-//     Back  Select    .     Left   Right
+//     [Up]        [Power]        [Down]      <- side pair + power, spread
+//     [Back|Select]        [Left|Right]      <- front buttons, two fused
+//                                               rockers, matching the chassis
 //
-// The original grid with the pairs swapped (owner's ruling, 2026-07-31): the
-// UP/DOWN side pair sits wide on the upper row where LEFT/RIGHT used to be,
-// and LEFT/RIGHT take the old UP/DOWN slots on the lower right.
+// UP/DOWN are the X3's SIDE buttons (MappedInputManager keeps them fixed as
+// page-turn/Up/Down; main.cpp calls BTN_UP the "left side button").
+// BACK/SELECT/LEFT/RIGHT are the FRONT buttons (the remappable frontButton*
+// set). On the device each front pair is one rocker, so here each pair shares
+// an edge -- no gap inside a pair, a wide gap between pairs.
 //
-// The lower row sits kHomeInset above the physical bottom edge: below that is
-// the home indicator, and iOS both draws its swipe affordance there and eats
-// touches near it -- taps that land short of a control read as false taps, so
-// the pad keeps extra clearance beyond the bare safe-area minimum.
+// The pad hugs the panel (SimulatorOverlay::panelBottomPx) so thumbs rest at
+// the page, not at the screen's bottom edge; before the first present it
+// falls back to bottom-anchoring clear of the home indicator.
 void layoutPad(int outW, int outH) {
   const float S = g_ptScale;
   const float W = static_cast<float>(outW) / S;
   const float H = static_cast<float>(outH) / S;
 
-  constexpr float kMargin = 20.0f;     // side inset
-  constexpr float kGap = 8.0f;         // minimum separation between targets
-  constexpr float kRowGap = 16.0f;     // vertical separation between the rows
-  constexpr float kRow = 46.0f;        // >= the 44 pt minimum target height
-  constexpr float kHomeInset = 52.0f;  // clearance over the home indicator
-  constexpr int kCols = 5;
+  constexpr float kMargin = 20.0f;      // side inset
+  constexpr float kSquare = 60.0f;      // owner-picked target size
+  constexpr float kRowGap = 16.0f;      // vertical separation between rows
+  constexpr float kPanelGap = 12.0f;    // breathing room under the panel
+  constexpr float kHomeInset = 34.0f;   // never sink into the home indicator
+  constexpr float kBelowPad = 24.0f;    // slack under the lower row
 
-  const float colW = (W - 2 * kMargin - (kCols - 1) * kGap) / kCols;
-  float colX[kCols];
-  for (int i = 0; i < kCols; i++) colX[i] = kMargin + i * (colW + kGap);
+  const int panelBottomPx = SimulatorOverlay::panelBottomPx();
+  float upperY;
+  if (panelBottomPx > 0) {
+    upperY = static_cast<float>(panelBottomPx) / S + kPanelGap;
+    // Clamp: the pad must stay fully above the home-indicator zone.
+    const float maxUpper = H - kHomeInset - 2 * kSquare - kRowGap;
+    if (upperY > maxUpper) upperY = maxUpper;
+  } else {
+    upperY = H - kHomeInset - 2 * kSquare - kRowGap - kSquare / 2.0f;
+  }
+  const float lowerY = upperY + kSquare + kRowGap;
 
-  const float lowerY = H - kHomeInset - kRow;
-  const float upperY = lowerY - kRowGap - kRow;
-
-  auto place = [&](int idx, int col, float y) {
-    g_pad[idx].rect = {colX[col] * S, y * S, colW * S, kRow * S};
+  auto place = [&](int idx, float x, float y) {
+    g_pad[idx].rect = {x * S, y * S, kSquare * S, kSquare * S};
   };
 
-  place(kPadUp, 0, upperY);
-  place(kPadPower, 2, upperY);
-  place(kPadDown, 4, upperY);
+  // Upper row: side pair at the edges, power centred.
+  place(kPadUp, kMargin, upperY);
+  place(kPadPower, (W - kSquare) / 2.0f, upperY);
+  place(kPadDown, W - kMargin - kSquare, upperY);
 
-  place(kPadBack, 0, lowerY);
-  place(kPadConfirm, 1, lowerY);
-  place(kPadLeft, 3, lowerY);
-  place(kPadRight, 4, lowerY);
+  // Lower row: two fused rockers, flush left and right.
+  place(kPadBack, kMargin, lowerY);
+  place(kPadConfirm, kMargin + kSquare, lowerY);
+  place(kPadLeft, W - kMargin - 2 * kSquare, lowerY);
+  place(kPadRight, W - kMargin - kSquare, lowerY);
 
-  // Reserve the pad's band (plus breathing room) out of the panel's space, so
-  // the panel -- and the button-hint bar the firmware draws along its bottom
-  // edge -- always ends above the pad instead of underneath it.
-  constexpr float kPadClearance = 12.0f;
-  SimulatorOverlay::setBottomInset(
-      static_cast<int>(static_cast<float>(outH) - (upperY - kPadClearance) * S));
+  // Reserve a fixed band for the pad out of the panel's space. Fixed (not
+  // derived from upperY) because the panel's own placement depends on this
+  // inset -- a constant keeps the two from chasing each other.
+  SimulatorOverlay::setBottomInset(static_cast<int>(
+      (kPanelGap + 2 * kSquare + kRowGap + kBelowPad) * S));
 }
 
 // --- Appearance ------------------------------------------------------------
@@ -295,9 +302,14 @@ void fillRoundRect(SDL_Renderer *r, const SDL_FRect &b, float rad) {
 }
 
 void paintPad(SDL_Renderer *r, int outW, int outH) {
-  if (!g_padLaidOut) {
+  // Relayout when the panel's published bottom edge moves (first present,
+  // orientation change) as well as on size changes.
+  static int s_layoutPanelBottom = -1;
+  const int panelBottom = SimulatorOverlay::panelBottomPx();
+  if (!g_padLaidOut || panelBottom != s_layoutPanelBottom) {
     layoutPad(outW, outH);
     g_padLaidOut = true;
+    s_layoutPanelBottom = panelBottom;
   }
   const Palette &p = palette();
   const float S = g_ptScale;
