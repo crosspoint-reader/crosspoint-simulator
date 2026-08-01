@@ -199,13 +199,14 @@ void seedBundledFontFamilies() {
     const std::string to = std::string("fonts/") + family;
     ::mkdir("fonts", 0777);
     ::mkdir(to.c_str(), 0777);
+    std::vector<std::string> bundled;
     while (struct dirent *entry = ::readdir(fam)) {
       if (entry->d_name[0] == '.') continue;
       const std::string src = from + "/" + entry->d_name;
       const std::string dst = to + "/" + entry->d_name;
-      if (isDirectory(src.c_str()) || filesIdentical(src.c_str(), dst.c_str())) {
-        continue;
-      }
+      if (isDirectory(src.c_str())) continue;
+      bundled.emplace_back(entry->d_name);
+      if (filesIdentical(src.c_str(), dst.c_str())) continue;
       if (copyFile(src.c_str(), dst.c_str())) {
         SDL_Log("[harness] seeded %s", dst.c_str());
       } else {
@@ -213,6 +214,32 @@ void seedBundledFontFamilies() {
       }
     }
     ::closedir(fam);
+
+    // The bundle owns its families, including their SIZE SET: when a family's
+    // ramp changes (e.g. Junicode moving from 12-18pt to the harmonized
+    // 14-20pt), files the bundle no longer carries must go, or the family
+    // becomes a mixed-ramp hybrid of old and new builds — size stepping would
+    // silently switch design between sizes. Only bundled families are pruned,
+    // and only within their own directory.
+    DIR *have = ::opendir(to.c_str());
+    if (!have) continue;
+    while (struct dirent *entry = ::readdir(have)) {
+      if (entry->d_name[0] == '.') continue;
+      bool inBundle = false;
+      for (const std::string &name : bundled) {
+        if (name == entry->d_name) {
+          inBundle = true;
+          break;
+        }
+      }
+      if (inBundle) continue;
+      const std::string stale = to + "/" + entry->d_name;
+      if (isDirectory(stale.c_str())) continue;
+      if (::unlink(stale.c_str()) == 0) {
+        SDL_Log("[harness] pruned stale %s", stale.c_str());
+      }
+    }
+    ::closedir(have);
   }
 }
 
