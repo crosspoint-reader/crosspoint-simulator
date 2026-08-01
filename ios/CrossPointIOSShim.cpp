@@ -29,6 +29,12 @@
 // finger, which read as a stuck control and desynced the pad from the device.
 // Sleep is a real 400 ms hold now, exactly like the hardware.)
 //
+// The grabber is the one timed gesture on this surface, and it does not dent
+// that rule: it moves the pad's own chrome, injects nothing, and its finger is
+// claimed in padWatch before PadCore is consulted, so PadCore stays clock-free
+// and every BUTTON remains a straight passthrough. If a future gesture needs a
+// timer, it belongs out here for the same reason -- never in PadCore.
+//
 // WHY AN EVENT WATCH, NOT A POLL LOOP. HalGPIO::update() owns the SDL event pump
 // for the whole simulator and must keep owning it -- two pollers would split
 // events between them. SDL_AddEventWatch observes events as they are queued
@@ -105,6 +111,40 @@ SDL_WindowID g_windowId = 0;
 // tests/pad_core_test.cpp.
 PadCore g_core(kPadCount);
 
+// --- The grabber -----------------------------------------------------------
+//
+// A drag handle in the empty column right of POWER. Tap-hold it and both button
+// rows follow the finger down the field, so the pad can be moved under the
+// thumb without moving the page.
+//
+// IT IS NOT AN EIGHTH BUTTON. It never reaches applyActions(), never injects a
+// GPIO event, and PadCore never sees its finger -- padWatch claims the touch
+// before PadCore is consulted. That separation is what makes the hold legal at
+// all: PadCore is clock-free by construction so no BUTTON gesture can be
+// widened or delayed (a POWER tap-stretch once was, and read as a stuck
+// control). The grabber is chrome, so its timer lives out here and PadCore's
+// guarantee is untouched.
+//
+// THE PANEL DOES NOT MOVE, and neither does the reserved band -- the panel's
+// size is computed from that band, so a band that slid with the pad would
+// resize the page mid-drag. The rows just travel within the space they already
+// have: offset 0 is hugging the panel, and the maximum is where the lower row
+// reaches the home-indicator inset. layoutPad owns that clamp, because it is
+// the only place that knows where the panel ended up.
+SDL_FRect g_gripRect{};       // device px; hit-tested and painted
+float g_padOffsetY = 0.0f;    // points below the hug position
+float g_padOffsetMax = 0.0f;  // points, recomputed every layout
+SDL_FingerID g_gripFinger = 0;
+bool g_gripHeld = false;      // a finger is on the grabber
+bool g_gripDragging = false;  // the hold landed; rows are following
+Uint64 g_gripDownAtMs = 0;
+float g_gripStartYPx = 0.0f;
+float g_gripStartOffset = 0.0f;
+
+// Long enough that brushing the grabber on the way to DOWN cannot move the pad,
+// short enough that it does not feel stuck.
+constexpr Uint64 kGripHoldMs = 350;
+
 // The single translation point between the two layers. Called from the event
 // watch, which runs inside SDL_PumpEvents inside HalGPIO::update() -- i.e. after
 // beginFrame() has cleared the frame's edge latches and before the firmware
@@ -129,9 +169,14 @@ void applyActions(const std::vector<PadCore::Action> &actions) {
 // Two rows of 60 pt squares, anchored directly under the panel's bottom edge
 // (owner-approved mockup A + fused pairs, 2026-08-01):
 //
-//     [Up]        [Power]        [Down]      <- side pair + power, spread
-//     [Back|Select]        [Left|Right]      <- front buttons, two fused
-//                                               rockers, matching the chassis
+//     [Up]      [Power][ :: ][Down]          <- side pair + power, plus the
+//     [Back|Select]  [Left|Right]               grabber in the empty fourth
+//                                               column; front buttons are two
+//                                               fused rockers, as on the chassis
+//
+// Columns touch, so the grabber's column sits flush between POWER and DOWN --
+// it is drawn as bare dots with no ring precisely so that run of three cells
+// still reads as two buttons with a handle between them, not three buttons.
 //
 // UP/DOWN are the X3's SIDE buttons (MappedInputManager keeps them fixed as
 // page-turn/Up/Down; main.cpp calls BTN_UP the "left side button").
@@ -187,16 +232,25 @@ void layoutPad(int outW, int outH) {
   const float kSquare =
       SDL_max(kMinSquare, SDL_min((W - 2 * kMargin) / 5.0f, kMaxSquare));
 
+  // The pad must stay fully above the home-indicator zone, grabbed or not.
+  const float maxUpper = H - kHomeInset - 2 * kSquare - kRowGap;
+
   const int panelBottomPx = SimulatorOverlay::panelBottomPx();
   float upperY;
   if (panelBottomPx > 0) {
     upperY = static_cast<float>(panelBottomPx) / S + kPanelGap;
-    // Clamp: the pad must stay fully above the home-indicator zone.
-    const float maxUpper = H - kHomeInset - 2 * kSquare - kRowGap;
     if (upperY > maxUpper) upperY = maxUpper;
   } else {
     upperY = H - kHomeInset - 2 * kSquare - kRowGap - kSquare / 2.0f;
   }
+  // Apply the grabber's travel. Offset 0 is the hug position computed above;
+  // the ceiling is the home-indicator clamp, so the rows can slide down into
+  // the field's slack and no further. Clamped here rather than in the drag
+  // handler because this is the only place that knows where the panel landed.
+  g_padOffsetMax = SDL_max(0.0f, maxUpper - upperY);
+  g_padOffsetY = SDL_clamp(g_padOffsetY, 0.0f, g_padOffsetMax);
+  upperY += g_padOffsetY;
+
   const float lowerY = upperY + kSquare + kRowGap;
 
   auto place = [&](int idx, float x, float y) {
@@ -207,6 +261,12 @@ void layoutPad(int outW, int outH) {
   place(kPadUp, kMargin, upperY);
   place(kPadPower, (W - kSquare) / 2.0f, upperY);
   place(kPadDown, W - kMargin - kSquare, upperY);
+
+  // The grabber takes the empty fourth column, between POWER and DOWN. A full
+  // cell so the target clears the 44pt HIG minimum even though the dots drawn
+  // in it are small.
+  g_gripRect = {(kMargin + 3 * kSquare) * S, upperY * S, kSquare * S,
+                kSquare * S};
 
   // Lower row: two fused rockers, flush left and right.
   place(kPadBack, kMargin, lowerY);
@@ -420,6 +480,29 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
     setRGB(r, g_core.isDown(i) ? p.faceDown : p.face);
     fillRoundRect(r, inner, radius - hairline);
   }
+
+  // The grabber. Six dots and no ring, deliberately: every real control here is
+  // a ringed face, so a ringless handle cannot be misread as an eighth button.
+  // While dragging it takes a face behind the dots -- the same "moved towards
+  // the foreground" cue the buttons use for pressed, since the pad is the only
+  // thing on screen that can acknowledge the gesture.
+  if (g_gripRect.w > 0) {
+    if (g_gripDragging) {
+      setRGB(r, p.face);
+      fillRoundRect(r, g_gripRect, radius);
+    }
+    setRGB(r, p.faceDown);
+    const float dot = SDL_max(2.0f, 3.5f * S);
+    const float step = dot * 2.4f;
+    const float cx = g_gripRect.x + g_gripRect.w / 2.0f;
+    const float cy = g_gripRect.y + g_gripRect.h / 2.0f;
+    for (int row = -1; row <= 1; row++)
+      for (int col = 0; col < 2; col++) {
+        const SDL_FRect d{cx + (col ? step : -step) / 2.0f - dot / 2.0f,
+                          cy + row * step - dot / 2.0f, dot, dot};
+        fillRoundRect(r, d, dot / 2.0f);
+      }
+  }
 }
 
 int padHitTest(float x, float y) {
@@ -449,7 +532,25 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
   switch (e->type) {
     case SDL_EVENT_FINGER_DOWN: {
       if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
-      const int hit = padHitTest(e->tfinger.x * outW, e->tfinger.y * outH);
+      const float fx = e->tfinger.x * outW, fy = e->tfinger.y * outH;
+
+      // The grabber claims its touch BEFORE PadCore is consulted, so PadCore
+      // never learns this finger exists and stays a pure button machine. No
+      // action is produced here: nothing is injected, nothing is held.
+      if (g_gripRect.w > 0 && fx >= g_gripRect.x &&
+          fx < g_gripRect.x + g_gripRect.w && fy >= g_gripRect.y &&
+          fy < g_gripRect.y + g_gripRect.h) {
+        g_windowId = e->tfinger.windowID;
+        g_gripFinger = e->tfinger.fingerID;
+        g_gripHeld = true;
+        g_gripDragging = false;
+        g_gripDownAtMs = SDL_GetTicks();
+        g_gripStartYPx = fy;
+        g_gripStartOffset = g_padOffsetY;
+        break;
+      }
+
+      const int hit = padHitTest(fx, fy);
       if (hit >= 0) g_windowId = e->tfinger.windowID;
       applyActions(g_core.fingerDown(hit >= 0 ? hit : PadCore::kNoSlot,
                                      e->tfinger.fingerID));
@@ -457,6 +558,24 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     }
 
     case SDL_EVENT_FINGER_MOTION: {
+      if (g_gripHeld && e->tfinger.fingerID == g_gripFinger) {
+        if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
+        const float y = e->tfinger.y * outH;
+        if (!g_gripDragging) {
+          if (SDL_GetTicks() - g_gripDownAtMs < kGripHoldMs) break;
+          // Take the drag from where the finger is NOW. Baselining at
+          // finger-down instead would make the rows jump by however far it
+          // drifted while the hold was being satisfied.
+          g_gripDragging = true;
+          g_gripStartYPx = y;
+          g_gripStartOffset = g_padOffsetY;
+        }
+        g_padOffsetY = g_gripStartOffset + (y - g_gripStartYPx) / g_ptScale;
+        g_padLaidOut = false;  // layoutPad re-runs on the next paint, and clamps
+        SimulatorOverlay::requestPresent();
+        break;
+      }
+
       // Dragging off a control cancels it, matching how a system button behaves
       // and how a real key behaves when your thumb slides off it.
       const int slot = g_core.heldSlot(e->tfinger.fingerID);
@@ -476,6 +595,13 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     // it — a second, permanent way for POWER to stop working until force quit.
     case SDL_EVENT_FINGER_UP:
     case SDL_EVENT_FINGER_CANCELED:
+      if (g_gripHeld && e->tfinger.fingerID == g_gripFinger) {
+        // Drop. The rows stay where they were left; PadCore has nothing to
+        // release because it never saw this finger.
+        g_gripHeld = g_gripDragging = false;
+        SimulatorOverlay::requestPresent();
+        break;
+      }
       applyActions(g_core.fingerUp(e->tfinger.fingerID));
       break;
 
@@ -483,6 +609,9 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     // stuck POWER would read as a long press.
     case SDL_EVENT_WILL_ENTER_BACKGROUND:
     case SDL_EVENT_WINDOW_FOCUS_LOST:
+      // The grabber goes with it: iOS will not deliver the UP, so a held
+      // grabber would resume dragging on the next stray motion event.
+      g_gripHeld = g_gripDragging = false;
       applyActions(g_core.reset());
       break;
 
