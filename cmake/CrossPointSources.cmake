@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : 08d5bdee5239012ddfa00156cebd3f8fee6f561c
-# TU counts  : 123 firmware, 20 simulator (6 C, 137 C++)
+# pinned at  : 3b30b5316f19cff97f4601cb89c4f7e3947a49a2
+# TU counts  : 116 firmware, 20 simulator (6 C, 130 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "08d5bdee5239012ddfa00156cebd3f8fee6f561c")
+set(CROSSPOINT_FIRMWARE_PIN "3b30b5316f19cff97f4601cb89c4f7e3947a49a2")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -83,8 +83,6 @@ set(CROSSPOINT_FW_SOURCES
   lib/Memory/BuildScratch.cpp
   lib/MiniBidi/BidiUtils.cpp
   lib/MiniBidi/minibidi.c
-  lib/OpdsParser/OpdsParser.cpp
-  lib/OpdsParser/OpdsStream.cpp
   lib/PngToBmpConverter/PngToBmpConverter.cpp
   lib/Serialization/ObfuscationUtils.cpp
   lib/Serialization/PersistableStore.cpp
@@ -103,7 +101,6 @@ set(CROSSPOINT_FW_SOURCES
   src/CrossPointState.cpp
   src/FontInstaller.cpp
   src/MappedInputManager.cpp
-  src/OpdsServerStore.cpp
   src/ReaderFontSizes.cpp
   src/RecentBooksStore.cpp
   src/SdCardFontSystem.cpp
@@ -114,7 +111,6 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/boot_sleep/CalendarSleepScreen.cpp
   src/activities/boot_sleep/HolidayCalculator.cpp
   src/activities/boot_sleep/SleepActivity.cpp
-  src/activities/browser/OpdsBookBrowserActivity.cpp
   src/activities/home/CrashActivity.cpp
   src/activities/home/FileBrowserActivity.cpp
   src/activities/home/HomeActivity.cpp
@@ -135,8 +131,6 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/settings/FontDownloadActivity.cpp
   src/activities/settings/FontSelectionActivity.cpp
   src/activities/settings/LanguageSelectActivity.cpp
-  src/activities/settings/OpdsServerListActivity.cpp
-  src/activities/settings/OpdsSettingsActivity.cpp
   src/activities/settings/OtaUpdateActivity.cpp
   src/activities/settings/SdFirmwareUpdateActivity.cpp
   src/activities/settings/SettingsActivity.cpp
@@ -159,7 +153,6 @@ set(CROSSPOINT_FW_SOURCES
   src/util/ButtonNavigator.cpp
   src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
-  src/util/OpdsFilename.cpp
   src/util/QrUtils.cpp
   src/util/StringUtils.cpp
   src/util/UrlUtils.cpp
@@ -180,7 +173,6 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
   lib/Logging
   lib/Memory
   lib/MiniBidi
-  lib/OpdsParser
   lib/PngToBmpConverter
   lib/Serialization
   lib/Txt
