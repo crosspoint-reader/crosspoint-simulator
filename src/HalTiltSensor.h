@@ -51,6 +51,8 @@ public:
 
   bool isAvailable() const { return _available; }
   // Support both firmware HAL shapes while the repos are out of sync.
+  // Current firmware is portrait-only and passes no orientation.
+  void update(const uint8_t /*mode*/, const bool /*inReader*/) {}
   void update(const uint8_t /*mode*/, const uint8_t /*orientation*/, const bool /*inReader*/) {}
   void update(const uint8_t mode, const uint8_t /*direction*/, const uint8_t orientation, const bool inReader) {
     update(mode, orientation, inReader);
