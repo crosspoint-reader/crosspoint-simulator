@@ -190,15 +190,12 @@ bool anyOtherButtonDown(int except) {
 // five wide so the occupied cells land where they do, not because there are ten
 // controls:
 //
-//     Back    .     Power    .      Up
-//     Left  Select   Right   .     Down
+//     Up      .     Power    .     Down
+//     Back  Select    .     Left   Right
 //
-// The arrangement mirrors the chassis, not a gamepad: UP/DOWN are the X3's
-// physical SIDE-BUTTON pair (firmware calls BTN_UP the "left side button";
-// MappedInputManager keeps them fixed as page-turn/Up/Down), so they stack
-// vertically on the right edge where a thumb rests -- Up above Down. The
-// front-button group (Back, Confirm, Left, Right) fills the rest, with the
-// Left/Select/Right nav run contiguous on the lower row.
+// The original grid with the pairs swapped (owner's ruling, 2026-07-31): the
+// UP/DOWN side pair sits wide on the upper row where LEFT/RIGHT used to be,
+// and LEFT/RIGHT take the old UP/DOWN slots on the lower right.
 //
 // The lower row sits kHomeInset above the physical bottom edge: below that is
 // the home indicator, and iOS both draws its swipe affordance there and eats
@@ -227,14 +224,14 @@ void layoutPad(int outW, int outH) {
     g_pad[idx].rect = {colX[col] * S, y * S, colW * S, kRow * S};
   };
 
-  place(kPadBack, 0, upperY);
+  place(kPadUp, 0, upperY);
   place(kPadPower, 2, upperY);
-  place(kPadUp, 4, upperY);
+  place(kPadDown, 4, upperY);
 
-  place(kPadLeft, 0, lowerY);
+  place(kPadBack, 0, lowerY);
   place(kPadConfirm, 1, lowerY);
-  place(kPadRight, 2, lowerY);
-  place(kPadDown, 4, lowerY);
+  place(kPadLeft, 3, lowerY);
+  place(kPadRight, 4, lowerY);
 
   // Reserve the pad's band (plus breathing room) out of the panel's space, so
   // the panel -- and the button-hint bar the firmware draws along its bottom
