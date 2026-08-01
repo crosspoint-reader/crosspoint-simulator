@@ -148,32 +148,6 @@ if(CROSSPOINT_BUILD_FIRMWARE)
   # Firmware sources were written for a 32-bit MCU and are noisy on a 64-bit
   # host; the desktop env silences the same class of warning.
   target_compile_options(crosspoint_core PRIVATE -Wno-c++11-narrowing)
-
-  # Zen core: the same source set compiled again with CROSSPOINT_ZEN.
-  #
-  # This has to be a second LIBRARY, not just a define on a second app target.
-  # CROSSPOINT_ZEN is consumed by firmware translation units — main.cpp (boot
-  # target and screenshot combo) and EpubReaderActivity.cpp (reader menu,
-  # dictionary) — and those TUs live in here. Defining the macro on the app
-  # target would only reach the three harness files and produce something that
-  # links, launches, and is not zen.
-  #
-  # Off by default: it doubles the firmware compile (155 TUs built twice), and
-  # the TestFlight workflow only ships CrossPointX3. Turn it on for a zen build.
-  option(CROSSPOINT_BUILD_ZEN
-    "Also build the zen core and the CrossPointZen app target" OFF)
-  if(CROSSPOINT_BUILD_ZEN)
-    add_library(crosspoint_core_zen STATIC ${_sim_abs} ${_fw_abs})
-    target_include_directories(crosspoint_core_zen PUBLIC
-      ${CMAKE_CURRENT_SOURCE_DIR}/src
-      ${CMAKE_CURRENT_SOURCE_DIR}/ios
-      ${_fw_inc_abs})
-    target_compile_definitions(crosspoint_core_zen PUBLIC ${CROSSPOINT_DEFINES})
-    target_compile_definitions(crosspoint_core_zen PUBLIC CROSSPOINT_SIM_PIXEL_EXACT=1)
-    target_compile_definitions(crosspoint_core_zen PUBLIC CROSSPOINT_ZEN=1)
-    target_link_libraries(crosspoint_core_zen PUBLIC SDL3::SDL3)
-    target_compile_options(crosspoint_core_zen PRIVATE -Wno-c++11-narrowing)
-  endif()
 endif()
 
 if(IOS)

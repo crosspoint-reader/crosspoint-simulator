@@ -11,9 +11,9 @@
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>@CROSSPOINT_IOS_DISPLAY_NAME@</string>
+  <string>CrossPoint X3</string>
   <key>CFBundleDisplayName</key>
-  <string>@CROSSPOINT_IOS_DISPLAY_NAME@</string>
+  <string>CrossPoint X3</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <!-- Both are set from CMake so the deploy script can bump them without
