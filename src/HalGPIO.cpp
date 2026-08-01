@@ -53,6 +53,14 @@ static bool pressedThisFrame[NUM_BUTTONS] = {};
 static bool releasedThisFrame[NUM_BUTTONS] = {};
 static unsigned long buttonPressTime[NUM_BUTTONS] = {};
 static bool syntheticButtonDown[NUM_BUTTONS] = {};
+// Set by injectButtonDown, consumed only by the deep-sleep wake loop. An EDGE,
+// not a level: a fast tap's down and up can both land inside one event-pump
+// burst (a 1 ms scripted tap; iOS delivering queued FINGER_DOWN+FINGER_UP
+// after unlock), so by the time the sleep loop's 10 ms poll looks at
+// syntheticButtonDown[] the level is already gone and the wake is missed.
+// The latch survives until the sleep loop reads it. Regression test:
+// tests/test_sleep_wake.sh in the simulator repo.
+static std::atomic<bool> syntheticWakeEdge{false};
 static bool simulatorSleepRequested = false;
 
 namespace {
@@ -584,6 +592,7 @@ void HalGPIO::injectButtonDown(uint8_t buttonIndex) {
   // is never written for anything the host injects, so isPressed(),
   // getHeldTime() and getPowerButtonHeldTime() have nothing else to read.
   syntheticButtonDown[buttonIndex] = true;
+  syntheticWakeEdge.store(true);
   // Held-time calculations use SDL_GetTicks() for real keyboard events;
   // injected presses must use the same clock origin to avoid unsigned
   // underflow being mistaken for an immediate long press.
@@ -713,16 +722,20 @@ bool HalGPIO::isUsbConnected() const { return true; }
 bool HalGPIO::wasUsbStateChanged() const { return false; }
 void HalGPIO::startDeepSleep() {
   clearButtonState();
+  // The press that put the device to sleep set the wake edge on its way down;
+  // consume it so entering sleep does not instantly wake.
+  syntheticWakeEdge.store(false);
 
   while (true) {
     processSyntheticEvents();
     if (quitRequested.load())
       return;
-    for (int button = 0; button < NUM_BUTTONS; button++) {
-      if (syntheticButtonDown[button]) {
-        clearButtonState();
-        SimulatorLifecycle::rebootAsPowerWake();
-      }
+    // EDGE, not level: syntheticButtonDown[] can already be false again if the
+    // tap's down and up both arrived in this iteration's pump (see the latch's
+    // declaration comment). Any injected press since sleep began is a wake.
+    if (syntheticWakeEdge.exchange(false)) {
+      clearButtonState();
+      SimulatorLifecycle::rebootAsPowerWake();
     }
 
     SDL_Event e;

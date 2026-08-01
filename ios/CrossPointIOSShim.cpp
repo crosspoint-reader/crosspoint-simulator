@@ -22,10 +22,12 @@
 // up-on-lift, so it expresses a genuine hold -- which is what page-turn
 // autorepeat and long-press-to-sleep need.
 //
-// POWER is the one control whose GESTURE is widened, because a rectangle on
-// glass is not a key you can lean on: a tap holds the injected button past the
-// firmware's own sleep threshold instead of lifting with the finger. The device
-// layer still sees nothing but an ordinary long press. See kSleepHoldMs.
+// PURE PASSTHROUGH, enforced by construction: the finger->button decisions
+// live in PadCore (ios/PadCore.h), whose API cannot express time, so no
+// gesture is ever widened, stretched, or delayed. (A POWER "tap-to-sleep"
+// stretch used to live here; it kept the injected button down 600 ms past the
+// finger, which read as a stuck control and desynced the pad from the device.
+// Sleep is a real 400 ms hold now, exactly like the hardware.)
 //
 // WHY AN EVENT WATCH, NOT A POLL LOOP. HalGPIO::update() owns the SDL event pump
 // for the whole simulator and must keep owning it -- two pollers would split
@@ -51,6 +53,7 @@
 #include <cstdint>
 
 #include "HalGPIO.h"
+#include "PadCore.h"
 #include "SimulatorOverlay.h"
 
 namespace {
@@ -78,8 +81,6 @@ struct PadButton {
   uint8_t button;  // HalGPIO::BTN_*
   const char *name;
   SDL_FRect rect{};
-  bool down = false;
-  SDL_FingerID finger = 0;
 };
 
 PadButton g_pad[] = {
@@ -99,86 +100,25 @@ bool g_padLaidOut = false;
 float g_ptScale = 3.0f;
 SDL_WindowID g_windowId = 0;
 
+// All finger->button decisions. The SDL adapter below owns NO button state:
+// PadCore decides, applyActions() injects. Unit-tested in
+// tests/pad_core_test.cpp.
+PadCore g_core(kPadCount);
+
 // The single translation point between the two layers. Called from the event
 // watch, which runs inside SDL_PumpEvents inside HalGPIO::update() -- i.e. after
 // beginFrame() has cleared the frame's edge latches and before the firmware
 // reads them, exactly the window the SDL keyboard path writes in.
-void injectButton(int padIndex, bool down) {
-  if (down)
-    gpio.injectButtonDown(g_pad[padIndex].button);
-  else
-    gpio.injectButtonUp(g_pad[padIndex].button);
-}
-
-// --- POWER: a tap sleeps, as well as a hold --------------------------------
-//
-// THE DEVICE SIDE IS A HOLD AND STAYS A HOLD. The firmware sleeps only once
-// getPowerButtonHeldTime() passes SETTINGS.getPowerButtonDuration()
-// (crosspoint-reader src/main.cpp:573-582). Nothing else on the device stops
-// it: there is no power-off anywhere in the firmware or the SDK, because on an
-// ESP32-C3 the only stop state is deep sleep (lib/hal/HalPowerManager.cpp:94)
-// and waking from it is a chip reset.
-//
-// THE PHONE SIDE IS A TAP. A hardware key you can find by feel and lean on is
-// not a rectangle on glass. A screen control that needs half a second of
-// pressure before anything happens at all does not read as deliberate, it reads
-// as broken -- there is no click, no travel and no detent to tell you it is
-// working, and the pad is unlabelled, so nothing else offers to explain it.
-//
-// So the harness widens the GESTURE without inventing a device behaviour: on a
-// tap the injected button STAYS DOWN until it has passed the firmware's own
-// threshold, then lifts. HalGPIO sees one ordinary long press and the firmware
-// runs its ordinary sleep path -- there is no second sleep mechanism here, and
-// nothing in this file knows what sleep is. A real hold needs none of this: it
-// passes the threshold before the finger lifts.
-//
-// kSleepHoldMs is read off the firmware rather than invented. 400ms is the
-// largest value getPowerButtonDuration() can return (it is 400, or 10 when
-// Settings > Controls > "Short power button" is set to Sleep --
-// src/CrossPointSettings.h:309-311), and the firmware samples it once per
-// loop() iteration, so the remaining 200ms is margin for a slow frame: a page
-// render holds loop() far longer than its 1ms idle delay.
-constexpr Uint32 kSleepHoldMs = 600;
-
-Uint64 g_powerPressedAt = 0;
-Uint32 g_deferredReleaseEvent = 0;  // SDL_RegisterEvents type; 0 until begin()
-SDL_TimerID g_deferredReleaseTimer = 0;
-Sint32 g_deferredReleaseGeneration = 0;
-
-// Runs on SDL's timer thread, so it deliberately does NOT touch HalGPIO. Every
-// other injection in this file happens on the thread that pumps events, and the
-// three arrays behind injectButtonUp are not synchronised. Pushing an event is
-// the thread-safe half; padWatch performs the injection when the event is
-// pumped, on the same thread as everything else.
-//
-// The generation rides in the event rather than being read from the global here,
-// so the timer thread reads nothing the event thread writes.
-Uint32 SDLCALL deferredReleaseFired(void *userdata, SDL_TimerID, Uint32) {
-  if (g_deferredReleaseEvent != 0) {
-    SDL_Event e;
-    SDL_zero(e);
-    e.type = g_deferredReleaseEvent;
-    e.user.code = static_cast<Sint32>(reinterpret_cast<intptr_t>(userdata));
-    SDL_PushEvent(&e);
+void applyActions(const std::vector<PadCore::Action> &actions) {
+  for (const PadCore::Action &a : actions) {
+    if (a.type == PadCore::Action::Press)
+      gpio.injectButtonDown(g_pad[a.slot].button);
+    else
+      gpio.injectButtonUp(g_pad[a.slot].button);
+    SDL_Log("[harness] %s %s", g_pad[a.slot].name,
+            a.type == PadCore::Action::Press ? "down" : "up");
   }
-  return 0;  // one-shot
-}
-
-void cancelDeferredRelease() {
-  if (g_deferredReleaseTimer) {
-    SDL_RemoveTimer(g_deferredReleaseTimer);
-    g_deferredReleaseTimer = 0;
-  }
-  // Bumped unconditionally: a timer that has already fired cannot be removed,
-  // and its event may still be sitting in the queue. The generation is what
-  // stops that stale event from cutting short a press made since.
-  g_deferredReleaseGeneration++;
-}
-
-bool anyOtherButtonDown(int except) {
-  for (int i = 0; i < kPadCount; i++)
-    if (i != except && g_pad[i].down) return true;
-  return false;
+  if (!actions.empty()) SimulatorOverlay::requestPresent();
 }
 
 // --- Layout ----------------------------------------------------------------
@@ -366,14 +306,16 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
 
   // A hairline ring with the face inset inside it. The ring stays put while
   // held, so the face changing tone reads as the control moving rather than as
-  // the control being redrawn.
-  for (const PadButton &b : g_pad) {
+  // the control being redrawn. Pressed paint comes straight from PadCore's
+  // finger state -- the moment no finger holds a control, it paints released.
+  for (int i = 0; i < kPadCount; i++) {
+    const PadButton &b = g_pad[i];
     setRGB(r, p.hairline);
     fillRoundRect(r, b.rect, radius);
 
     const SDL_FRect inner{b.rect.x + hairline, b.rect.y + hairline,
                           b.rect.w - 2 * hairline, b.rect.h - 2 * hairline};
-    setRGB(r, b.down ? p.faceDown : p.face);
+    setRGB(r, g_core.isDown(i) ? p.faceDown : p.face);
     fillRoundRect(r, inner, radius - hairline);
   }
 }
@@ -384,52 +326,6 @@ int padHitTest(float x, float y) {
     if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return i;
   }
   return -1;
-}
-
-void releaseButton(int i) {
-  if (!g_pad[i].down) return;
-  // Whatever the reason for this release -- finger, drag-off, backgrounding or
-  // the deferred timer itself -- any pending deferred release is now spent.
-  if (i == kPadPower) cancelDeferredRelease();
-  g_pad[i].down = false;
-  injectButton(i, false);
-  SimulatorOverlay::requestPresent();
-  SDL_Log("[harness] %s up", g_pad[i].name);
-}
-
-// Called when the finger leaves POWER. Returns true if the lift was a tap and
-// the button has been LEFT DOWN to finish becoming a hold; the caller must then
-// not release it.
-//
-// The control keeps its pressed appearance for that window. That is not a
-// cosmetic choice -- the device's button really is still down -- and it is the
-// only feedback that a tap was taken at all, since the sleep screen does not
-// appear until the firmware crosses its threshold.
-//
-// Every failure here falls back to releasing normally, so the worst case is the
-// old hold-only behaviour rather than a button stuck down.
-bool holdPowerForSleep() {
-  if (g_deferredReleaseEvent == 0) return false;
-  // A tap that is part of a chord must not be stretched. POWER+DOWN is the
-  // firmware's screenshot combo (main.cpp:543-552), and it is the POWER RELEASE
-  // that ends it (main.cpp:554-563); holding POWER past the finger would leave
-  // the combo latched and suppress the release the firmware is waiting for.
-  if (anyOtherButtonDown(kPadPower)) return false;
-  const Uint64 held = SDL_GetTicks() - g_powerPressedAt;
-  if (held >= kSleepHoldMs) return false;  // already a hold; nothing to add
-
-  cancelDeferredRelease();  // also advances the generation used below
-  g_deferredReleaseTimer = SDL_AddTimer(
-      kSleepHoldMs - static_cast<Uint32>(held), deferredReleaseFired,
-      reinterpret_cast<void *>(
-          static_cast<intptr_t>(g_deferredReleaseGeneration)));
-  if (!g_deferredReleaseTimer) {
-    SDL_Log("[harness] SDL_AddTimer failed: %s", SDL_GetError());
-    return false;
-  }
-  SDL_Log("[harness] POWER tap (%llums) held to %ums",
-          static_cast<unsigned long long>(held), kSleepHoldMs);
-  return true;
 }
 
 // Finger coordinates arrive normalised; the pad needs pixels, and the harness
@@ -452,50 +348,36 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     case SDL_EVENT_FINGER_DOWN: {
       if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
       const int hit = padHitTest(e->tfinger.x * outW, e->tfinger.y * outH);
-      if (hit < 0 || g_pad[hit].down) break;
-      g_windowId = e->tfinger.windowID;
-      g_pad[hit].down = true;
-      g_pad[hit].finger = e->tfinger.fingerID;
-      if (hit == kPadPower) g_powerPressedAt = SDL_GetTicks();
-      injectButton(hit, true);
-      SimulatorOverlay::requestPresent();
-      SDL_Log("[harness] %s down", g_pad[hit].name);
+      if (hit >= 0) g_windowId = e->tfinger.windowID;
+      applyActions(g_core.fingerDown(hit >= 0 ? hit : PadCore::kNoSlot,
+                                     e->tfinger.fingerID));
       break;
     }
 
     case SDL_EVENT_FINGER_MOTION: {
       // Dragging off a control cancels it, matching how a system button behaves
       // and how a real key behaves when your thumb slides off it.
+      const int slot = g_core.heldSlot(e->tfinger.fingerID);
+      if (slot == PadCore::kNoSlot) break;
       if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
       const float x = e->tfinger.x * outW;
       const float y = e->tfinger.y * outH;
-      for (int i = 0; i < kPadCount; i++) {
-        if (!g_pad[i].down || g_pad[i].finger != e->tfinger.fingerID) continue;
-        const SDL_FRect &r = g_pad[i].rect;
-        if (x < r.x || x >= r.x + r.w || y < r.y || y >= r.y + r.h)
-          releaseButton(i);
-        break;
-      }
+      const SDL_FRect &r = g_pad[slot].rect;
+      if (x < r.x || x >= r.x + r.w || y < r.y || y >= r.y + r.h)
+        applyActions(g_core.fingerLeftSlot(e->tfinger.fingerID));
       break;
     }
 
-    case SDL_EVENT_FINGER_UP: {
-      for (int i = 0; i < kPadCount; i++) {
-        if (!g_pad[i].down || g_pad[i].finger != e->tfinger.fingerID) continue;
-        // POWER may outlive the finger; see holdPowerForSleep.
-        if (i != kPadPower || !holdPowerForSleep()) releaseButton(i);
-        break;
-      }
+    case SDL_EVENT_FINGER_UP:
+      applyActions(g_core.fingerUp(e->tfinger.fingerID));
       break;
-    }
 
     // Backgrounding must not leave a key stuck down: the finger is gone, and a
     // stuck POWER would read as a long press.
     case SDL_EVENT_WILL_ENTER_BACKGROUND:
-    case SDL_EVENT_WINDOW_FOCUS_LOST: {
-      for (int i = 0; i < kPadCount; i++) releaseButton(i);
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+      applyActions(g_core.reset());
       break;
-    }
 
     // The pad is laid out from the output size, so a size change invalidates it.
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
@@ -504,14 +386,7 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
       break;
     }
 
-    // The end of a POWER tap's borrowed hold. Not a case label: the type is
-    // assigned at runtime by SDL_RegisterEvents. The generation check discards
-    // an event whose timer was overtaken by a release that already happened.
     default:
-      if (g_deferredReleaseEvent != 0 && e->type == g_deferredReleaseEvent &&
-          e->user.code == g_deferredReleaseGeneration) {
-        releaseButton(kPadPower);
-      }
       break;
   }
   return true;  // never filter anything out
@@ -526,6 +401,14 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
 // SDL-facing code in this file cannot be.
 
 void CrossPointHarness_begin() {
+  // IDEMPOTENT ACROSS WAKES. On iOS a deep-sleep wake longjmps back through
+  // setup() (SimulatorLifecycle, CROSSPOINT_SIM_REBOOT_IN_PROCESS), which
+  // calls this again. Event watches must be registered exactly once: each
+  // SDL_AddEventWatch call stacks another live callback, so N wakes would run
+  // every finger event through N watches. State refreshes (theme, layout,
+  // released buttons) re-run every call; registrations do not.
+  static bool s_watchesInstalled = false;
+
   // Touches must arrive as finger events only. Left on, SDL also synthesises
   // mouse events from the same touch, and HalGPIO consumes mouse events.
   SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -547,29 +430,26 @@ void CrossPointHarness_begin() {
 
   SimulatorOverlay::setDrawCallback(paintPad);
 
+  // A wake begins with no fingers on glass; drop any state a pre-sleep touch
+  // left behind, and relayout against the (possibly rotated) window.
+  applyActions(g_core.reset());
+  g_padLaidOut = false;
+
   // Appearance. SDL_Init has already run (HalDisplay::begin calls it), so the
   // theme is populated and can be read straight away; the watch keeps it current
   // if the user flips the system between light and dark while the app is up.
   applyTheme();
-  if (!SDL_AddEventWatch(themeWatch, nullptr))
-    SDL_Log("[harness] theme watch failed: %s", SDL_GetError());
   SDL_Log("[harness] appearance: %s", g_dark ? "dark" : "light");
 
   SimulatorOverlay::requestPresent();
 
-  // The POWER tap's deferred release travels as a registered user event so the
-  // injection lands on the pumping thread. Registered before the watch, since
-  // the watch compares against it. 0 means registration failed, and every user
-  // of it falls back to releasing POWER with the finger.
-  g_deferredReleaseEvent = SDL_RegisterEvents(1);
-  if (g_deferredReleaseEvent == 0 ||
-      g_deferredReleaseEvent == static_cast<Uint32>(-1)) {
-    g_deferredReleaseEvent = 0;
-    SDL_Log("[harness] SDL_RegisterEvents failed; POWER tap-to-sleep disabled");
+  if (!s_watchesInstalled) {
+    if (!SDL_AddEventWatch(themeWatch, nullptr))
+      SDL_Log("[harness] theme watch failed: %s", SDL_GetError());
+    if (!SDL_AddEventWatch(padWatch, nullptr))
+      SDL_Log("[harness] SDL_AddEventWatch failed: %s", SDL_GetError());
+    else
+      SDL_Log("[harness] button pad installed");
+    s_watchesInstalled = true;
   }
-
-  if (!SDL_AddEventWatch(padWatch, nullptr))
-    SDL_Log("[harness] SDL_AddEventWatch failed: %s", SDL_GetError());
-  else
-    SDL_Log("[harness] button pad installed");
 }
