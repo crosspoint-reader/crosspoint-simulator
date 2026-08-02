@@ -70,12 +70,6 @@ static void applyKeepScreenAwake() {
   }
 }
 
-#if CROSSPOINT_SIM_IOS
-// Survives the wake longjmp, unlike a local, so the harness is installed once
-// no matter how many times setup() re-runs.
-static bool gHarnessInstalled = false;
-#endif
-
 int main(int argc, char **argv) {
   SimulatorLifecycle::initProcessArgs(argv);
 #if CROSSPOINT_SIM_IOS
@@ -94,12 +88,17 @@ int main(int argc, char **argv) {
   setup();
 #if CROSSPOINT_SIM_IOS
   // After setup(), because installing the gesture event watch needs SDL
-  // initialised and HalDisplay::begin() is what calls SDL_Init. Guarded so a
-  // wake does not install a second watch.
-  if (!gHarnessInstalled) {
-    CrossPointHarness_begin();
-    gHarnessInstalled = true;
-  }
+  // initialised and HalDisplay::begin() is what calls SDL_Init.
+  //
+  // CALLED ON EVERY WAKE, deliberately not gated here. The function splits its
+  // own work: registrations happen once (its s_watchesInstalled guard, so N
+  // wakes cannot stack N event watches), while the state refreshes -- pad
+  // reset, relayout, window scale, and the appearance -- re-run every call
+  // because a wake is exactly when they have gone stale. A caller-side gate
+  // used to skip the whole function after the first setup(), which made that
+  // internal guard unreachable and meant a wake landed with the pre-sleep
+  // appearance and layout still applied.
+  CrossPointHarness_begin();
 #endif
   // Startup application. setup() has loaded settings.json by now, and SDL is
   // initialised (HalDisplay::begin calls SDL_Init). Also covers the iOS wake
@@ -115,6 +114,14 @@ int main(int argc, char **argv) {
     // Pick up a mid-run toggle from the Settings screen. No-op unless the value
     // actually changed; see applyKeepScreenAwake().
     applyKeepScreenAwake();
+#if CROSSPOINT_SIM_IOS
+    // Follow the system light/dark appearance, and repaint after a foreground
+    // return (iOS throws away frames presented into that transition, and this
+    // app presents too rarely to make another by itself). Same shape as
+    // applyKeepScreenAwake above and here for the same reason: edge-triggered
+    // inside, main thread only, no present forced unless something changed.
+    CrossPointHarness_perFrame();
+#endif
     // SDL must be driven from the main thread on macOS.
     // The render task writes pixels and sets pendingPresent; we flush them
     // here.

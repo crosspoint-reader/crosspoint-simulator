@@ -58,6 +58,7 @@
 
 #include <cstdint>
 
+#include "CrossPointAppearance.h"
 #include "HalGPIO.h"
 #include "PadCore.h"
 #include "SimulatorOverlay.h"
@@ -358,8 +359,24 @@ const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
 //
 // Known cost, accepted for now: inversion is polarity-blind, so book covers
 // and other images render as negatives in dark mode.
+// The live appearance. UIKit first, SDL only as a fallback -- SDL's theme is a
+// cache refreshed from a deprecated callback that an SDL app does not reliably
+// receive, so it is stale exactly when it matters. See CrossPointAppearance.h.
+bool systemIsDark() {
+  const int uikit = CrossPointAppearance_isDark();
+  if (uikit >= 0) return uikit != 0;
+  return SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+}
+
+// What applyTheme last published. -1 = nothing yet, so the first call always
+// applies. Read by pollAppearance to stay edge-triggered; kept here rather than
+// as a local static in the poll so that applyTheme's other callers (startup and
+// the SDL theme watch) also satisfy the edge and cannot cause a double apply.
+int g_appliedDark = -1;
+
 void applyTheme() {
-  g_dark = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+  g_dark = systemIsDark();
+  g_appliedDark = g_dark ? 1 : 0;
   const Palette &p = palette();
   SimulatorOverlay::setClearColor(p.field[0], p.field[1], p.field[2]);
   SimulatorOverlay::setPanelDark(g_dark);
@@ -371,14 +388,106 @@ void applyTheme() {
   SimulatorOverlay::requestPresent();
 }
 
-// A watch of its own, deliberately not a case inside padWatch: this is a
-// painting concern and reads no input. SDL raises the theme change from UIKit's
-// traitCollectionDidChange on the UI thread, and applyTheme only writes a flag
-// and a handful of atomics -- no renderer call happens here; the reconvert and
-// repaint both run later on the main thread inside presentIfNeeded.
-bool SDLCALL themeWatch(void * /*userdata*/, SDL_Event *e) {
-  if (e->type == SDL_EVENT_SYSTEM_THEME_CHANGED) applyTheme();
+// When the app last returned to the foreground, on the SDL_GetTicks clock, or 0
+// once the settle window below has elapsed. See presentationWatch.
+Uint64 g_foregroundAt = 0;
+
+// A watch of its own, deliberately not a case inside padWatch: everything here
+// is a painting concern and none of it reads input. Both cases only write a
+// flag and a handful of atomics -- no renderer call happens on this thread; the
+// reconvert and the repaint run later on the main thread inside
+// presentIfNeeded.
+bool SDLCALL presentationWatch(void * /*userdata*/, SDL_Event *e) {
+  switch (e->type) {
+  case SDL_EVENT_SYSTEM_THEME_CHANGED:
+    // SDL raises this from UIKit's traitCollectionDidChange. Kept because it
+    // costs nothing and is the correct mechanism, but it is not load-bearing
+    // any more -- pollAppearance below reads UIKit directly every frame.
+    applyTheme();
+    break;
+  case SDL_EVENT_DID_ENTER_FOREGROUND:
+    g_foregroundAt = SDL_GetTicks();
+    SimulatorOverlay::requestPresent();
+    break;
+  default:
+    break;
+  }
   return true;  // never filter anything out
+}
+
+// BELT AND BRACES for the theme case of the watch above.
+//
+// SDL raises SDL_EVENT_SYSTEM_THEME_CHANGED from UIKit's traitCollectionDidChange
+// on its own view controller, which is deprecated as of iOS 17 (Apple's
+// replacement is registerForTraitChanges:withHandler:) and which UIKit only
+// delivers as part of a view update pass -- something an SDL app, drawing
+// straight through Metal, has no reason to run.
+//
+// HONEST ABOUT WHAT WAS MEASURED, because the comment is worth more than the
+// theory: on iOS 26.5 that callback still fires, and SDL's cached theme was
+// never once observed disagreeing with UIKit (sampled at 1 Hz across repeated
+// flips, including flips made while backgrounded). So this poll is not
+// correcting a wrong answer today -- it is removing the dependency on a
+// deprecated callback, and it applies the change within one frame of the app
+// resuming rather than up to a second later, which is when SDL's event arrived.
+// The watch stays installed for the same reason in reverse: it costs nothing and
+// it is the right mechanism if SDL ever adopts registerForTraitChanges.
+//
+// EDGE-TRIGGERED, and it has to be. applyTheme writes atomics and calls
+// requestPresent(); running it every frame would force a present every frame on
+// a panel whose whole presentation model assumes it presents rarely. The steady
+// state here is one UIKit read and an integer compare.
+//
+// Main thread only -- it is called from main()'s loop alongside presentIfNeeded()
+// for the same reason that one is. It reads no SDL events, so HalGPIO keeps sole
+// ownership of the pump, and it holds no timer, so nothing here can drift into
+// PadCore's clock-free territory.
+void pollAppearance() {
+  const int want = systemIsDark() ? 1 : 0;
+  if (want == g_appliedDark) return;
+  applyTheme();
+  SDL_Log("[harness] appearance -> %s", g_dark ? "dark" : "light");
+}
+
+// THE FIRST FRAMES AFTER A FOREGROUND RETURN ARE THROWN AWAY, so keep asking.
+//
+// This is the half of the stale-appearance bug that detection alone does not
+// fix, and it is not appearance-specific: iOS suspends the process while the app
+// is backgrounded and shows a snapshot of the last frame during the return
+// transition, and a frame presented into that transition never reaches the
+// glass. Measured on iOS 26.5, with the presentation path instrumented:
+// SDL_RenderPresent returns success (driver=metal) at resume+65 ms and the
+// screen keeps the pre-background image; the same present a second or so later
+// lands. An app that redraws continuously never notices, because its next frame
+// is a sixtieth of a second away. This one presents ONLY when the panel changes,
+// so the discarded frame is the only frame there will be, and the stale image
+// stands until the user touches a control -- which is exactly the reported
+// symptom.
+//
+// So: after SDL_EVENT_DID_ENTER_FOREGROUND, re-ask for a present on a slow
+// cadence until the window has settled. Each one re-uploads a cached frame on an
+// otherwise idle screen; a dozen of them, once per foreground return, is not a
+// cost worth optimising. The window is bounded and clears itself.
+//
+// The constants are measured, not guessed: repaints at 200 ms intervals were
+// logged against timed screenshots, the screen had caught up by the +1 s
+// screenshot, and 2 s leaves margin for hardware slower than the Simulator.
+// Do not tighten these to the measured minimum -- the failure mode is silent and
+// only visible to the user.
+constexpr Uint64 kForegroundSettleMs = 2000;
+constexpr Uint64 kForegroundRepaintMs = 200;
+
+void repaintAfterForeground() {
+  if (g_foregroundAt == 0) return;  // steady state: one load and a compare
+  const Uint64 now = SDL_GetTicks();
+  if (now - g_foregroundAt > kForegroundSettleMs) {
+    g_foregroundAt = 0;
+    return;
+  }
+  static Uint64 lastRepaint = 0;
+  if (now - lastRepaint < kForegroundRepaintMs) return;
+  lastRepaint = now;
+  SimulatorOverlay::requestPresent();
 }
 
 // --- Painting --------------------------------------------------------------
@@ -680,12 +789,17 @@ void CrossPointHarness_begin() {
   SimulatorOverlay::requestPresent();
 
   if (!s_watchesInstalled) {
-    if (!SDL_AddEventWatch(themeWatch, nullptr))
-      SDL_Log("[harness] theme watch failed: %s", SDL_GetError());
+    if (!SDL_AddEventWatch(presentationWatch, nullptr))
+      SDL_Log("[harness] presentation watch failed: %s", SDL_GetError());
     if (!SDL_AddEventWatch(padWatch, nullptr))
       SDL_Log("[harness] SDL_AddEventWatch failed: %s", SDL_GetError());
     else
       SDL_Log("[harness] button pad installed");
     s_watchesInstalled = true;
   }
+}
+
+void CrossPointHarness_perFrame() {
+  pollAppearance();
+  repaintAfterForeground();
 }

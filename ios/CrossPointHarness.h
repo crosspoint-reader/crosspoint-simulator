@@ -18,4 +18,24 @@ void CrossPointHarness_prepareFilesystem();
 // There is no per-frame pump: every control is down-on-touch and up-on-lift, so
 // presses are driven entirely by touch events and carry their real duration.
 void CrossPointHarness_begin();
+
+// The harness's per-frame hook. Call once per frame from main(), on the main
+// thread, next to presentIfNeeded(). Two jobs, both about keeping what is on
+// the glass true:
+//
+//   1. Follow the system light/dark appearance, read live from UIKit rather
+//      than from SDL's cache (CrossPointAppearance.h says why).
+//   2. Re-ask for a present for a short window after the app returns to the
+//      foreground, because iOS discards frames presented into that transition
+//      and this app presents too rarely to produce another by itself.
+//
+// EDGE-TRIGGERED, both of them. The steady-state cost is one UIKit read, one
+// integer compare and one timestamp compare; no present is requested unless
+// something actually changed. That matters more here than in a normal app --
+// the panel is an e-ink simulation whose presentation model assumes it presents
+// rarely, so a per-frame present would be a real regression, not just waste.
+//
+// It reads no SDL events, so HalGPIO keeps sole ownership of the pump, and it
+// holds no gesture state, so PadCore stays clock-free.
+void CrossPointHarness_perFrame();
 }

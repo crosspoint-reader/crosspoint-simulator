@@ -34,9 +34,19 @@ set_source_files_properties(${CROSSPOINT_ASSETS} PROPERTIES
 
 add_executable(CrossPointX3 MACOSX_BUNDLE
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointIOSShim.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointAppearance.mm
   ${CMAKE_CURRENT_SOURCE_DIR}/PadCore.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointFsPrep.cpp
   ${CROSSPOINT_ASSETS})
+
+# The one Objective-C++ translation unit in the tree: the live-appearance probe
+# (CrossPointAppearance.h explains why SDL's cached theme is not usable). ARC is
+# set per-file rather than on the target because everything else here is plain
+# C++, where the flag is meaningless. UIKit is named explicitly rather than
+# leaned on as a transitive SDL3 dependency -- this file's link requirement is
+# its own, and it should not break if SDL rearranges its interface libraries.
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/CrossPointAppearance.mm
+  PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
 # Optional bundled font families. Point this at a build-sd-fonts.py output
 # directory (one subdirectory per family, .cpfont files inside) and each family
@@ -105,7 +115,8 @@ if(NOT CROSSPOINT_BUILD_FIRMWARE)
     "-DCROSSPOINT_BUILD_FIRMWARE=ON -DCROSSPOINT_FIRMWARE_DIR=<path>.")
 endif()
 
-target_link_libraries(CrossPointX3 PRIVATE crosspoint_core SDL3::SDL3)
+target_link_libraries(CrossPointX3 PRIVATE crosspoint_core SDL3::SDL3
+  "-framework UIKit")
 
 target_compile_definitions(CrossPointX3 PRIVATE
   # The harness impersonates an X3. Kept consistent with the desktop env so the
@@ -120,7 +131,7 @@ target_compile_definitions(CrossPointX3 PRIVATE
 set_target_properties(CrossPointX3 PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
   XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${CROSSPOINT_IOS_BUNDLE_ID}
-  XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "17.0"
+  XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "26.0"
   # 1 = iPhone only. The panel and control rows are laid out for a phone in
   # portrait; iPad would just letterbox.
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
