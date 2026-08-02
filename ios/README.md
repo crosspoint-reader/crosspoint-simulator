@@ -13,9 +13,12 @@ A native iOS target for the CrossPoint simulator, scoped to the X3 profile
 | Device (`HalGPIO`) | the X3's seven GPIO buttons, as SDL scancodes | none |
 | Firmware | nothing iOS-specific | none |
 
-The harness translates the first into the second by pushing synthetic
-`SDL_EVENT_KEY_DOWN` / `_UP` onto SDL's event queue. There is no
-`#if TARGET_OS_IPHONE` in `HalGPIO` or the firmware.
+The harness translates the first into the second by calling
+`gpio.injectButtonDown/Up()` directly. Pushing synthetic `SDL_EVENT_KEY_*` was the
+original design and was abandoned: `SDL_PushEvent` does not update
+`SDL_GetKeyboardState`, so level reads (`isPressed`, `powerHoldDuration`) stayed
+false and long-press power-off never fired. See the injection section below.
+There is no `#if TARGET_OS_IPHONE` in `HalGPIO` or the firmware.
 
 `hasTouch()` stays **false** for X3 — verified in both capability tables:
 
@@ -171,12 +174,15 @@ LEFT/RIGHT are the FRONT buttons, and each front pair paints as one capsule —
 rounded outer corners only, a hairline divider, no pinched notch between two
 rounded squares.
 
-| Control | Button index | Glyph |
-|---|---|---|
-| Back | `HalGPIO::BTN_BACK` | chevron against a bar |
-| Select | `HalGPIO::BTN_CONFIRM` | checkmark |
-| Up / Down / Left / Right | `BTN_UP` `BTN_DOWN` `BTN_LEFT` `BTN_RIGHT` | chevrons |
-| Power | `HalGPIO::BTN_POWER` | IEC power mark |
+| Control | Button index |
+|---|---|
+| Back | `HalGPIO::BTN_BACK` |
+| Select | `HalGPIO::BTN_CONFIRM` |
+| Up / Down / Left / Right | `BTN_UP` `BTN_DOWN` `BTN_LEFT` `BTN_RIGHT` |
+| Power | `HalGPIO::BTN_POWER` |
+
+The controls are deliberately **unlabelled** — no glyph, no text. An earlier
+revision of this table listed one per control; `paintPad` draws none.
 
 Each control names a `HalGPIO::BTN_*` index directly and drives it through
 `gpio.injectButtonDown/Up()`. Scancodes are not involved: they were the transport
@@ -185,8 +191,6 @@ broke level reads (see below). There is no HOME — `hasHomeKey()` is X4-Pro-onl
 There is no control for the simulator's own SLEEP (`S`) either: that is a harness
 command, not a button the hardware has.
 
-Back draws a chevron against a bar rather than a bare chevron so it cannot be
-mistaken for Left.
 
 **Placement is specified, not derived.** Nothing in this source tree encodes
 where the buttons physically sit on the X3 chassis; the SDK describes them only

@@ -27,6 +27,30 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+# Deployment target. MUST precede project(): CMake bakes the target into the
+# toolchain during project(), and setting it afterwards leaves try_compile and
+# the real build disagreeing (a fresh configure then fails outright).
+# It also has to be here rather than on the app target so it reaches as much
+# of the build as possible; see the note below on what it does not reach. ios/CMakeLists.txt sets IPHONEOS_DEPLOYMENT_TARGET as
+# an XCODE_ATTRIBUTE_ on the app target only, which does NOT propagate to the
+# SDL3 subproject -- SDL and crosspoint_core were building at the SDK's own
+# minimum (26.5) while the app advertised 17.0.
+#
+# That is not cosmetic: at minos 26.5 the compiler folds `if (@available(iOS
+# 18.0, *))` to a constant true and suppresses -Wunguarded-availability, so a
+# guard that should protect a 17.0 device compiles out. SDL already contains one
+# such call (GCEventInteraction, iOS 18+, SDL_uikitvideo.m). At 26.0 that is
+# simply available, which is the point of targeting 26+.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING
+    "Minimum iOS version; must match ios/CMakeLists.txt's IPHONEOS_DEPLOYMENT_TARGET")
+endif()
+# Applies the target to every target the Xcode generator emits. SDL3 still sets
+# its own, but both now land on 26.0 so nothing disagrees.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(CMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+endif()
+
 project(crosspoint_simulator
   VERSION 1.0.0
   DESCRIPTION "Desktop/iOS simulator for CrossPoint e-reader firmware"
