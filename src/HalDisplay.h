@@ -4,6 +4,24 @@
 
 #include <atomic>
 
+// Supersampling factor between the LOGICAL screen coordinate space the firmware
+// draws in and the PHYSICAL framebuffer this HAL owns. Mirrors the firmware
+// header's macro (which defaults to 1); here it is >1 so text can be rasterised
+// at the host panel's real pixel density.
+//
+// LAYOUT IS UNAFFECTED BY DESIGN: GfxRenderer::getScreenWidth()/getScreenHeight()
+// still report 528x792 on X3, every advance/kern/line-break still comes from the
+// 1x .cpfont tables, and only the pixel-write layer multiplies up. Raising this
+// must therefore never move a line break; if it does, something started reading
+// panel geometry as layout input.
+//
+// Cost at 2: framebuffer 792*528/8 = 52,272 B -> 1584*1056/8 = 209,088 B, and
+// HalDisplay.cpp holds four of those (bwBase + lsb + msb + frameBufferStorage)
+// plus an ARGB present buffer of DISPLAY_WIDTH*DISPLAY_HEIGHT*4 = 6.7 MB.
+#ifndef CROSSPOINT_RENDER_SCALE
+#define CROSSPOINT_RENDER_SCALE 2
+#endif
+
 class HalDisplay {
 public:
   // Constructor with pin configuration
@@ -23,11 +41,20 @@ public:
   void begin();
   void begin(bool seamless);
 
-  // Display dimensions
-  static constexpr uint16_t DISPLAY_WIDTH = EInkDisplay::DISPLAY_WIDTH;
-  static constexpr uint16_t DISPLAY_HEIGHT = EInkDisplay::DISPLAY_HEIGHT;
+  // Display dimensions, in PHYSICAL framebuffer pixels. At
+  // CROSSPOINT_RENDER_SCALE > 1 these are a multiple of the panel the firmware
+  // believes it is driving; the logical panel the firmware lays out against is
+  // still EInkDisplay::DISPLAY_WIDTH x DISPLAY_HEIGHT and is what
+  // GfxRenderer::getScreenWidth()/getScreenHeight() report.
+  static constexpr int RENDER_SCALE = CROSSPOINT_RENDER_SCALE;
+  static constexpr uint16_t DISPLAY_WIDTH = EInkDisplay::DISPLAY_WIDTH * RENDER_SCALE;
+  static constexpr uint16_t DISPLAY_HEIGHT = EInkDisplay::DISPLAY_HEIGHT * RENDER_SCALE;
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
-  static constexpr uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
+  static constexpr uint32_t BUFFER_SIZE =
+      static_cast<uint32_t>(DISPLAY_WIDTH_BYTES) * DISPLAY_HEIGHT;
+  // Logical panel geometry (what the firmware would see on real hardware).
+  static constexpr uint16_t LOGICAL_WIDTH = EInkDisplay::DISPLAY_WIDTH;
+  static constexpr uint16_t LOGICAL_HEIGHT = EInkDisplay::DISPLAY_HEIGHT;
 
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const;

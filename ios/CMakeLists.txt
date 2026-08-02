@@ -63,6 +63,20 @@ if(CROSSPOINT_IOS_SEED_FONTS_DIR)
         math(EXPR _seed_count "${_seed_count} + ${_n}")
         message(STATUS "Seed fonts: ${_family} (${_n} files)")
       endif()
+      # Hi-res companion set. This glob is deliberately separate rather than
+      # recursive: the 2x files must keep their own bundle subdirectory, since
+      # SdCardFontManager finds a companion by the exact path `<family>/2x/<same
+      # filename>`. Flattening them into the family directory would collide with
+      # the 1x files, which carry identical names by design.
+      file(GLOB _family_fonts_2x "${_family_dir}/2x/*.cpfont")
+      if(_family_fonts_2x)
+        set_source_files_properties(${_family_fonts_2x} PROPERTIES
+          MACOSX_PACKAGE_LOCATION "Resources/SeedFonts/${_family}/2x")
+        target_sources(CrossPointX3 PRIVATE ${_family_fonts_2x})
+        list(LENGTH _family_fonts_2x _n2)
+        math(EXPR _seed_count "${_seed_count} + ${_n2}")
+        message(STATUS "Seed fonts: ${_family}/2x (${_n2} files)")
+      endif()
     endif()
   endforeach()
   if(_seed_count EQUAL 0)

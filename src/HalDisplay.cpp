@@ -20,7 +20,23 @@ static SDL_Texture *texture = nullptr;
 // Render the simulator at full panel size. The previous 0.5x window was too
 // small. With 1:1 pixel mapping, the simulator can be used for testing fine
 // details.
-static constexpr int SIMULATOR_WINDOW_SCALE = 1;
+//
+// CROSSPOINT_SIM_WINDOW_SCALE overrides it (1-4). The window is sized in
+// LOGICAL panel pixels, so at CROSSPOINT_RENDER_SCALE > 1 a headless run
+// (SDL_VIDEODRIVER=dummy, no Retina backing store) presents the larger
+// framebuffer into a panel-sized surface and CROSSPOINT_SIM_SCREENSHOTS
+// captures it downsampled. Setting this to RENDER_SCALE makes the capture
+// 1:1 with the framebuffer, which is what a rasterisation comparison needs.
+static int simulatorWindowScale() {
+  static const int scale = [] {
+    const char *env = std::getenv("CROSSPOINT_SIM_WINDOW_SCALE");
+    if (!env || env[0] == '\0')
+      return 1;
+    const int v = std::atoi(env);
+    return (v >= 1 && v <= 4) ? v : 1;
+  }();
+  return scale;
+}
 
 // Pixel buffer written by the render task, read by the main thread for
 // SDL_RenderPresent. On macOS, SDL calls must happen on the main thread.
@@ -286,15 +302,20 @@ static bool isPortraitOrientation(GfxRenderer::Orientation orientation) {
          orientation == GfxRenderer::PortraitInverted;
 }
 
+// The desktop window is sized in LOGICAL panel pixels, not framebuffer pixels.
+// At RENDER_SCALE > 1 the framebuffer is bigger than the panel; sizing the
+// window from it would give a window RENDER_SCALE times too large. Keeping the
+// window at the logical size and letting SDL map the larger texture into it is
+// also exactly what makes the extra detail visible: with
+// SDL_WINDOW_HIGH_PIXEL_DENSITY a 528x792-point window has a 1056x1584-pixel
+// backing store on a Retina display, so a 2x framebuffer lands 1:1 on screen.
 static void getLogicalWindowSize(GfxRenderer::Orientation orientation,
                                  int *width, int *height) {
   const bool isPortrait = isPortraitOrientation(orientation);
-  *width =
-      (isPortrait ? HalDisplay::DISPLAY_HEIGHT : HalDisplay::DISPLAY_WIDTH) *
-      SIMULATOR_WINDOW_SCALE;
-  *height =
-      (isPortrait ? HalDisplay::DISPLAY_WIDTH : HalDisplay::DISPLAY_HEIGHT) *
-      SIMULATOR_WINDOW_SCALE;
+  const int panelW = HalDisplay::DISPLAY_WIDTH / HalDisplay::RENDER_SCALE;
+  const int panelH = HalDisplay::DISPLAY_HEIGHT / HalDisplay::RENDER_SCALE;
+  *width = (isPortrait ? panelH : panelW) * simulatorWindowScale();
+  *height = (isPortrait ? panelW : panelH) * simulatorWindowScale();
 }
 
 static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
@@ -446,8 +467,9 @@ void HalDisplay::drawImage(const uint8_t *imageData, uint16_t x, uint16_t y,
     const uint16_t destY = y + row;
     if (destY >= DISPLAY_HEIGHT)
       break;
-    const uint16_t destOffset = destY * DISPLAY_WIDTH_BYTES + (x / 8);
-    const uint16_t srcOffset = row * imageWidthBytes;
+    const uint32_t destOffset =
+        static_cast<uint32_t>(destY) * DISPLAY_WIDTH_BYTES + (x / 8);
+    const uint32_t srcOffset = static_cast<uint32_t>(row) * imageWidthBytes;
     for (uint16_t col = 0; col < imageWidthBytes; col++) {
       if ((x / 8 + col) >= DISPLAY_WIDTH_BYTES)
         break;
@@ -465,8 +487,9 @@ void HalDisplay::drawImageTransparent(const uint8_t *imageData, uint16_t x,
     const uint16_t destY = y + row;
     if (destY >= DISPLAY_HEIGHT)
       break;
-    const uint16_t destOffset = destY * DISPLAY_WIDTH_BYTES + (x / 8);
-    const uint16_t srcOffset = row * imageWidthBytes;
+    const uint32_t destOffset =
+        static_cast<uint32_t>(destY) * DISPLAY_WIDTH_BYTES + (x / 8);
+    const uint32_t srcOffset = static_cast<uint32_t>(row) * imageWidthBytes;
     for (uint16_t col = 0; col < imageWidthBytes; col++) {
       if ((x / 8 + col) >= DISPLAY_WIDTH_BYTES)
         break;

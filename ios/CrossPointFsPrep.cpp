@@ -174,6 +174,57 @@ bool copyFile(const char *from, const char *to) {
   return ok;
 }
 
+// Copy every regular file from `from` into `to`, then prune files in `to` that
+// the bundle no longer carries. Subdirectories are NOT walked here; the caller
+// decides which ones to seed, because a family's `2x/` companion has to land in
+// its own destination directory rather than being flattened into the parent.
+void seedOneFontDirectory(const std::string &from, const std::string &to) {
+  DIR *fam = ::opendir(from.c_str());
+  if (!fam) return;
+  ::mkdir(to.c_str(), 0777);
+  std::vector<std::string> bundled;
+  while (struct dirent *entry = ::readdir(fam)) {
+    if (entry->d_name[0] == '.') continue;
+    const std::string src = from + "/" + entry->d_name;
+    const std::string dst = to + "/" + entry->d_name;
+    if (isDirectory(src.c_str())) continue;
+    bundled.emplace_back(entry->d_name);
+    if (filesIdentical(src.c_str(), dst.c_str())) continue;
+    if (copyFile(src.c_str(), dst.c_str())) {
+      SDL_Log("[harness] seeded %s", dst.c_str());
+    } else {
+      SDL_Log("[harness] seeding %s FAILED", dst.c_str());
+    }
+  }
+  ::closedir(fam);
+
+  // The bundle owns its families, including their SIZE SET: when a family's
+  // ramp changes (e.g. Junicode moving from 12-18pt to the harmonized
+  // 14-20pt), files the bundle no longer carries must go, or the family
+  // becomes a mixed-ramp hybrid of old and new builds -- size stepping would
+  // silently switch design between sizes. Only bundled families are pruned,
+  // and only within their own directory.
+  DIR *have = ::opendir(to.c_str());
+  if (!have) return;
+  while (struct dirent *entry = ::readdir(have)) {
+    if (entry->d_name[0] == '.') continue;
+    bool inBundle = false;
+    for (const std::string &name : bundled) {
+      if (name == entry->d_name) {
+        inBundle = true;
+        break;
+      }
+    }
+    if (inBundle) continue;
+    const std::string stale = to + "/" + entry->d_name;
+    if (isDirectory(stale.c_str())) continue;
+    if (::unlink(stale.c_str()) == 0) {
+      SDL_Log("[harness] pruned stale %s", stale.c_str());
+    }
+  }
+  ::closedir(have);
+}
+
 void seedBundledFontFamilies() {
   // SDL_GetBasePath: the bundle's Resources directory on iOS, the executable's
   // directory on a desktop host (where SeedFonts/ simply doesn't exist and
@@ -194,52 +245,14 @@ void seedBundledFontFamilies() {
   for (const std::string &family : families) {
     const std::string from = seedRoot + "/" + family;
     if (!isDirectory(from.c_str())) continue;
-    DIR *fam = ::opendir(from.c_str());
-    if (!fam) continue;
-    const std::string to = std::string("fonts/") + family;
     ::mkdir("fonts", 0777);
-    ::mkdir(to.c_str(), 0777);
-    std::vector<std::string> bundled;
-    while (struct dirent *entry = ::readdir(fam)) {
-      if (entry->d_name[0] == '.') continue;
-      const std::string src = from + "/" + entry->d_name;
-      const std::string dst = to + "/" + entry->d_name;
-      if (isDirectory(src.c_str())) continue;
-      bundled.emplace_back(entry->d_name);
-      if (filesIdentical(src.c_str(), dst.c_str())) continue;
-      if (copyFile(src.c_str(), dst.c_str())) {
-        SDL_Log("[harness] seeded %s", dst.c_str());
-      } else {
-        SDL_Log("[harness] seeding %s FAILED", dst.c_str());
-      }
-    }
-    ::closedir(fam);
-
-    // The bundle owns its families, including their SIZE SET: when a family's
-    // ramp changes (e.g. Junicode moving from 12-18pt to the harmonized
-    // 14-20pt), files the bundle no longer carries must go, or the family
-    // becomes a mixed-ramp hybrid of old and new builds — size stepping would
-    // silently switch design between sizes. Only bundled families are pruned,
-    // and only within their own directory.
-    DIR *have = ::opendir(to.c_str());
-    if (!have) continue;
-    while (struct dirent *entry = ::readdir(have)) {
-      if (entry->d_name[0] == '.') continue;
-      bool inBundle = false;
-      for (const std::string &name : bundled) {
-        if (name == entry->d_name) {
-          inBundle = true;
-          break;
-        }
-      }
-      if (inBundle) continue;
-      const std::string stale = to + "/" + entry->d_name;
-      if (isDirectory(stale.c_str())) continue;
-      if (::unlink(stale.c_str()) == 0) {
-        SDL_Log("[harness] pruned stale %s", stale.c_str());
-      }
-    }
-    ::closedir(have);
+    const std::string to = std::string("fonts/") + family;
+    seedOneFontDirectory(from, to);
+    // The hi-res companion set lives in `<family>/2x/` and must be seeded into
+    // the same shape on the card, or SdCardFontManager finds no companion and
+    // the renderer silently falls back to replicating the 1x glyphs -- which
+    // looks exactly like today rather than like a failure.
+    seedOneFontDirectory(from + "/2x", to + "/2x");
   }
 }
 

@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include "Arduino.h"
+#include "CrossPointSettings.h"
 #include "HalDisplay.h"
 #include "HalGPIO.h"
 #include "SimulatorLifecycle.h"
@@ -28,6 +29,46 @@
 extern void setup();
 extern void loop();
 extern HalDisplay display; // defined in main.cpp
+
+// Apply Settings > System > Keep Screen Awake to the host's idle timer.
+//
+// Mechanism, on iOS: SDL_DisableScreenSaver() sets the video device's
+// suspend_screensaver flag and calls the driver's SuspendScreenSaver hook
+// (SDL_video.c). The UIKit driver installs UIKit_SuspendScreenSaver for that
+// hook (src/video/uikit/SDL_uikitvideo.m), whose entire body is
+// `app.idleTimerDisabled = (_this->suspend_screensaver != false)` on
+// [UIApplication sharedApplication]. So this IS the iOS API, reached through
+// SDL -- no Objective-C and no new iOS surface in this repo. On macOS the same
+// two entry points route to the Cocoa driver instead, so the desktop build gets
+// the equivalent behaviour for free.
+//
+// IMPORTANT: SDL_VideoInit disables the screensaver *by default* unless
+// SDL_HINT_VIDEO_ALLOW_SCREENSAVER is set -- SDL's rationale is that most SDL
+// programs are games or media players. Nothing in this repo sets that hint, so
+// before this setting existed the app unconditionally held the screen awake.
+// Honouring a default-OFF setting is therefore a genuine behaviour change on
+// the first frame, not a no-op.
+//
+// Edge-triggered by construction: the per-frame cost is a byte load and an
+// integer compare, and SDL is only entered when the owner actually flips the
+// row. The -1 sentinel guarantees the first call after startup always applies,
+// which is what makes this cover "at startup" as well as "on change".
+//
+// Main thread only. It is called from main()'s loop alongside presentIfNeeded()
+// for the same reason that one is: UIKit/Cocoa must not be touched off-thread.
+// It is not in PadCore (which is pure and SDL-free) and it does not read the
+// SDL event queue, so HalGPIO keeps sole ownership of the event pump.
+static void applyKeepScreenAwake() {
+  static int8_t applied = -1;  // -1 = nothing applied yet
+  const int8_t want = SETTINGS.keepScreenAwake ? 1 : 0;
+  if (want == applied) return;
+  applied = want;
+  if (want) {
+    SDL_DisableScreenSaver();  // keep the host display on
+  } else {
+    SDL_EnableScreenSaver();   // let the host dim/lock normally
+  }
+}
 
 #if CROSSPOINT_SIM_IOS
 // Survives the wake longjmp, unlike a local, so the harness is installed once
@@ -60,12 +101,20 @@ int main(int argc, char **argv) {
     gHarnessInstalled = true;
   }
 #endif
+  // Startup application. setup() has loaded settings.json by now, and SDL is
+  // initialised (HalDisplay::begin calls SDL_Init). Also covers the iOS wake
+  // longjmp, which re-runs setup() and lands back here.
+  applyKeepScreenAwake();
+
   while (!display.shouldQuit()) {
     // Clear input edge latches once per frame. update() may be called many
     // times within loop(); edges must survive across those calls and only
     // reset here at the frame boundary.
     gpio.beginFrame();
     loop();
+    // Pick up a mid-run toggle from the Settings screen. No-op unless the value
+    // actually changed; see applyKeepScreenAwake().
+    applyKeepScreenAwake();
     // SDL must be driven from the main thread on macOS.
     // The render task writes pixels and sets pendingPresent; we flush them
     // here.
