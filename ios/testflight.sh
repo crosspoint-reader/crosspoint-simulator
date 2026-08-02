@@ -107,6 +107,19 @@ say "Configure"
 SEED_FONTS_ARGS=()
 if [[ -n "${CROSSPOINT_SEED_FONTS_DIR:-}" ]]; then
   SEED_FONTS_ARGS=(-DCROSSPOINT_IOS_SEED_FONTS_DIR="$CROSSPOINT_SEED_FONTS_DIR")
+elif [[ "${CROSSPOINT_ALLOW_NO_FONTS:-0}" != "1" ]]; then
+  # Build 13 shipped with an empty Resources/SeedFonts and nobody noticed until
+  # the archive was opened by hand: the app still launches, still renders, and
+  # silently falls back to the built-in Noto faces. For a reading app whose
+  # whole point is its two curated faces, that is a broken build that looks
+  # fine. CMake only errors when the directory is SET and empty, so an UNSET
+  # variable was the one path with no guard on it at all. This is that guard.
+  echo "ERROR: CROSSPOINT_SEED_FONTS_DIR is not set — the app would ship with"
+  echo "  no .cpfont families and fall back to built-in Noto."
+  echo "  Point it at a build-sd-fonts.py output tree (<Family>/*.cpfont, plus"
+  echo "  <Family>/2x/*.cpfont for the 2x render scale the iOS target uses)."
+  echo "  Deliberately shipping without them: CROSSPOINT_ALLOW_NO_FONTS=1"
+  exit 1
 fi
 cmake -B "$BUILD_DIR" -G Xcode \
   -DCMAKE_SYSTEM_NAME=iOS \
