@@ -418,7 +418,15 @@ static bool removeDirRecursive(const std::string &full) {
     return ::remove(full.c_str()) == 0; // might be a plain file
   struct dirent *entry;
   while ((entry = readdir(d)) != nullptr) {
-    if (entry->d_name[0] == '.')
+    // Skip only "." and "..", NOT every dot-entry. Elsewhere in this file a
+    // leading dot means "hidden, do not list"; here it meant "do not delete",
+    // and the rmdir() below then failed with ENOTEMPTY on anything the host
+    // had left behind. On iOS the card is the app's Documents folder,
+    // browsable in Files and iCloud, so .DS_Store and ._* appear routinely --
+    // a folder delete from the file browser, cache clear, font installer, web
+    // server or WebDAV would just return false with nothing to show for it.
+    const char *nm = entry->d_name;
+    if (nm[0] == '.' && (nm[1] == '\0' || (nm[1] == '.' && nm[2] == '\0')))
       continue;
     std::string child = full + "/" + entry->d_name;
     struct stat st;
