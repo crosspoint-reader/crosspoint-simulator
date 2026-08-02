@@ -20,10 +20,10 @@ pio run -e simulator                    # build only, then .pio/build/simulator/
 rm -rf ./fs_/.crosspoint/               # clear stale on-disk caches after storage/cache changes
 ```
 
-**Render scale is an env var, not a build flag.** [src/HalDisplay.h](src/HalDisplay.h)'s `CROSSPOINT_RENDER_SCALE` defaults to 1 (mirror the device) and consumers opt in to supersampling. CrossPoint's desktop simulator envs opt in to 2 via `scripts/sim_render_scale.py`, so a device-exact build is:
+**Render scale is an env var, not a build flag.** [src/HalDisplay.h](src/HalDisplay.h)'s `CROSSPOINT_RENDER_SCALE` defaults to 1 (mirror the device) and consumers opt in to supersampling. CrossPoint's desktop simulator envs keep that default — a plain `pio run -e simulator_x3` is device-exact — and `scripts/sim_render_scale.py` reads the env var to opt in:
 
 ```bash
-CROSSPOINT_RENDER_SCALE=1 pio run -e simulator_x3 -t run_simulator
+CROSSPOINT_RENDER_SCALE=2 pio run -e simulator_x3 -t run_simulator
 ```
 
 It must be an env var rather than `PLATFORMIO_BUILD_FLAGS="-DCROSSPOINT_RENDER_SCALE=1"`, because PlatformIO *appends* that variable: with a `-D` in `platformio.ini` the compiler saw both definitions and warned `-Wmacro-redefined` in every translation unit, which buried the real warnings. Prepending `-UCROSSPOINT_RENDER_SCALE` does not help — SCons parks unrecognised flags in `CCFLAGS`, and `CCCOM` expands `$CCFLAGS` *before* `$_CPPDEFFLAGS`, so the undef is consumed before either `-D` is seen. The pre-script picks the value once, so exactly one definition ever reaches the command line. An explicit `-D` still wins if you pass one. iOS is unaffected: [ios/CMakeLists.txt](ios/CMakeLists.txt) sets the macro directly.
