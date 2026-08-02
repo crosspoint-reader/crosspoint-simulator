@@ -9,3 +9,4 @@ compile_commands.json
 
 # Session-local agent worktrees (Claude Code). Transient working copies.
 .claude/worktrees/
+ios/seedfonts/

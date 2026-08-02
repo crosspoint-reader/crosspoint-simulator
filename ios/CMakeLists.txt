@@ -122,11 +122,16 @@ target_compile_definitions(CrossPointX3 PRIVATE
   # The harness impersonates an X3. Kept consistent with the desktop env so the
   # two builds cannot silently disagree about which board they are simulating.
   SIMULATOR
-  SIMULATOR_DEVICE_X3
-  # Native-density glyph rasterisation. Opted in here rather than defaulted in
-  # HalDisplay.h so a build that wants to mirror the device exactly can simply
-  # not pass it. Layout is unaffected either way -- see the header's comment.
-  CROSSPOINT_RENDER_SCALE=2)
+  SIMULATOR_DEVICE_X3)
+
+# Native-density glyph rasterisation, ON THE LIBRARY, not the app target.
+# HalDisplay.cpp (framebuffer size) and SdCardFontManager.cpp (2x companion
+# loading) live in crosspoint_core; a define on CrossPointX3 never reaches
+# them, and HalDisplay.h silently defaults the scale to 1 -- which is exactly
+# how TestFlight builds through 15 shipped 1x while the pbxproj showed a =2
+# that only covered the seven harness TUs. PUBLIC so the harness TUs see the
+# same value and the two layers cannot disagree.
+target_compile_definitions(crosspoint_core PUBLIC CROSSPOINT_RENDER_SCALE=2)
 
 set_target_properties(CrossPointX3 PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist

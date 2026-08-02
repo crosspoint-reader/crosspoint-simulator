@@ -1,6 +1,7 @@
 #include "HalDisplay.h"
 
 #include <GfxRenderer.h>
+#include <Logging.h>
 #include <SDL3/SDL.h>
 
 #include "GrayscalePreview.h"
@@ -409,6 +410,12 @@ void HalDisplay::begin() {
   if (window && sdl_renderer && texture) {
     return;
   }
+
+  // Boot geometry, once. This line exists because the render scale was twice
+  // believed shipped while the framebuffer silently stayed 1x (a define that
+  // never reached this TU); the compiled truth must be observable at runtime.
+  LOG_INF("DISP", "Framebuffer %dx%d, render scale %d", DISPLAY_WIDTH, DISPLAY_HEIGHT,
+          static_cast<int>(RENDER_SCALE));
 
   // SDL3 returns true on success where SDL2 returned 0.
   if (!SDL_Init(SDL_INIT_VIDEO)) {
