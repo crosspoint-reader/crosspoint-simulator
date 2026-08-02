@@ -20,6 +20,20 @@ pio run -e simulator                    # build only, then .pio/build/simulator/
 rm -rf ./fs_/.crosspoint/               # clear stale on-disk caches after storage/cache changes
 ```
 
+**Render scale is an env var, not a build flag.** [src/HalDisplay.h](src/HalDisplay.h)'s `CROSSPOINT_RENDER_SCALE` defaults to 1 (mirror the device) and consumers opt in to supersampling. CrossPoint's desktop simulator envs opt in to 2 via `scripts/sim_render_scale.py`, so a device-exact build is:
+
+```bash
+CROSSPOINT_RENDER_SCALE=1 pio run -e simulator_x3 -t run_simulator
+```
+
+It must be an env var rather than `PLATFORMIO_BUILD_FLAGS="-DCROSSPOINT_RENDER_SCALE=1"`, because PlatformIO *appends* that variable: with a `-D` in `platformio.ini` the compiler saw both definitions and warned `-Wmacro-redefined` in every translation unit, which buried the real warnings. Prepending `-UCROSSPOINT_RENDER_SCALE` does not help — SCons parks unrecognised flags in `CCFLAGS`, and `CCCOM` expands `$CCFLAGS` *before* `$_CPPDEFFLAGS`, so the undef is consumed before either `-D` is seen. The pre-script picks the value once, so exactly one definition ever reaches the command line. An explicit `-D` still wins if you pass one. iOS is unaffected: [ios/CMakeLists.txt](ios/CMakeLists.txt) sets the macro directly.
+
+To confirm which scale a binary actually got, count hi-res font loads (1 = 2x, 0 = 1x) — do not use the screenshot dimensions, since the window is sized in *logical* panel pixels and tracks `CROSSPOINT_SIM_WINDOW_SCALE`, not the render scale:
+
+```bash
+CROSSPOINT_SIM_INPUT_SCRIPT='5000:QUIT' SDL_VIDEODRIVER=dummy .pio/build/simulator_x3/program 2>&1 | grep -c 'hi-res'
+```
+
 For local dev against this repo, the firmware's `platformio.ini` should reference it as `simulator=symlink://../crosspoint-simulator` instead of the git URL.
 
 There is no linter and no per-file build commands; most changes are "tested" by running the simulator and exercising the affected feature. Two real tests do exist in `tests/`, run them when touching input or sleep paths:
