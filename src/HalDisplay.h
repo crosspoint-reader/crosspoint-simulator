@@ -18,8 +18,14 @@
 // Cost at 2: framebuffer 792*528/8 = 52,272 B -> 1584*1056/8 = 209,088 B, and
 // HalDisplay.cpp holds four of those (bwBase + lsb + msb + frameBufferStorage)
 // plus an ARGB present buffer of DISPLAY_WIDTH*DISPLAY_HEIGHT*4 = 6.7 MB.
+// Defaults to 1 -- the simulator mirrors the device unless a build opts in.
+// Supersampling is requested explicitly with -DCROSSPOINT_RENDER_SCALE=2:
+// [env:simulator] passes it for the desktop build, ios/CMakeLists.txt for the
+// app. A single default of 2 here meant every consumer silently paid 4x the
+// framebuffer and ~2.5x the page render time, including runs that only wanted
+// to check firmware behaviour against the real panel geometry.
 #ifndef CROSSPOINT_RENDER_SCALE
-#define CROSSPOINT_RENDER_SCALE 2
+#define CROSSPOINT_RENDER_SCALE 1
 #endif
 
 class HalDisplay {

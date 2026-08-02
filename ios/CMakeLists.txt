@@ -111,7 +111,11 @@ target_compile_definitions(CrossPointX3 PRIVATE
   # The harness impersonates an X3. Kept consistent with the desktop env so the
   # two builds cannot silently disagree about which board they are simulating.
   SIMULATOR
-  SIMULATOR_DEVICE_X3)
+  SIMULATOR_DEVICE_X3
+  # Native-density glyph rasterisation. Opted in here rather than defaulted in
+  # HalDisplay.h so a build that wants to mirror the device exactly can simply
+  # not pass it. Layout is unaffected either way -- see the header's comment.
+  CROSSPOINT_RENDER_SCALE=2)
 
 set_target_properties(CrossPointX3 PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
