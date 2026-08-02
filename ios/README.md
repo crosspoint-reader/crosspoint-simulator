@@ -161,18 +161,20 @@ time-based gesture invention (an earlier POWER tap-stretch held the injected
 button 600 ms past the finger and read as a stuck control) cannot return
 without changing that header.
 
-Two rows of 60 pt squares anchored directly under the panel's bottom edge
-(`SimulatorOverlay::panelBottomPx`), clamped clear of the home indicator:
+Two rows on a five-column square grid (owner-approved layout 2026-08-02):
 
 ```
-[Up]          [Power]          [Down]      <- side pair + power
-[Back|Select]          [Left|Right]        <- front buttons, two fused rockers
+[Back|Select]      [Left|Right]     <- front rockers, full squares, hugging
+                                       the panel's bottom edge
+[Power]              [Up|Down]      <- half-height row, anchored at the screen
+                                       bottom, clear of the home indicator
 ```
 
-UP/DOWN are the X3's SIDE buttons (fixed page-turn pair); BACK/SELECT and
-LEFT/RIGHT are the FRONT buttons, and each front pair paints as one capsule —
+UP/DOWN are the X3's SIDE buttons (fixed page-turn pair), fused into one
+rocker at the right of the bottom row; POWER sits at the left. BACK/SELECT and
+LEFT/RIGHT are the FRONT buttons. Every fused pair paints as one capsule —
 rounded outer corners only, a hairline divider, no pinched notch between two
-rounded squares.
+rounded squares. There is no grabber/drag handle any more; the pad is fixed.
 
 | Control | Button index |
 |---|---|
@@ -197,13 +199,22 @@ where the buttons physically sit on the X3 chassis; the SDK describes them only
 electrically (six on a resistor ladder across two ADC pins, POWER on its own
 digital pin — `BoardConfig` `InputPins`, `InputStyle::XteinkAdcLadder`).
 
-Sizing: 60 pt squares (owner-picked, vs the 44 pt HIG minimum), 16 pt between
-rows, fused pairs touching. Layout is computed in points and converted once, so
-targets keep their real physical size at any device scale. The panel is
-top-aligned in the space above a fixed reserved bottom band
+Sizing: strict square grid, cell constrained to the 60 pt optimum — the column
+count absorbs device width (nearest-to-60 integer fit, minimum five columns),
+so wider devices gain empty middle columns instead of fatter buttons: 55.8 pt
+cell / 6 columns on SE and 13 mini, 58.8/6 on 16, 57.1/7 on 16 Pro Max.
+Controls count from the grid's ends (Back|Select cols 0-1, Left|Right and
+Up|Down in the last two, Power col 0). The top row is full-height cells; the
+bottom row is half-height (~28-32 pt) — a deliberate, owner-approved exception
+to the 44 pt HIG minimum, with invisible hit-slop as the agreed fallback if
+page-turns feel cramped on device. Layout is computed in points and converted
+once, so targets keep their real physical size at any device scale. The panel
+is top-aligned in the space above a fixed reserved bottom band
 (`SimulatorOverlay::setBottomInset`), presents at an integer scale, and
-publishes its bottom edge; the pad anchors to that edge with a fallback to
-bottom-anchoring before the first present.
+publishes its bottom edge; the top row hugs that edge (falling back to sitting
+just above the bottom row before the first present), while the bottom row
+anchors to the screen edge using the system safe-area inset (fallback 34 pt,
+floor 16 pt on home-button devices).
 
 ## How the harness attaches
 

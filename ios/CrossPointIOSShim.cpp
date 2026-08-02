@@ -29,11 +29,9 @@
 // finger, which read as a stuck control and desynced the pad from the device.
 // Sleep is a real 400 ms hold now, exactly like the hardware.)
 //
-// The grabber is the one timed gesture on this surface, and it does not dent
-// that rule: it moves the pad's own chrome, injects nothing, and its finger is
-// claimed in padWatch before PadCore is consulted, so PadCore stays clock-free
-// and every BUTTON remains a straight passthrough. If a future gesture needs a
-// timer, it belongs out here for the same reason -- never in PadCore.
+// There are no timed gestures on this surface (the movable-pad grabber, once
+// the only one, was removed 2026-08-02). If a future chrome gesture needs a
+// timer, it belongs out here in the harness -- never in PadCore.
 //
 // WHY AN EVENT WATCH, NOT A POLL LOOP. HalGPIO::update() owns the SDL event pump
 // for the whole simulator and must keep owning it -- two pollers would split
@@ -77,9 +75,11 @@ namespace {
 // digital pin; BoardConfig InputPins, InputStyle::XteinkAdcLadder). See
 // layoutPad() for the arrangement.
 //
-// SIZING follows Apple's Human Interface Guidelines: every control is at least
-// 44x44 pt, targets are separated by >= 8 pt, and the bands are inset clear of
-// the Dynamic Island at the top and the home indicator at the bottom.
+// SIZING: full-height controls are 60-96 pt squares, comfortably over the HIG
+// 44 pt minimum. The bottom row is a deliberate exception -- half-height
+// (34-40 pt), approved as-shown 2026-08-02; see the trade-off note above
+// layoutPad(). Bands stay inset clear of the Dynamic Island at the top and the
+// home indicator at the bottom.
 //
 // The controls are UNLABELLED -- no glyph, no text. The pad names nothing about
 // what each button does, which puts the whole affordance on the pressed state;
@@ -112,39 +112,10 @@ SDL_WindowID g_windowId = 0;
 // tests/pad_core_test.cpp.
 PadCore g_core(kPadCount);
 
-// --- The grabber -----------------------------------------------------------
-//
-// A drag handle in the empty column right of POWER. Tap-hold it and both button
-// rows follow the finger down the field, so the pad can be moved under the
-// thumb without moving the page.
-//
-// IT IS NOT AN EIGHTH BUTTON. It never reaches applyActions(), never injects a
-// GPIO event, and PadCore never sees its finger -- padWatch claims the touch
-// before PadCore is consulted. That separation is what makes the hold legal at
-// all: PadCore is clock-free by construction so no BUTTON gesture can be
-// widened or delayed (a POWER tap-stretch once was, and read as a stuck
-// control). The grabber is chrome, so its timer lives out here and PadCore's
-// guarantee is untouched.
-//
-// THE PANEL DOES NOT MOVE, and neither does the reserved band -- the panel's
-// size is computed from that band, so a band that slid with the pad would
-// resize the page mid-drag. The rows just travel within the space they already
-// have: offset 0 is hugging the panel, and the maximum is where the lower row
-// reaches the home-indicator inset. layoutPad owns that clamp, because it is
-// the only place that knows where the panel ended up.
-SDL_FRect g_gripRect{};       // device px; hit-tested and painted
-float g_padOffsetY = 0.0f;    // points below the hug position
-float g_padOffsetMax = 0.0f;  // points, recomputed every layout
-SDL_FingerID g_gripFinger = 0;
-bool g_gripHeld = false;      // a finger is on the grabber
-bool g_gripDragging = false;  // the hold landed; rows are following
-Uint64 g_gripDownAtMs = 0;
-float g_gripStartYPx = 0.0f;
-float g_gripStartOffset = 0.0f;
-
-// Long enough that brushing the grabber on the way to DOWN cannot move the pad,
-// short enough that it does not feel stuck.
-constexpr Uint64 kGripHoldMs = 350;
+// The grabber (a drag handle that let the rows follow the finger) is GONE —
+// owner-approved layout 2026-08-02 removed it along with its hold timer and
+// offset machinery. The pad is fixed: top row hugs the panel, bottom row is
+// anchored at the screen's bottom edge.
 
 // The single translation point between the two layers. Called from the event
 // watch, which runs inside SDL_PumpEvents inside HalGPIO::update() -- i.e. after
@@ -167,119 +138,117 @@ void applyActions(const std::vector<PadCore::Action> &actions) {
 // All dimensions in points, converted once. HIG minimums are expressed in
 // points, so laying out in pixels would silently shrink the targets on a device
 // with a different scale factor.
-// Two rows of 60 pt squares, anchored directly under the panel's bottom edge
-// (owner-approved mockup A + fused pairs, 2026-08-01):
+// Owner-approved layout 2026-08-02 (mockups: pad_layout_review artifact):
 //
-//     [Up]      [Power][ :: ][Down]          <- side pair + power, plus the
-//     [Back|Select]  [Left|Right]               grabber in the empty fourth
-//                                               column; front buttons are two
-//                                               fused rockers, as on the chassis
-//
-// Columns touch, so the grabber's column sits flush between POWER and DOWN --
-// it is drawn as bare dots with no ring precisely so that run of three cells
-// still reads as two buttons with a handle between them, not three buttons.
+//     [Back|Select]      [Left|Right]        <- front rockers, full squares,
+//                                               hugging the panel's bottom edge
+//     [Power]              [Up|Down]         <- half-height row, anchored at
+//                                               the screen bottom, clear of the
+//                                               home indicator
 //
 // UP/DOWN are the X3's SIDE buttons (MappedInputManager keeps them fixed as
-// page-turn/Up/Down; main.cpp calls BTN_UP the "left side button").
-// BACK/SELECT/LEFT/RIGHT are the FRONT buttons (the remappable frontButton*
-// set). On the device each front pair is one rocker, so here each pair shares
-// an edge -- no gap inside a pair, a wide gap between pairs.
+// page-turn/Up/Down; main.cpp calls BTN_UP the "left side button") — fused
+// into one rocker at the right. BACK/SELECT/LEFT/RIGHT are the FRONT buttons
+// (the remappable frontButton* set), fused pairs as on the chassis. Fused
+// pairs share an edge -- no gap inside a pair, a wide gap between pairs.
 //
-// The pad hugs the panel (SimulatorOverlay::panelBottomPx) so thumbs rest at
-// the page, not at the screen's bottom edge; before the first present it
-// falls back to bottom-anchoring clear of the home indicator.
+// KNOWN TRADE-OFF, approved as-shown: the half-height row's targets run
+// 34-40pt tall, under the 44pt HIG minimum. If page-turns feel cramped on
+// device, the agreed fallback is invisible hit-slop extending the bottom-row
+// targets upward -- visuals unchanged.
+//
+// The top row hugs the panel (SimulatorOverlay::panelBottomPx) so thumbs rest
+// at the page; before the first present it falls back to sitting just above
+// the bottom row.
 void layoutPad(int outW, int outH) {
   const float S = g_ptScale;
   const float W = static_cast<float>(outW) / S;
   const float H = static_cast<float>(outH) / S;
 
   constexpr float kMargin = 20.0f;      // side inset
-  constexpr float kMinSquare = 60.0f;   // owner-picked target size, the floor
-  constexpr float kMaxSquare = 96.0f;   // guard only, see note below
-  // ONE vertical gap, used both under the panel and between the two rows, so
-  // the pad reads as evenly spaced stack rather than three different rhythms.
-  // These were 12 and 16; keep them equal.
+  constexpr float kOptimalSquare = 60.0f;  // owner-picked target size
   constexpr float kGap = 16.0f;
-  constexpr float kRowGap = kGap;       // row -> row
-  constexpr float kPanelGap = kGap;     // panel -> first row
-  constexpr float kHomeInset = 34.0f;   // never sink into the home indicator
-  constexpr float kBelowPad = 24.0f;    // slack under the lower row
+  constexpr float kPanelGap = kGap;     // panel -> top row
+  constexpr float kRowClear = kGap;     // top row keeps at least this above the bottom row
+  constexpr float kHomeInsetFallback = 34.0f;  // when the safe area is unreadable
+  constexpr float kHomeInsetMin = 16.0f;       // floor for home-button devices (safe area 0)
 
-  // The pad is a 5x2 grid of SQUARE cells: three singles on the upper row
-  // (columns 1/3/5) and two fused rockers on the lower one (columns 1-2 and
-  // 4-5), so a rocker is two cells wide. The cell is the largest square that
-  // fits five across the row, which is what makes the grid real rather than
-  // implied -- at a fixed 60 the row was edge-anchored and ~80pt of slack
-  // pooled in the middle gaps.
+  // STRICT SQUARE GRID, cell constrained to the optimum (owner ruling
+  // 2026-08-02): the cell no longer stretches with device width. The COLUMN
+  // COUNT absorbs the width instead -- cols is the integer count whose square
+  // lands closest to kOptimalSquare, never fewer than the five the top row
+  // needs. Cells touch and run flush margin to margin, so wider devices gain
+  // empty middle columns rather than fatter buttons (55.8pt cell / 6 cols on
+  // SE and 13 mini, 58.8/6 on 16, 57.1/7 on 16 Pro Max).
+  //
+  // Rocker/button column assignments count from the grid's ends, so they hold
+  // for any cols >= 5: top row Back|Select in columns 0-1 and Left|Right in
+  // cols-2..cols-1; bottom row Power in column 0, Up|Down in cols-2..cols-1
+  // at half height.
   //
   // The cell sets the band height (below), the band comes out of the panel's
   // space, and the panel scale is floored to an integer
-  // (CROSSPOINT_SIM_PIXEL_EXACT) -- so a cell too big costs the page a whole
-  // scale step. kMaxSquare guards that, but on this app it never binds: the
-  // build is iPhone-only and portrait-only (TARGETED_DEVICE_FAMILY 1,
-  // UISupportedInterfaceOrientations = Portrait), so the column width runs
-  // 67pt (SE / 13 mini) to 80pt (16 Pro Max), and a sweep to 160pt regressed
-  // none of them.
-  //
-  // It exists because the margin is NOT universal. The panel is portrait
-  // whatever the device does -- the firmware has no landscape -- so a landscape
-  // window is wider but SHORTER, and the portrait page has less room, not more.
-  // On iPad that bites: with this band stacked below the panel, every iPad in
-  // landscape falls to 1x (a 264x396pt page), and only the 13" Pro can hold 2x,
-  // and only at a cell of 82 or less. If iPad (family 2) is ever enabled, the
-  // fix is not a smaller cell -- it is to put the pad BESIDE the panel in a
-  // landscape window, where the spare width is, so the band stops costing
-  // height at all.
-  const float kSquare =
-      SDL_max(kMinSquare, SDL_min((W - 2 * kMargin) / 5.0f, kMaxSquare));
+  // (CROSSPOINT_SIM_PIXEL_EXACT). The build is iPhone-only, portrait-only
+  // (TARGETED_DEVICE_FAMILY 1, UISupportedInterfaceOrientations = Portrait).
+  // If iPad (family 2) is ever enabled, the fix is not a different cell -- it
+  // is to put the pad BESIDE the panel in a landscape window, where the spare
+  // width is.
+  const float usable = W - 2 * kMargin;
+  const int cols =
+      SDL_max(5, static_cast<int>(SDL_roundf(usable / kOptimalSquare)));
+  const float kSquare = usable / static_cast<float>(cols);
+  const float kHalf = kSquare / 2.0f;
 
-  // The pad must stay fully above the home-indicator zone, grabbed or not.
-  const float maxUpper = H - kHomeInset - 2 * kSquare - kRowGap;
+  // Bottom inset from the system safe area (home indicator), with a fallback
+  // when the window is unreadable and a floor so home-button devices (safe
+  // area 0) still keep a margin off the screen edge.
+  float bottomInset = kHomeInsetFallback;
+  if (SDL_Window *win = SDL_GetWindowFromID(g_windowId)) {
+    int lw = 0, lh = 0;
+    SDL_Rect safe{};
+    if (SDL_GetWindowSize(win, &lw, &lh) && lh > 0 &&
+        SDL_GetWindowSafeArea(win, &safe))
+      bottomInset = static_cast<float>(lh - (safe.y + safe.h));
+  }
+  bottomInset = SDL_max(bottomInset, kHomeInsetMin);
 
+  // Bottom row: half-height, anchored at the bottom of the screen.
+  const float lowerY = H - bottomInset - kHalf;
+
+  // Top row hugs the panel, clamped clear of the bottom row.
+  const float maxUpper = lowerY - kRowClear - kSquare;
   const int panelBottomPx = SimulatorOverlay::panelBottomPx();
   float upperY;
   if (panelBottomPx > 0) {
     upperY = static_cast<float>(panelBottomPx) / S + kPanelGap;
     if (upperY > maxUpper) upperY = maxUpper;
   } else {
-    upperY = H - kHomeInset - 2 * kSquare - kRowGap - kSquare / 2.0f;
+    upperY = maxUpper;
   }
-  // Apply the grabber's travel. Offset 0 is the hug position computed above;
-  // the ceiling is the home-indicator clamp, so the rows can slide down into
-  // the field's slack and no further. Clamped here rather than in the drag
-  // handler because this is the only place that knows where the panel landed.
-  g_padOffsetMax = SDL_max(0.0f, maxUpper - upperY);
-  g_padOffsetY = SDL_clamp(g_padOffsetY, 0.0f, g_padOffsetMax);
-  upperY += g_padOffsetY;
 
-  const float lowerY = upperY + kSquare + kRowGap;
-
-  auto place = [&](int idx, float x, float y) {
-    g_pad[idx].rect = {x * S, y * S, kSquare * S, kSquare * S};
+  auto place = [&](int idx, float x, float y, float w, float h) {
+    g_pad[idx].rect = {x * S, y * S, w * S, h * S};
   };
 
-  // Upper row: side pair at the edges, power centred.
-  place(kPadUp, kMargin, upperY);
-  place(kPadPower, (W - kSquare) / 2.0f, upperY);
-  place(kPadDown, W - kMargin - kSquare, upperY);
+  const auto colX = [&](int c) { return kMargin + c * kSquare; };
 
-  // The grabber takes the empty fourth column, between POWER and DOWN. A full
-  // cell so the target clears the 44pt HIG minimum even though the dots drawn
-  // in it are small.
-  g_gripRect = {(kMargin + 3 * kSquare) * S, upperY * S, kSquare * S,
-                kSquare * S};
+  // Top row: the two fused front rockers at the grid's ends.
+  place(kPadBack, colX(0), upperY, kSquare, kSquare);
+  place(kPadConfirm, colX(1), upperY, kSquare, kSquare);
+  place(kPadLeft, colX(cols - 2), upperY, kSquare, kSquare);
+  place(kPadRight, colX(cols - 1), upperY, kSquare, kSquare);
 
-  // Lower row: two fused rockers, flush left and right.
-  place(kPadBack, kMargin, lowerY);
-  place(kPadConfirm, kMargin + kSquare, lowerY);
-  place(kPadLeft, W - kMargin - 2 * kSquare, lowerY);
-  place(kPadRight, W - kMargin - kSquare, lowerY);
+  // Bottom row: POWER in the first column, the fused side rocker at the end.
+  place(kPadPower, colX(0), lowerY, kSquare, kHalf);
+  place(kPadUp, colX(cols - 2), lowerY, kSquare, kHalf);
+  place(kPadDown, colX(cols - 1), lowerY, kSquare, kHalf);
 
-  // Reserve a fixed band for the pad out of the panel's space. Fixed (not
+  // Reserve a fixed band for the pad out of the panel's space: everything from
+  // the panel gap down through the bottom row and the home inset. Fixed (not
   // derived from upperY) because the panel's own placement depends on this
   // inset -- a constant keeps the two from chasing each other.
   SimulatorOverlay::setBottomInset(static_cast<int>(
-      (kPanelGap + 2 * kSquare + kRowGap + kBelowPad) * S));
+      (kPanelGap + kSquare + kRowClear + kHalf + bottomInset) * S));
 
   // Keep the page clear of the status bar and the Dynamic Island. The panel's
   // manual fit is top-aligned, so without a top band it starts at the very top
@@ -322,7 +291,7 @@ void layoutPad(int outW, int outH) {
 //          faceDown/hairline 26
 struct Palette {
   Uint8 field[3];     // behind the panel and the pad
-  Uint8 hairline[3];  // button border, and the grabber's dots
+  Uint8 hairline[3];  // button border and pair dividers
   Uint8 face[3];      // button face at rest: away from the field
   Uint8 faceDown[3];  // button face while held: back across the field
 };
@@ -556,11 +525,13 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
     SDL_RenderFillRect(r, &patch);
   };
 
-  // The two front-button pairs paint as ONE capsule each -- a single hairline
+  // The three fused pairs paint as ONE capsule each -- a single hairline
   // ring around the union with only the outer corners rounded (no pinched
   // notch where two rounded squares would meet), a hairline divider marking
-  // the two targets, and the pressed half shading independently.
-  const int pairs[2][2] = {{kPadBack, kPadConfirm}, {kPadLeft, kPadRight}};
+  // the two targets, and the pressed half shading independently. Up|Down is
+  // half-height; the same union/divider math holds because a pair shares y/h.
+  const int pairs[3][2] = {
+      {kPadBack, kPadConfirm}, {kPadLeft, kPadRight}, {kPadUp, kPadDown}};
   bool inPair[kPadCount] = {};
   for (const auto &pr : pairs) {
     const SDL_FRect &a = g_pad[pr[0]].rect;
@@ -600,35 +571,6 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
     fillRoundRect(r, inner, radius - hairline);
   }
 
-  // The grabber. Six dots and no ring, deliberately: every real control here is
-  // a ringed face, so a ringless handle cannot be misread as an eighth button.
-  // While dragging it takes a face behind the dots -- the same "moved away from
-  // the field" cue the buttons use at rest, since the pad is the only thing on
-  // screen that can acknowledge the gesture.
-  //
-  // The dots take the HAIRLINE tone, not faceDown: hairline is the one value
-  // guaranteed to separate from the field in both appearances (31 light, 38
-  // dark), and they are painted directly on the field whenever no drag is in
-  // progress. faceDown is only ever seen inside a ring, so it is free to sit
-  // near the field tone -- in dark it lands 12/255 away, and dots at that
-  // separation are invisible.
-  if (g_gripRect.w > 0) {
-    if (g_gripDragging) {
-      setRGB(r, p.face);
-      fillRoundRect(r, g_gripRect, radius);
-    }
-    setRGB(r, p.hairline);
-    const float dot = SDL_max(2.0f, 3.5f * S);
-    const float step = dot * 2.4f;
-    const float cx = g_gripRect.x + g_gripRect.w / 2.0f;
-    const float cy = g_gripRect.y + g_gripRect.h / 2.0f;
-    for (int row = -1; row <= 1; row++)
-      for (int col = 0; col < 2; col++) {
-        const SDL_FRect d{cx + (col ? step : -step) / 2.0f - dot / 2.0f,
-                          cy + row * step - dot / 2.0f, dot, dot};
-        fillRoundRect(r, d, dot / 2.0f);
-      }
-  }
 }
 
 int padHitTest(float x, float y) {
@@ -660,22 +602,6 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
       if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
       const float fx = e->tfinger.x * outW, fy = e->tfinger.y * outH;
 
-      // The grabber claims its touch BEFORE PadCore is consulted, so PadCore
-      // never learns this finger exists and stays a pure button machine. No
-      // action is produced here: nothing is injected, nothing is held.
-      if (g_gripRect.w > 0 && fx >= g_gripRect.x &&
-          fx < g_gripRect.x + g_gripRect.w && fy >= g_gripRect.y &&
-          fy < g_gripRect.y + g_gripRect.h) {
-        g_windowId = e->tfinger.windowID;
-        g_gripFinger = e->tfinger.fingerID;
-        g_gripHeld = true;
-        g_gripDragging = false;
-        g_gripDownAtMs = SDL_GetTicks();
-        g_gripStartYPx = fy;
-        g_gripStartOffset = g_padOffsetY;
-        break;
-      }
-
       const int hit = padHitTest(fx, fy);
       if (hit >= 0) g_windowId = e->tfinger.windowID;
       applyActions(g_core.fingerDown(hit >= 0 ? hit : PadCore::kNoSlot,
@@ -684,24 +610,6 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     }
 
     case SDL_EVENT_FINGER_MOTION: {
-      if (g_gripHeld && e->tfinger.fingerID == g_gripFinger) {
-        if (!windowPixelSize(e->tfinger.windowID, &outW, &outH)) break;
-        const float y = e->tfinger.y * outH;
-        if (!g_gripDragging) {
-          if (SDL_GetTicks() - g_gripDownAtMs < kGripHoldMs) break;
-          // Take the drag from where the finger is NOW. Baselining at
-          // finger-down instead would make the rows jump by however far it
-          // drifted while the hold was being satisfied.
-          g_gripDragging = true;
-          g_gripStartYPx = y;
-          g_gripStartOffset = g_padOffsetY;
-        }
-        g_padOffsetY = g_gripStartOffset + (y - g_gripStartYPx) / g_ptScale;
-        g_padLaidOut = false;  // layoutPad re-runs on the next paint, and clamps
-        SimulatorOverlay::requestPresent();
-        break;
-      }
-
       // Dragging off a control cancels it, matching how a system button behaves
       // and how a real key behaves when your thumb slides off it.
       const int slot = g_core.heldSlot(e->tfinger.fingerID);
@@ -721,13 +629,6 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     // it — a second, permanent way for POWER to stop working until force quit.
     case SDL_EVENT_FINGER_UP:
     case SDL_EVENT_FINGER_CANCELED:
-      if (g_gripHeld && e->tfinger.fingerID == g_gripFinger) {
-        // Drop. The rows stay where they were left; PadCore has nothing to
-        // release because it never saw this finger.
-        g_gripHeld = g_gripDragging = false;
-        SimulatorOverlay::requestPresent();
-        break;
-      }
       applyActions(g_core.fingerUp(e->tfinger.fingerID));
       break;
 
@@ -735,9 +636,6 @@ bool SDLCALL padWatch(void * /*userdata*/, SDL_Event *e) {
     // stuck POWER would read as a long press.
     case SDL_EVENT_WILL_ENTER_BACKGROUND:
     case SDL_EVENT_WINDOW_FOCUS_LOST:
-      // The grabber goes with it: iOS will not deliver the UP, so a held
-      // grabber would resume dragging on the next stray motion event.
-      g_gripHeld = g_gripDragging = false;
       applyActions(g_core.reset());
       break;
 

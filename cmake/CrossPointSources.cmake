@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : 5aad5137a6ed9735e4558354734cd9682a8677bb
-# TU counts  : 116 firmware, 20 simulator (6 C, 130 C++)
+# pinned at  : 769cf75b83021e704910c082bbff6abbea64d742
+# TU counts  : 117 firmware, 20 simulator (6 C, 131 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "5aad5137a6ed9735e4558354734cd9682a8677bb")
+set(CROSSPOINT_FIRMWARE_PIN "769cf75b83021e704910c082bbff6abbea64d742")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -128,6 +128,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/reader/XtcReaderChapterSelectionActivity.cpp
   src/activities/settings/ButtonRemapActivity.cpp
   src/activities/settings/ClearCacheActivity.cpp
+  src/activities/settings/ClockOffsetActivity.cpp
   src/activities/settings/FontDownloadActivity.cpp
   src/activities/settings/FontSelectionActivity.cpp
   src/activities/settings/LanguageSelectActivity.cpp
@@ -188,6 +189,7 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
 
 # Compile definitions, verbatim from the working desktop env.
 set(CROSSPOINT_DEFINES
+  CROSSPOINT_RENDER_SCALE=1
   CROSSPOINT_SIMULATOR_PROJECT_WEBSERVER
   CROSSPOINT_VERSION=\"dev-simulator\"
   DESTRUCTOR_CLOSES_FILE=1
