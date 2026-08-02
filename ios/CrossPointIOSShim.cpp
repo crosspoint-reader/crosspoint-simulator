@@ -298,36 +298,46 @@ void layoutPad(int outW, int outH) {
 
 // --- Appearance ------------------------------------------------------------
 //
-// Apple's system greys at the low-contrast end, so the chrome recedes and the
-// e-ink panel stays the subject. Both appearances, published values:
-// systemBackground field, systemGray6 face, systemGray5 hairline, systemGray4
-// while held.
+// Low-contrast chrome, so the e-ink panel stays the subject. The face always
+// sits AWAY from the field: LIGHTER than the paper in light appearance, DARKER
+// than the background in dark. Apple's system ramp used to supply these, but it
+// runs the wrong way in dark mode -- systemGray6 (1C1C1E) is lighter than
+// systemBackground (121212), so every control glowed as a grey slab against
+// black. It is also blue-tinted (B > R at every step), which reads as a cool
+// cast against this app's warm paper (FBFBF9, B two below R). Both are gone:
+// the ramp below is neutral-to-warm and reverses direction with the appearance.
 //
 // THE PRESSED STATE CARRIES EVERYTHING. With the glyphs gone it is the only
-// feedback a control has, so it moves TWO steps along the ramp (6 -> 4) rather
-// than one, and it moves towards the foreground in each appearance -- darker in
-// light, lighter in dark. One step (6 -> 5) is 13/255 in light mode and is not
-// reliably visible on a phone; it is also exactly the hairline colour, which
-// would flatten the whole control into one tone.
+// feedback a control has, so it moves BACK ACROSS the field tone rather than
+// further from it -- darker in light, lighter in dark. That is the reverse of
+// the resting direction, which is what makes a press read as a press and not as
+// a redraw.
+//
+// Every pair that must be told apart is >= 13/255, the floor below which a step
+// is not reliably visible on a phone. Verified on the values below:
+//   light  face/field 4 (deliberately near-flush; the ring carries the shape),
+//          hairline/face 35, hairline/field 31, faceDown/face 21,
+//          faceDown/hairline 14
+//   dark   face/field 18, hairline/field 38, faceDown/face 30,
+//          faceDown/hairline 26
 struct Palette {
-  Uint8 field[3];     // behind the panel and the pad: systemBackground
-  Uint8 hairline[3];  // button border: systemGray5
-  Uint8 face[3];      // button face: systemGray6
-  Uint8 faceDown[3];  // button face while held: systemGray4
+  Uint8 field[3];     // behind the panel and the pad
+  Uint8 hairline[3];  // button border, and the grabber's dots
+  Uint8 face[3];      // button face at rest: away from the field
+  Uint8 faceDown[3];  // button face while held: back across the field
 };
 
 // The field matches the panel's paper tone (HalDisplay's PanelPalette:
 // 2D2D2D-on-FBFBF9 light, E0E0DE-on-121212 dark — change them together), so
-// the page floats edgeless in the field in both appearances. The button greys
-// stay Apple's system ramp.
+// the page floats edgeless in the field in both appearances.
 constexpr Palette kLightPalette{{0xFB, 0xFB, 0xF9},
-                                {0xE5, 0xE5, 0xEA},
-                                {0xF2, 0xF2, 0xF7},
-                                {0xD1, 0xD1, 0xD6}};
+                                {0xDC, 0xDC, 0xDA},
+                                {0xFF, 0xFF, 0xFF},
+                                {0xEA, 0xEA, 0xE8}};
 constexpr Palette kDarkPalette{{0x12, 0x12, 0x12},
-                               {0x2C, 0x2C, 0x2E},
-                               {0x1C, 0x1C, 0x1E},
-                               {0x3A, 0x3A, 0x3C}};
+                               {0x38, 0x38, 0x38},
+                               {0x00, 0x00, 0x00},
+                               {0x1E, 0x1E, 0x1E}};
 
 bool g_dark = false;
 const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
@@ -592,15 +602,22 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
 
   // The grabber. Six dots and no ring, deliberately: every real control here is
   // a ringed face, so a ringless handle cannot be misread as an eighth button.
-  // While dragging it takes a face behind the dots -- the same "moved towards
-  // the foreground" cue the buttons use for pressed, since the pad is the only
-  // thing on screen that can acknowledge the gesture.
+  // While dragging it takes a face behind the dots -- the same "moved away from
+  // the field" cue the buttons use at rest, since the pad is the only thing on
+  // screen that can acknowledge the gesture.
+  //
+  // The dots take the HAIRLINE tone, not faceDown: hairline is the one value
+  // guaranteed to separate from the field in both appearances (31 light, 38
+  // dark), and they are painted directly on the field whenever no drag is in
+  // progress. faceDown is only ever seen inside a ring, so it is free to sit
+  // near the field tone -- in dark it lands 12/255 away, and dots at that
+  // separation are invisible.
   if (g_gripRect.w > 0) {
     if (g_gripDragging) {
       setRGB(r, p.face);
       fillRoundRect(r, g_gripRect, radius);
     }
-    setRGB(r, p.faceDown);
+    setRGB(r, p.hairline);
     const float dot = SDL_max(2.0f, 3.5f * S);
     const float step = dot * 2.4f;
     const float cx = g_gripRect.x + g_gripRect.w / 2.0f;
