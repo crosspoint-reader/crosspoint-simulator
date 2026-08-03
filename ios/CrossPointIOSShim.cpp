@@ -282,46 +282,65 @@ void layoutPad(int outW, int outH) {
 
 // --- Appearance ------------------------------------------------------------
 //
-// Low-contrast chrome, so the e-ink panel stays the subject. The face always
-// sits AWAY from the field: LIGHTER than the paper in light appearance, DARKER
-// than the background in dark. Apple's system ramp used to supply these, but it
-// runs the wrong way in dark mode -- systemGray6 (1C1C1E) is lighter than
-// systemBackground (121212), so every control glowed as a grey slab against
-// black. It is also blue-tinted (B > R at every step), which reads as a cool
-// cast against this app's warm paper (FBFBF9, B two below R). Both are gone:
-// the ramp below is neutral-to-warm and reverses direction with the appearance.
+// HOLLOW CONTROLS. Each control is a one-device-pixel stroke around nothing:
+// the face IS the field, so at rest the pad is seven outlines on the same tone
+// as the page's paper. A press lays a WASH inside the outline -- the fill
+// changes and the stroke never moves.
 //
-// THE PRESSED STATE CARRIES EVERYTHING. With the glyphs gone it is the only
-// feedback a control has, so it moves BACK ACROSS the field tone rather than
-// further from it -- darker in light, lighter in dark. That is the reverse of
-// the resting direction, which is what makes a press read as a press and not as
-// a redraw.
+// This reverses what the pad used to do, and the reversal is the point. The old
+// arrangement put the face AWAY from the field (lighter than the paper in light
+// appearance, darker than the background in dark) and spent the contrast on a
+// ring. Two ceilings killed that: the field sits 4 levels below white in light
+// and 18 above black in dark, so in light the face had almost nowhere to go and
+// in dark the ring had to shout to clear the field. Both tones now step TOWARD
+// mid-grey -- darker than the paper, lighter than 121212 -- which is the roomy
+// direction in both appearances. One rule where there used to be two mirrored
+// ones. (Apple's system ramp is still no help here and is still not used: it
+// runs the wrong way in dark, systemGray6 1C1C1E being lighter than
+// systemBackground 121212, and it is blue-tinted at every step against this
+// app's warm paper.)
+//
+// THE PRESS IS THE ONLY FEEDBACK, the controls being unlabelled, and it is a
+// large-area change rather than a loud one. The wash is 14/255 against a 34/255
+// stroke, but it covers a 58.8 pt cell where the stroke covers a line, and area
+// is what makes it read. If it ever feels soft on device the knob is one step:
+// E9E9E7 / 242424 takes the wash to 18 and still leaves 15 clear of the stroke.
 //
 // Every pair that must be told apart is >= 13/255, the floor below which a step
 // is not reliably visible on a phone. Verified on the values below:
-//   light  face/field 4 (deliberately near-flush; the ring carries the shape),
-//          hairline/face 35, hairline/field 31, faceDown/face 21,
-//          faceDown/hairline 14
-//   dark   face/field 18, hairline/field 38, faceDown/face 30,
-//          faceDown/hairline 26
+//   light  stroke/field 34, wash/field 14, stroke/wash 20
+//   dark   stroke/field 33, wash/field 14, stroke/wash 19
+//
+// NOT ACCESSIBLE, and knowingly so. WCAG 1.4.11 asks 3:1 against the adjacent
+// colour for the visual information that identifies a control, and the
+// exemption it grants a button with a label does not apply to a pad that has
+// none. These strokes measure 1.36:1 in light and 1.48:1 in dark; 3:1 against
+// these fields would be about 929292 and 616161, i.e. 105/255 and 79/255. The
+// pad has never met that bar -- the ring this replaces measured 1.33:1 and
+// 1.60:1 -- so this is a difference of degree rather than of kind, but it is a
+// choice made with the number in hand, not an oversight. The mitigation, if one
+// is ever wanted, is behavioural rather than tonal: paint the pad a step
+// stronger for the first few launches and settle to these values after.
 struct Palette {
   Uint8 field[3];     // behind the panel and the pad
-  Uint8 hairline[3];  // button border and pair dividers
-  Uint8 face[3];      // button face at rest: away from the field
-  Uint8 faceDown[3];  // button face while held: back across the field
+  Uint8 hairline[3];  // the stroke: control outlines and pair ticks
+  Uint8 face[3];      // control interior at rest: EQUAL to the field, i.e. hollow
+  Uint8 faceDown[3];  // the wash, laid inside the stroke while held
 };
 
 // The field matches the panel's paper tone (HalDisplay's PanelPalette:
 // 2D2D2D-on-FBFBF9 light, E0E0DE-on-121212 dark — change them together), so
-// the page floats edgeless in the field in both appearances.
+// the page floats edgeless in the field in both appearances. `face` repeats it
+// on purpose: paintPad's existing stroke-then-face draw paints a hollow control
+// when the two are equal, so nothing structural is needed to get an outline.
 constexpr Palette kLightPalette{{0xFB, 0xFB, 0xF9},
-                                {0xDC, 0xDC, 0xDA},
-                                {0xFF, 0xFF, 0xFF},
-                                {0xEA, 0xEA, 0xE8}};
+                                {0xD9, 0xD9, 0xD7},
+                                {0xFB, 0xFB, 0xF9},
+                                {0xED, 0xED, 0xEB}};
 constexpr Palette kDarkPalette{{0x12, 0x12, 0x12},
-                               {0x38, 0x38, 0x38},
-                               {0x00, 0x00, 0x00},
-                               {0x1E, 0x1E, 0x1E}};
+                               {0x33, 0x33, 0x33},
+                               {0x12, 0x12, 0x12},
+                               {0x20, 0x20, 0x20}};
 
 bool g_dark = false;
 const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
@@ -524,12 +543,18 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
   const Palette &p = palette();
   const float S = g_ptScale;
   const float radius = 12.0f * S;
-  const float hairline = SDL_max(1.0f, S * 0.5f);
 
-  // A hairline ring with the face inset inside it. The ring stays put while
-  // held, so the face changing tone reads as the control moving rather than as
-  // the control being redrawn. Pressed paint comes straight from PadCore's
-  // finger state -- the moment no finger holds a control, it paints released.
+  // ONE DEVICE PIXEL, not half a point. `S * 0.5f` is 1.5 px on a 3x phone,
+  // which cannot land on the pixel grid: the stroke is antialiased across two
+  // rows and arrives lighter and softer than the palette above says, so the
+  // constant stops describing what is on the glass. A whole pixel is exact at
+  // every scale, and it is the rule UIKit itself uses for separators.
+  const float hairline = 1.0f;
+
+  // A stroke with the face inset inside it. The stroke stays put while held, so
+  // the face changing tone reads as the control filling rather than as the
+  // control being redrawn. Pressed paint comes straight from PadCore's finger
+  // state -- the moment no finger holds a control, it paints released.
 
   // Fill one half of a rocker: rounded on the outer end, SQUARE on the shared
   // edge -- a rounded fill then a square patch over the inner end's corners.
@@ -557,20 +582,30 @@ void paintPad(SDL_Renderer *r, int outW, int outH) {
     setRGB(r, p.hairline);
     fillRoundRect(r, uni, radius);
 
+    // The two halves MEET at the seam, with no stroke left showing between
+    // them. They used to stop a half-hairline short on that edge, so the
+    // capsule underneath painted a full-height divider whether one was wanted
+    // or not -- which is why simply shortening the divider rect below did
+    // nothing. The tick is now the only thing marking the seam.
     const float innerR = radius - hairline;
-    const SDL_FRect innerL{a.x + hairline, a.y + hairline,
-                           a.w - hairline - hairline / 2, a.h - 2 * hairline};
-    const SDL_FRect innerRt{b.x + hairline / 2, b.y + hairline,
-                            b.w - hairline - hairline / 2, b.h - 2 * hairline};
+    const SDL_FRect innerL{a.x + hairline, a.y + hairline, a.w - hairline,
+                           a.h - 2 * hairline};
+    const SDL_FRect innerRt{b.x, b.y + hairline, b.w - hairline,
+                            b.h - 2 * hairline};
     setRGB(r, g_core.isDown(pr[0]) ? p.faceDown : p.face);
     fillHalf(innerL, /*leftHalf=*/true, innerR);
     setRGB(r, g_core.isDown(pr[1]) ? p.faceDown : p.face);
     fillHalf(innerRt, /*leftHalf=*/false, innerR);
 
-    // Divider between the two targets, same tone as the ring.
+    // Divider between the two targets, same tone as the stroke -- a CENTRE TICK
+    // over 34% of the pair's inner height, not the full span. The seam only has
+    // to say "two targets here"; a full-height rule doubles the ink in the
+    // middle of the pad, which is exactly where the eye already is.
     setRGB(r, p.hairline);
-    const SDL_FRect div{b.x - hairline / 2, a.y + hairline, hairline,
-                        a.h - 2 * hairline};
+    const float innerH = a.h - 2 * hairline;
+    const float tickH = innerH * 0.34f;
+    const SDL_FRect div{b.x - hairline / 2, a.y + hairline + (innerH - tickH) / 2,
+                        hairline, tickH};
     SDL_RenderFillRect(r, &div);
   }
 

@@ -173,8 +173,22 @@ Two rows on a five-column square grid (owner-approved layout 2026-08-02):
 UP/DOWN are the X3's SIDE buttons (fixed page-turn pair), fused into one
 rocker at the right of the bottom row; POWER sits at the left. BACK/SELECT and
 LEFT/RIGHT are the FRONT buttons. Every fused pair paints as one capsule —
-rounded outer corners only, a hairline divider, no pinched notch between two
-rounded squares. There is no grabber/drag handle any more; the pad is fixed.
+rounded outer corners only, a centre tick marking the seam, no pinched notch
+between two rounded squares. There is no grabber/drag handle any more; the pad
+is fixed.
+
+**The controls are hollow** (owner-approved 2026-08-03, after three rounds of
+palette mockups). A control is a one-device-pixel stroke around nothing: the
+face equals the field, so at rest the pad is seven outlines on the same tone as
+the paper, and a press lays a wash inside the outline while the stroke stays
+put. Both tones step *toward mid-grey* from the field — darker than the paper in
+light, lighter than 121212 in dark — which is the direction with room in both
+appearances; the old arrangement stepped away from the field and ran into the
+4-level ceiling above white and the 18-level floor above black. The stroke is
+specified in device pixels rather than points because the old `S * 0.5f` was
+1.5 px at 3x and could not land on the pixel grid. Numbers, the WCAG 1.4.11
+position and the rejected alternatives are in the palette comment above
+`struct Palette` in `CrossPointIOSShim.cpp`.
 
 | Control | Button index |
 |---|---|
