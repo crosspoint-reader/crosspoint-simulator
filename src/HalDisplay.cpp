@@ -363,7 +363,9 @@ void setTopInset(int px) {
 }
 // Written by presentIfNeeded (main thread) on the manual-placement path.
 static std::atomic<int> panelBottom{0};
+static std::atomic<int> panelHeight{0};
 int panelBottomPx() { return panelBottom.load(); }
+int panelHeightPx() { return panelHeight.load(); }
 void requestPresent() { pendingPresent.store(true); }
 // The single entry point for panel polarity (see SimulatorOverlay.h). The env
 // override is applied here, on every call, so a forced polarity survives any
@@ -637,6 +639,7 @@ void HalDisplay::presentIfNeeded() {
     landscapeDst = portraitDst;
     SimulatorOverlay::panelBottom.store(
         static_cast<int>(topMargin + logH * scale));
+    SimulatorOverlay::panelHeight.store(static_cast<int>(logH * scale));
   }
 
   switch (orientation) {

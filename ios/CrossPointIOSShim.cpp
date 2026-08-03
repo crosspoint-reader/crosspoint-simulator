@@ -168,7 +168,14 @@ void layoutPad(int outW, int outH) {
   constexpr float kMargin = 20.0f;      // side inset
   constexpr float kOptimalSquare = 60.0f;  // owner-picked target size
   constexpr float kGap = 16.0f;
-  constexpr float kPanelGap = kGap;     // panel -> top row
+  // Panel -> top row gap MATCHES THE CHASSIS (owner ruling 2026-08-02): on the
+  // X3 the front buttons' top edge sits 11.6 mm below the panel window, 14.8%
+  // of the 78.2 mm panel height (measured from Xteink's straight-on product
+  // renders; the firmware repo's docs/hardware-dimensions.md holds the full
+  // table and methodology). Expressed as a ratio of the PRESENTED panel height
+  // so the proportion holds at any device scale; kGap is the pre-first-present
+  // fallback only.
+  constexpr float kPanelGapRatio = 11.6f / 78.2f;
   constexpr float kRowClear = kGap;     // top row keeps at least this above the bottom row
   constexpr float kHomeInsetFallback = 34.0f;  // when the safe area is unreadable
   constexpr float kHomeInsetMin = 16.0f;       // floor for home-button devices (safe area 0)
@@ -215,12 +222,16 @@ void layoutPad(int outW, int outH) {
   // Bottom row: half-height, anchored at the bottom of the screen.
   const float lowerY = H - bottomInset - kHalf;
 
-  // Top row hugs the panel, clamped clear of the bottom row.
+  // Top row hugs the panel at the chassis-matched gap, clamped clear of the
+  // bottom row.
   const float maxUpper = lowerY - kRowClear - kSquare;
   const int panelBottomPx = SimulatorOverlay::panelBottomPx();
+  const int panelHeightPx = SimulatorOverlay::panelHeightPx();
+  const float panelGap =
+      panelHeightPx > 0 ? (static_cast<float>(panelHeightPx) / S) * kPanelGapRatio : kGap;
   float upperY;
   if (panelBottomPx > 0) {
-    upperY = static_cast<float>(panelBottomPx) / S + kPanelGap;
+    upperY = static_cast<float>(panelBottomPx) / S + panelGap;
     if (upperY > maxUpper) upperY = maxUpper;
   } else {
     upperY = maxUpper;
@@ -243,12 +254,16 @@ void layoutPad(int outW, int outH) {
   place(kPadUp, colX(cols - 2), lowerY, kSquare, kHalf);
   place(kPadDown, colX(cols - 1), lowerY, kSquare, kHalf);
 
-  // Reserve a fixed band for the pad out of the panel's space: everything from
-  // the panel gap down through the bottom row and the home inset. Fixed (not
-  // derived from upperY) because the panel's own placement depends on this
-  // inset -- a constant keeps the two from chasing each other.
+  // Reserve the pad's band out of the panel's space: the chassis-ratio gap
+  // plus both rows and the home inset. The gap term makes this DERIVED from
+  // the presented panel height, which the band itself influences -- but the
+  // loop converges: the panel scale is floored to an integer, so the band can
+  // only move the panel between discrete scales, and one extra relayout after
+  // the first present settles it (panelBottom-change already triggers that
+  // relayout in paintPad). Before the first present the kGap fallback keeps
+  // the band close to its old constant value.
   SimulatorOverlay::setBottomInset(static_cast<int>(
-      (kPanelGap + kSquare + kRowClear + kHalf + bottomInset) * S));
+      (panelGap + kSquare + kRowClear + kHalf + bottomInset) * S));
 
   // Keep the page clear of the status bar and the Dynamic Island. The panel's
   // manual fit is top-aligned, so without a top band it starts at the very top

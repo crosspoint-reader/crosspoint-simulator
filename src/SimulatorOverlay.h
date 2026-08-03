@@ -55,6 +55,12 @@ void setTopInset(int px);
 // hugs the page for thumb reach instead of sinking to the screen bottom.
 int panelBottomPx();
 
+// The panel's presented height on the last present, in device pixels (0 until
+// the first manual-placement present). Lets the pad scale hardware-derived
+// proportions (the chassis panel-to-buttons gap) with the presented panel
+// instead of hardcoding screen points.
+int panelHeightPx();
+
 // Panel polarity driven by the host appearance: dark renders the panel
 // white-on-black through HalDisplay's inversion flag. A free hook rather than
 // a HAL method for the same reason as the rest of this namespace -- following

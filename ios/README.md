@@ -194,10 +194,15 @@ There is no control for the simulator's own SLEEP (`S`) either: that is a harnes
 command, not a button the hardware has.
 
 
-**Placement is specified, not derived.** Nothing in this source tree encodes
-where the buttons physically sit on the X3 chassis; the SDK describes them only
-electrically (six on a resistor ladder across two ADC pins, POWER on its own
-digital pin — `BoardConfig` `InputPins`, `InputStyle::XteinkAdcLadder`).
+**Placement mirrors the chassis where it's measurable.** The SDK describes the
+buttons only electrically (six on a resistor ladder across two ADC pins, POWER
+on its own digital pin — `BoardConfig` `InputPins`,
+`InputStyle::XteinkAdcLadder`), but the panel-to-top-row gap now matches the
+physical X3: the front buttons' top edge sits 11.6 mm below the panel window,
+14.8% of the 78.2 mm panel height, and the pad keeps that proportion of the
+presented panel height (`kPanelGapRatio`, fed by
+`SimulatorOverlay::panelHeightPx()`). Full measurement table + methodology:
+the firmware repo's `docs/hardware-dimensions.md`.
 
 Sizing: strict square grid, cell constrained to the 60 pt optimum — the column
 count absorbs device width (nearest-to-60 integer fit, minimum five columns),
