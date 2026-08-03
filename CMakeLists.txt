@@ -138,6 +138,22 @@ set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+# Disable SDL3 subsystems the app never calls. The reader only calls
+# SDL_Init(SDL_INIT_VIDEO); audio, camera, Bluetooth game controllers, haptic,
+# motion sensors, and the Vulkan render/GPU backends are all dead weight on iOS.
+# Removing camera and Bluetooth here lets us remove their privacy strings from
+# Info.plist.in (ITMS-90683 requires a purpose string for every referenced API,
+# even one we never invoke). Vulkan on iOS is unsupported and adds nothing.
+set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
+set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
+set(SDL_HAPTIC OFF CACHE BOOL "" FORCE)
+# HIDAPI on iOS uses CoreBluetooth for Bluetooth device enumeration; with
+# SDL_JOYSTICK=OFF there is nothing left that would call into it.
+set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
+set(SDL_JOYSTICK OFF CACHE BOOL "" FORCE)
+set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
+set(SDL_GPU_VULKAN OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(SDL3
   GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
   GIT_TAG ${CROSSPOINT_SDL3_TAG}
@@ -149,6 +165,17 @@ if(CROSSPOINT_BUILD_FIRMWARE)
   if(NOT CROSSPOINT_FIRMWARE_DIR)
     message(FATAL_ERROR
       "CROSSPOINT_BUILD_FIRMWARE=ON requires -DCROSSPOINT_FIRMWARE_DIR=<path>")
+  endif()
+
+  # On iOS the network/OTA/SD-flash subsystem cannot function (no WiFi
+  # hardware, no SD slot). Strip those TUs before building crosspoint_core so
+  # the iOS binary carries none of that code. The desktop build is unaffected.
+  if(IOS)
+    list(LENGTH CROSSPOINT_IOS_EXCLUDED_SIM_SOURCES _n_exc_sim)
+    list(LENGTH CROSSPOINT_IOS_EXCLUDED_FW_SOURCES _n_exc_fw)
+    list(REMOVE_ITEM CROSSPOINT_SIM_SOURCES ${CROSSPOINT_IOS_EXCLUDED_SIM_SOURCES})
+    list(REMOVE_ITEM CROSSPOINT_FW_SOURCES ${CROSSPOINT_IOS_EXCLUDED_FW_SOURCES})
+    message(STATUS "CrossPoint iOS: stripped ${_n_exc_sim} simulator + ${_n_exc_fw} firmware network/OTA TUs")
   endif()
 
   list(TRANSFORM CROSSPOINT_SIM_SOURCES

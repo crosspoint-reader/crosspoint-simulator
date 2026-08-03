@@ -188,6 +188,34 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
   src
 )
 
+# TUs excluded for the iOS target only (BUGS.md B-008). Network/OTA/SD-flash
+# require WiFi and SD-slot hardware that do not exist on a phone. The desktop
+# simulator keeps all of them: it has working networking stubs and the web UI
+# genuinely functions there. Apply these via list(REMOVE_ITEM ...) in the root
+# CMakeLists.txt before crosspoint_core is built.
+set(CROSSPOINT_IOS_EXCLUDED_SIM_SOURCES
+  src/CrossPointWebServer.cpp
+  src/NetworkClient.cpp
+  src/WebServer.cpp
+  src/WebSocketsServer.cpp
+  src/qrcode.cpp
+  src/simulator_ota.cpp
+)
+set(CROSSPOINT_IOS_EXCLUDED_FW_SOURCES
+  src/activities/network/CrossPointWebServerActivity.cpp
+  src/activities/network/NetworkModeSelectionActivity.cpp
+  src/activities/network/WifiSelectionActivity.cpp
+  src/activities/settings/FontDownloadActivity.cpp
+  src/activities/settings/OtaUpdateActivity.cpp
+  src/activities/settings/SdFirmwareUpdateActivity.cpp
+  src/WifiCredentialStore.cpp
+  src/network/CrossPointWebServer.cpp
+  src/network/HttpDownloader.cpp
+  src/network/WebDAVHandler.cpp
+  src/network/WifiDiagnostics.cpp
+  src/util/QrUtils.cpp
+)
+
 # Compile definitions, verbatim from the working desktop env.
 set(CROSSPOINT_DEFINES
   CROSSPOINT_SIMULATOR_PROJECT_WEBSERVER

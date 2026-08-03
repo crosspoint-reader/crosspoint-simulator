@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
+#include <climits>
 
 namespace {
 
@@ -225,6 +226,58 @@ void seedOneFontDirectory(const std::string &from, const std::string &to) {
   ::closedir(have);
 }
 
+// Attempt to symlink `to` -> `from` (an absolute bundle path).
+//
+// Returns true and creates the symlink when:
+//   - `to` does not exist yet (new install)
+//   - `to` is already a symlink but points somewhere else (bundle moved after
+//     an update); the stale link is removed first.
+//
+// Returns false without touching `to` when it is a REAL directory: that means
+// a previous install left a genuine copy (from an older build that did not
+// symlink) or the user manually populated the family. In either case we fall
+// back to seedOneFontDirectory() so the copy+prune path still runs and keeps
+// the files up to date.
+//
+// Correctness constraints satisfied:
+//  - Prune logic never runs through a live symlink (we skip seedOneFontDirectory
+//    entirely on success).
+//  - The 2x companion is automatically reachable through the symlinked
+//    directory; no separate seedOneFontDirectory call is needed.
+//  - A user who drops a replacement family folder via Files would write into
+//    the read-only bundle directory and get an EROFS error from iOS, which is
+//    the correct behaviour for a bundled resource. They can install a DIFFERENT
+//    family name alongside; that will be a real directory and is never touched.
+bool symlinkFontDirectory(const std::string &from, const std::string &to) {
+  struct stat st{};
+  if (::lstat(to.c_str(), &st) == 0) {
+    if (S_ISLNK(st.st_mode)) {
+      // Already a symlink: check if it targets the right bundle path.
+      char linkbuf[PATH_MAX];
+      const ssize_t len = ::readlink(to.c_str(), linkbuf, sizeof(linkbuf) - 1);
+      if (len > 0) {
+        linkbuf[len] = '\0';
+        if (std::string(linkbuf) == from) {
+          return true;  // already correct, nothing to do
+        }
+      }
+      // Stale symlink (bundle UUID changed after update). Remove and recreate.
+      ::unlink(to.c_str());
+    } else {
+      // Real directory: user-populated or old copy. Let caller fall back to
+      // the copy+prune path.
+      return false;
+    }
+  }
+  if (::symlink(from.c_str(), to.c_str()) == 0) {
+    SDL_Log("[harness] symlinked fonts/%s -> bundle SeedFonts",
+            to.c_str() + (to.rfind('/') != std::string::npos ? to.rfind('/') + 1 : 0));
+    return true;
+  }
+  SDL_Log("[harness] symlink %s FAILED: %s", to.c_str(), ::strerror(errno));
+  return false;
+}
+
 void seedBundledFontFamilies() {
   // SDL_GetBasePath: the bundle's Resources directory on iOS, the executable's
   // directory on a desktop host (where SeedFonts/ simply doesn't exist and
@@ -247,6 +300,15 @@ void seedBundledFontFamilies() {
     if (!isDirectory(from.c_str())) continue;
     ::mkdir("fonts", 0777);
     const std::string to = std::string("fonts/") + family;
+
+    // Prefer a symlink: the bundle copy stays in the app and Documents gets a
+    // zero-byte directory entry. ~54 MB that used to exist twice now exists
+    // once. 2x companion files are reachable through the symlinked directory
+    // with no extra work.
+    if (symlinkFontDirectory(from, to)) continue;
+
+    // Fall back to copy+prune when `to` is already a real directory (existing
+    // install or user-populated family). Keeps updates landing correctly.
     seedOneFontDirectory(from, to);
     // The hi-res companion set lives in `<family>/2x/` and must be seeded into
     // the same shape on the card, or SdCardFontManager finds no companion and

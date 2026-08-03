@@ -133,6 +133,19 @@ target_compile_definitions(CrossPointX3 PRIVATE
 # same value and the two layers cannot disagree.
 target_compile_definitions(crosspoint_core PUBLIC CROSSPOINT_RENDER_SCALE=2)
 
+# The 28 built-in Noto/Ubuntu faces are unreachable on iOS: FontSelectionActivity
+# hides built-in faces whenever SD families are installed (line 93-101 in the
+# firmware), and testflight.sh hard-fails the configure when CROSSPOINT_IOS_SEED_FONTS_DIR
+# is not set, so an iOS build always has at least the four S-tier families.
+# Stripping them saves ~1 MB of arm64 .o / binary section.
+# CalendarSleepScreen and getReaderFontId() both already handle OMIT_FONTS.
+target_compile_definitions(crosspoint_core PUBLIC OMIT_FONTS)
+
+# Network/OTA/SD-flash TUs are excluded from the iOS source set (see root
+# CMakeLists.txt). This define gates their menu entries and includes in the
+# firmware so nothing dangles or fails to compile without those TUs.
+target_compile_definitions(crosspoint_core PUBLIC CROSSPOINT_NO_NETWORK=1)
+
 set_target_properties(CrossPointX3 PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
   XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${CROSSPOINT_IOS_BUNDLE_ID}
