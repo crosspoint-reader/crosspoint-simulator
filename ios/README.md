@@ -252,6 +252,27 @@ just above the bottom row before the first present), while the bottom row
 anchors to the screen edge using the system safe-area inset (fallback 34 pt,
 floor 16 pt on home-button devices).
 
+**Open: the pad collides with system Picture-in-Picture.** A floating video
+window parks in a bottom corner, which is where both halves of the bottom row
+live: bottom-right takes the UP|DOWN page-turn rocker whole, bottom-left takes
+POWER. Two facts bound every fix. **The app cannot see the window** — no public
+API reports another app's PiP, so the pad cannot dodge at runtime and the answer
+has to be a static layout or a reader preference. **Touches over it never
+arrive**, the window being a system window above the app, so the invisible
+hit-slop earmarked above is no help; an overlapped control is dead, not hidden.
+Measured on an iPhone Air against the shipped build, the front rockers clear the
+window's top edge by **6.7 pt** — they survive by luck, not by design.
+
+The room to fix it is one number: the panel presents at an integer scale, so the
+reserved band can grow only until the panel would drop 2x → 1x. On the Air that
+is **86.7 pt of headroom** (band 223.3 pt of a 310 pt ceiling), against the
+**166 pt** a full window band wants. So a vertical answer buys its clearance from
+the chassis-matched gap, from the two-row split, or not at all — on a 13 mini or
+an SE there is no room for one. Six options, drawn to scale from this file's own
+layout math with the window movable to any corner and resizable:
+[mockups/pip-window-alignment.html](mockups/pip-window-alignment.html). Nothing
+is approved yet.
+
 ## How the harness attaches
 
 Two seams, both in simulator code — the firmware and `HalGPIO` are untouched.
