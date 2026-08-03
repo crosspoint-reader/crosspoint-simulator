@@ -194,6 +194,23 @@ There is no control for the simulator's own SLEEP (`S`) either: that is a harnes
 command, not a button the hardware has.
 
 
+**iPad (family 2) — approved spec, NOT implemented.** Owner-approved
+2026-08-03 after mockup iteration (computed mockups: the "device_mockups"
+artifact, built from the shipped layout math). If TARGETED_DEVICE_FAMILY ever
+gains family 2, `layoutPad()` branches for iPad:
+
+- The panel takes the full safe height, centered — no reserved bottom band.
+- Front rockers move to the side margins, vertically centered to the screen:
+  Back|Select in the left margin, Left|Right in the right (thumb height when
+  gripping the tablet's sides).
+- The bottom row keeps its screen-bottom anchor in the same margin columns:
+  Power bottom-left, Up|Down rocker bottom-right.
+- Cell = min(60pt, margin fit): 60pt everywhere except iPad mini portrait
+  (54pt). Computed panel scales: 1x on all frames except iPad mini landscape
+  (0.875x — the portrait-only firmware caps what a short window can show).
+
+Until then the app stays iPhone-only, and below is the shipped iPhone layout.
+
 **Placement mirrors the chassis where it's measurable.** The SDK describes the
 buttons only electrically (six on a resistor ladder across two ADC pins, POWER
 on its own digital pin — `BoardConfig` `InputPins`,
