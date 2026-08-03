@@ -170,15 +170,58 @@ trap 'rm -rf "$IPA_PLIST_DIR"' EXIT
 unzip -q "$IPA" 'Payload/*.app/Info.plist' -d "$IPA_PLIST_DIR"
 IPA_PLIST=$(find "$IPA_PLIST_DIR" -name Info.plist | head -1)
 [[ -n "$IPA_PLIST" ]] || { echo "ERROR: no Info.plist inside $IPA"; exit 1; }
+# A purpose string is required IFF the shipped binary actually references the
+# API. Demanding all three unconditionally was right while SDL3 was built with
+# every subsystem on. Once SDL_CAMERA/AUDIO/JOYSTICK/HAPTIC/SENSOR were turned
+# off (CMakeLists.txt), CoreBluetooth, AVFoundation, CoreHaptics and
+# AudioToolbox stopped linking at all and the strings were correctly dropped
+# from Info.plist.in -- at which point an unconditional check blocks a build
+# ITMS-90683 would never have rejected. Verified on build 21: zero undefined
+# refs to CBCentral/AVCapture/CBPeripheral.
+#
+# Derive the requirement from the binary instead. This still catches the
+# original failure: re-enable an SDL subsystem, the framework returns, and the
+# string is demanded again.
+unzip -q -o "$IPA" 'Payload/*.app/CrossPointX3' -d "$IPA_PLIST_DIR" 2>/dev/null || true
+IPA_BIN=$(find "$IPA_PLIST_DIR/Payload" -maxdepth 2 -type f -name 'CrossPointX3' | head -1)
+NEEDS_CAMERA=0
+NEEDS_BT=0
+if [[ -n "$IPA_BIN" ]]; then
+  LINKED=$(otool -L "$IPA_BIN" 2>/dev/null || true)
+  CLASSES=$(otool -v -s __TEXT __objc_classname "$IPA_BIN" 2>/dev/null || true)
+  grep -q 'AVFoundation' <<<"$LINKED" && NEEDS_CAMERA=1
+  grep -qiE 'AVCapture|SDLCamera|CaptureVideoData' <<<"$CLASSES" && NEEDS_CAMERA=1
+  grep -q 'CoreBluetooth' <<<"$LINKED" && NEEDS_BT=1
+  grep -qiE 'CBCentral|CBPeripheral' <<<"$CLASSES" && NEEDS_BT=1
+else
+  # Could not inspect the binary -- demand everything rather than silently
+  # skipping the check.
+  echo "  WARNING: no binary found inside the IPA; requiring all purpose strings"
+  NEEDS_CAMERA=1
+  NEEDS_BT=1
+fi
+
 MISSING=0
 for key in "${PURPOSE_KEYS[@]}"; do
-  VALUE=$(plutil -extract "$key" raw -o - "$IPA_PLIST" 2>/dev/null) && [[ -n "$VALUE" ]] \
-    && echo "  $key ok" \
-    || { echo "  $key MISSING"; MISSING=1; }
+  case "$key" in
+    NSCameraUsageDescription) REQUIRED=$NEEDS_CAMERA ;;
+    NSBluetooth*) REQUIRED=$NEEDS_BT ;;
+    *) REQUIRED=1 ;;
+  esac
+  VALUE=$(plutil -extract "$key" raw -o - "$IPA_PLIST" 2>/dev/null) || VALUE=""
+  if [[ -n "$VALUE" ]]; then
+    echo "  $key ok"
+  elif [[ $REQUIRED -eq 1 ]]; then
+    echo "  $key MISSING (binary references the API)"
+    MISSING=1
+  else
+    echo "  $key not needed (API not referenced by the binary)"
+  fi
 done
 if [[ $MISSING -ne 0 ]]; then
-  echo "ERROR: the IPA is missing purpose strings and App Store Connect will"
-  echo "reject it with ITMS-90683. Fix ios/Info.plist.in and rebuild."
+  echo "ERROR: the IPA is missing purpose strings for APIs it actually"
+  echo "references, and App Store Connect will reject it with ITMS-90683."
+  echo "Fix ios/Info.plist.in and rebuild."
   exit 1
 fi
 
