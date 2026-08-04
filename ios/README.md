@@ -252,6 +252,84 @@ just above the bottom row before the first present), while the bottom row
 anchors to the screen edge using the system safe-area inset (fallback 34 pt,
 floor 16 pt on home-button devices).
 
+**Open: the pad collides with system Picture-in-Picture.** A floating video
+window parks in a bottom corner, which is where both halves of the bottom row
+live: bottom-right takes the UP|DOWN page-turn rocker whole, bottom-left takes
+POWER. Two facts bound every fix. **The app cannot see the window** — no public
+API reports another app's PiP, so the pad cannot dodge at runtime and the answer
+has to be a static layout or a reader preference. **Touches over it never
+arrive**, the window being a system window above the app, so the invisible
+hit-slop earmarked above is no help; an overlapped control is dead, not hidden.
+Measured on an iPhone Air against the shipped build, the front rockers clear the
+window's top edge by **6.7 pt** — they survive by luck, not by design.
+
+The room to fix it is one number: the panel presents at an integer scale, so the
+reserved band can grow only until the panel would drop 2x → 1x. On the Air that
+is **86.7 pt of headroom** (band 223.3 pt of a 310 pt ceiling), against the
+**166 pt** a full window band wants. So a vertical answer buys its clearance from
+the chassis-matched gap, from the two-row split, or not at all — on a 13 mini or
+an SE there is no room for one. Six options, drawn to scale from this file's own
+layout math with the window movable to any corner and resizable:
+[mockups/pip-window-alignment.html](mockups/pip-window-alignment.html). Nothing
+is approved yet.
+
+**Settled part: `kPipLift` = 12 pt (owner ruling 2026-08-04).** The narrower
+complaint was not the buried bottom row — it was the TOP row (LEFT|RIGHT)
+clearing the window's top edge by only 6.7 pt, close enough to read as a
+collision. That needs no restructuring: **both rows move up 12 pt as a block**,
+taken out of the panel gap and nothing else. The reserved band is unchanged, so
+the page neither moves nor changes scale — the pad just sits higher in the space
+it already had. Clearance goes 6.7 → 18.7 pt, and the width the window can be
+pinched to before it reaches the top row goes 50% → 55% of the screen.
+
+**Judge the gap in millimetres, not points.** It is a chassis measurement (11.6
+mm below the panel window on a 78.2 mm panel, 14.8%) and the Air presents 6.75 pt
+per real millimetre, so a shift of X points leaves `(78.3 - X) / 6.75` mm of the
+hardware's gap. Below about 4 mm the pad stops reading as a control surface under
+the page and starts reading as a border around it.
+
+| move up | clearance | page gap | on the X3 |
+|---|---|---|---|
+| 0 pt (was) | 6.7 pt | 78.3 pt | 11.6 mm |
+| **12 pt (now)** | **18.7 pt** | **66.3 pt** | **9.8 mm** |
+| 25.3 pt | 32 pt | 53.0 pt | 7.9 mm |
+| 41.3 pt | 48 pt | 37.0 pt | 5.5 mm |
+| 78.3 pt | 85 pt | 0 | 0 mm |
+
+**Settled too: `kTopReserve` = 80 pt (owner ruling 2026-08-04).** The top band is
+now `max(safe area, 80 pt)` rather than the safe area alone — a floor, not a
+replacement, so a deeper safe area still wins. The safe area is the minimum the
+system asks for, not a margin: on an iPhone Air it reads 74, which starts the
+text 5 pt below the Island rather than clear of it. The page moves 79.3 → 85.3,
+and because the pad hangs off the page's bottom edge it moves with it, so the
+clearance `kPipLift` bought falls **18.7 → 12.7 pt** and the pinch the top row
+survives falls 55.0% → 52.5%. Page still 2×, headroom 86.7 → 80.7 pt.
+
+**Explored and not taken: reserving a top band so a small window misses the
+page.** `setTopInset` would grow from the safe area's 74 pt to 159.2 pt (safe
+area + the window's own 11 pt inset + a small window's 74.2 pt height), which
+puts the page at 160-688 rather than 79-607. Two things follow. The top row
+hangs off the page's bottom edge, so it descends with it and lands in the
+bottom-corner windows unless the lift goes from 12 pt to ~41 pt — taking the
+panel gap to 5.5 mm. And the budget closes to **1.5 pt**: top band plus the band
+below may total 384 pt before the page halves to 1x, and this arrangement wants
+382.5. A device whose safe area reads a few points differently loses the page.
+The bottom row cannot be saved at any lift — with the page ending at 688 there
+are 104.8 pt above a small bottom window and the two rows stand 111 pt tall, so
+one of them is always behind it. Live, with both bands on sliders:
+[mockups/pip-envelope.html](mockups/pip-envelope.html).
+
+Two more mockups, both computed from this file's own layout math rather than sketched:
+[mockups/pip-gap-shift.html](mockups/pip-gap-shift.html) puts the shift and the
+window width on live sliders, and
+[mockups/pip-corner-matrix.html](mockups/pip-corner-matrix.html) checks the
+settled 12 pt against all four corners at both pinch extremes. The one case 12 pt
+does not cover is the largest pinch size (~62.8% of width, 148 pt tall), which
+reaches 18.4 pt into the top row from either bottom corner; clearing that too
+would want 30 pt of lift, i.e. 4.5 mm of chassis gap, which is the trade this
+stops short of. Top corners never touch the pad at any size — they cover page
+text, which no pad layout can prevent.
+
 ## How the harness attaches
 
 Two seams, both in simulator code — the firmware and `HalGPIO` are untouched.

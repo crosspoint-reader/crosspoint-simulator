@@ -1,0 +1,470 @@
+<title>Clear of every window — the top-band trade</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.11); --pip-soft: #8D97C9;
+    --dim: #1F7A6B; --bad: #A83A2B; --bad-fill: rgba(168,58,43,.10); --warn: #8A6320;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+      --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A;
+      --pip: #97A1E0; --pip-fill: rgba(151,161,224,.13); --pip-soft: #5D67A0;
+      --dim: #63C4B0; --bad: #E08472; --bad-fill: rgba(224,132,114,.13); --warn: #D3A44E;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+    --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A;
+    --pip: #97A1E0; --pip-fill: rgba(151,161,224,.13); --pip-soft: #5D67A0;
+    --dim: #63C4B0; --bad: #E08472; --bad-fill: rgba(224,132,114,.13); --warn: #D3A44E;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.11); --pip-soft: #8D97C9;
+    --dim: #1F7A6B; --bad: #A83A2B; --bad-fill: rgba(168,58,43,.10); --warn: #8A6320;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.5;
+    -webkit-text-size-adjust: 100%; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 20px 80px; }
+  h1, h2 { font-family: ui-serif, "New York", "Iowan Old Style", Palatino, Georgia, serif; font-weight: 600; text-wrap: balance; }
+  h1 { font-size: 1.8rem; line-height: 1.15; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 .8rem; }
+  .num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .eyebrow { font: 500 .7rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-faint); }
+  header { padding: 34px 0 18px; border-bottom: 1px solid var(--rule); }
+  header p { color: var(--ink-soft); margin: .6rem 0 0; max-width: 33rem; }
+
+  .bar { position: sticky; top: 0; z-index: 10; background: var(--paper); border-bottom: 1px solid var(--rule); padding: 10px 0 11px; }
+  .srow { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+  .srow + .srow { margin-top: 8px; }
+  .lab { font: 500 .66rem/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em;
+         text-transform: uppercase; color: var(--ink-faint); min-width: 5.6rem; }
+  input[type=range] { accent-color: var(--dim); flex: 1 1 130px; min-width: 110px; max-width: 230px; }
+  .read { font: 500 .76rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  button.chip { font: 500 .78rem/1 system-ui, sans-serif; padding: 6px 9px; border: 1px solid var(--rule);
+    background: transparent; color: var(--ink-soft); border-radius: 3px; cursor: pointer; }
+  button.chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--sunk); }
+  button.chip:focus-visible, input:focus-visible { outline: 2px solid var(--pip); outline-offset: 2px; }
+
+  .stage { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; margin-top: 22px; }
+  .stage figure { margin: 0; flex: 0 0 auto; width: 300px; max-width: 100%; }
+  .stage svg { display: block; width: 100%; height: auto; }
+  .stage .side { flex: 1 1 14rem; min-width: 0; }
+
+  dl.k { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0 0 14px; font-size: .84rem; }
+  dl.k dt { color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
+  dl.k dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  dd.good { color: var(--dim); } dd.warn { color: var(--warn); } dd.bad { color: var(--bad); font-weight: 600; }
+
+  .grid8 { display: grid; grid-template-columns: auto 1fr 1fr; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 6px; }
+  .grid8 > div { background: var(--paper); padding: 7px 9px; font-size: .78rem; }
+  .grid8 .h { font: 500 .66rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .07em;
+              text-transform: uppercase; color: var(--ink-faint); }
+  .grid8 .c { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; line-height: 1.35; }
+  .grid8 .c.ok { color: var(--dim); }
+  .grid8 .c.page { color: var(--warn); }
+  .grid8 .c.hit { color: var(--bad); }
+  .grid8 .c.soft { color: var(--pip); }
+
+  .note { border-left: 2px solid var(--rule); padding-left: 14px; font-size: .9rem; color: var(--ink-soft); margin: 20px 0; }
+  .note b { color: var(--ink); }
+  .alarm { border-left-color: var(--bad); color: var(--ink); }
+  section { margin-top: 28px; }
+  footer { border-top: 1px solid var(--rule); margin-top: 30px; padding-top: 16px; font-size: .8rem; color: var(--ink-faint); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">CrossPoint X3 · iOS harness · the whole envelope</div>
+  <h1>Clear of every window</h1>
+  <p>One frame, every place the window can be: four corners, small and large, drawn at once. Push the page down far
+  enough that a small top-corner window misses the text, and the page's bottom edge pushes the pad down into the
+  bottom-corner windows. The two sliders are the same budget seen from both ends.</p>
+</header>
+
+<div class="bar">
+  <div class="srow">
+    <span class="lab">Top reserve</span>
+    <input type="range" id="top" min="740" max="2400" step="5" value="1592" aria-label="Top band reserved above the page, in points">
+    <span class="read" id="topRead"></span>
+  </div>
+  <div class="srow">
+    <span class="lab">Pad lift</span>
+    <input type="range" id="lift" min="0" max="900" step="5" value="368" aria-label="Distance the pad is lifted, in points">
+    <span class="read" id="liftRead"></span>
+  </div>
+  <div class="srow">
+    <span class="lab">Small window</span>
+    <input type="range" id="small" min="200" max="480" step="2" value="314" aria-label="Small window width, percent of screen">
+    <span class="read" id="smallRead"></span>
+  </div>
+  <div class="srow">
+    <span class="lab">Large window</span>
+    <input type="range" id="large" min="480" max="900" step="2" value="628" aria-label="Large window width, percent of screen">
+    <span class="read" id="largeRead"></span>
+  </div>
+  <div class="srow">
+    <span class="lab">Presets</span>
+    <div class="presets" id="presets"></div>
+  </div>
+</div>
+
+<div class="stage">
+  <figure id="frame"></figure>
+  <div class="side">
+    <dl class="k" id="specs"></dl>
+    <div class="grid8" id="grid"></div>
+    <p style="font-size:.76rem;color:var(--ink-faint);margin:8px 0 0">
+      Solid outline = small window · dashed = large. Both are anchored to the system safe area, not to the reserve —
+      the reserve only moves what the app draws. Red hatching is a control lost; a blue tint is the bottom row sitting
+      behind a window, which is the overlap already accepted.</p>
+  </div>
+</div>
+
+<div class="note" id="verdict"></div>
+
+<section>
+  <h2>Why the two sliders fight</h2>
+  <p style="font-size:.93rem">The page presents at an <b>integer</b> scale, so it is 528 pt tall or it is 264 pt tall —
+  there is no shrinking a little. That fixes the sum: the top reserve and the band below the page have
+  <b><span class="num" id="ceil"></span> pt</b> to share, and they currently want <span class="num" id="want"></span> pt.
+  Reserving enough at the top for a small window (<span class="num" id="needTop"></span> pt) leaves the page ending far
+  lower, and since the top row hangs off the page's bottom edge, the pad follows it down into the bottom corners. The
+  lift slider is what buys it back — but the lift comes out of the panel gap, which is a chassis measurement, so the
+  right-hand column below is the honest price.</p>
+  <dl class="k" id="budget" style="max-width:32rem"></dl>
+  <p class="note" id="cannot" style="margin-top:16px"></p>
+</section>
+
+<footer>
+  Computed from <span class="num">layoutPad()</span> in <span class="num">ios/CrossPointIOSShim.cpp</span> and the
+  manual-fit block in <span class="num">src/HalDisplay.cpp</span>. iPhone Air <span class="num">420×912 pt</span>,
+  measured safe area <span class="num">74 / 34</span>. Window insets measured off the reference screenshot:
+  <span class="num">10.3 pt</span> from the side, <span class="num">11.0 pt</span> inside the safe area top and bottom.
+  Panel gap in millimetres uses the X3's <span class="num">78.2 mm</span> panel at
+  <span class="num">6.75 pt/mm</span> as presented here.
+</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var W = 420, H = 912, S = 3, SAFE_TOP = 74, BOT = 34;
+  var LOG_W = 528, LOG_H = 792;
+  var MARGIN = 20, CELL = (W - 2 * MARGIN) / 6, HALF = CELL / 2, ROW_CLEAR = 16;
+  var PANEL_MM = 78.2, RATIO = 11.6 / PANEL_MM;
+  var PIP_EDGE = 10.3, PIP_INSET = 11.0, ASPECT = 9 / 16;
+
+  var st = { top: 80, lift: 12, small: 0.314, large: 0.628 };
+
+  var PRESETS = [
+    { k: "today", label: "shipped (80, +12)", top: 80, lift: 12 },
+    { k: "small", label: "page + top row clear", top: 0, lift: 0 },   // solved below
+    { k: "toponly", label: "page clear, pad unmoved", top: 0, lift: 12 }
+  ];
+
+  function smallH() { return st.small * W * ASPECT; }
+  function needTop() { return SAFE_TOP + PIP_INSET + smallH(); }
+
+  // --- the layout, mirroring layoutPad() + HalDisplay's manual fit -----------
+  function solve(topPt, lift) {
+    var outW = W * S, outH = H * S;
+    var topPx = Math.trunc(topPt * S);
+    var panelH = 0, gap = 16, bandPt = 0, sc = 0, panelTop = 0;
+    for (var i = 0; i < 5; i++) {
+      gap = panelH > 0 ? panelH * RATIO : 16;
+      bandPt = gap + CELL + ROW_CLEAR + HALF + BOT;
+      var availH = Math.max(1, outH - Math.trunc(bandPt * S) - topPx);
+      sc = Math.min(outW / LOG_W, availH / LOG_H);
+      if (sc >= 1) sc = Math.floor(sc);
+      panelTop = (topPx + Math.min(16, (availH - LOG_H * sc) / 2)) / S;
+      panelH = LOG_H * sc / S;
+    }
+    var panelW = LOG_W * sc / S, panelBot = panelTop + panelH;
+    var lowerY = H - BOT - HALF - lift;
+    var maxUpper = lowerY - ROW_CLEAR - CELL;
+    var upperY = panelBot + gap - lift;
+    var squeezed = false;
+    if (upperY > maxUpper) { upperY = maxUpper; squeezed = true; }
+    if (upperY < panelBot) upperY = panelBot;
+    return {
+      sc: sc, gap: gap, band: bandPt, squeezed: squeezed,
+      panel: { x: (W - panelW) / 2, y: panelTop, w: panelW, h: panelH, bot: panelBot },
+      pads: [
+        { n: "BACK|SELECT", x: MARGIN,            y: upperY, w: 2 * CELL, h: CELL, c: 2 },
+        { n: "LEFT|RIGHT",  x: MARGIN + 4 * CELL, y: upperY, w: 2 * CELL, h: CELL, c: 2 },
+        { n: "POWER",       x: MARGIN,            y: lowerY, w: CELL,     h: HALF, c: 1 },
+        { n: "UP|DOWN",     x: MARGIN + 4 * CELL, y: lowerY, w: 2 * CELL, h: HALF, c: 2 }
+      ],
+      upperY: upperY, lowerY: lowerY,
+      ceiling: (outH - LOG_H * 2) / S,          // top band + bottom band, to stay at 2x
+      topPt: topPt
+    };
+  }
+  function pipAt(cx, cy, frac) {
+    var w = frac * W, h = w * ASPECT;
+    return { x: cx ? W - PIP_EDGE - w : PIP_EDGE,
+             y: cy ? H - BOT - PIP_INSET - h : SAFE_TOP + PIP_INSET, w: w, h: h };
+  }
+  function ovl(a, b) {
+    var ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    var oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return (ox > 1 && oy > 1) ? { x: ox, y: oy } : null;
+  }
+  function fmt(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+
+  var CORNERS = [
+    { k: "tl", label: "Top left",     cx: 0, cy: 0 },
+    { k: "tr", label: "Top right",    cx: 1, cy: 0 },
+    { k: "bl", label: "Bottom left",  cx: 0, cy: 1 },
+    { k: "br", label: "Bottom right", cx: 1, cy: 1 }
+  ];
+
+  function draw(L) {
+    var o = [];
+    o.push('<svg viewBox="-5 -5 ' + (W + 10) + " " + (H + 10) + '" role="img" ' +
+           'aria-label="iPhone frame with the page, the pad, and every window position drawn at once">');
+    o.push('<defs><pattern id="hz" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+           '<line x1="0" y1="0" x2="0" y2="6" stroke="var(--bad)" stroke-width="1.7" opacity="0.5"/></pattern></defs>');
+    o.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="46" fill="none" stroke="var(--ink-faint)" stroke-width="1.6"/>');
+
+    // safe area
+    [SAFE_TOP, H - BOT].forEach(function (y) {
+      o.push('<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y +
+             '" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>');
+    });
+    // the reserve, as a tinted band
+    if (L.topPt > SAFE_TOP + 0.5)
+      o.push('<rect x="1" y="' + SAFE_TOP + '" width="' + (W - 2) + '" height="' + (L.topPt - SAFE_TOP) +
+             '" fill="var(--ink)" opacity="0.035"/>');
+
+    // page
+    var p = L.panel;
+    var pageHits = [];
+    CORNERS.forEach(function (c) {
+      [st.small, st.large].forEach(function (f, i) {
+        var r = pipAt(c.cx, c.cy, f);
+        var v = ovl({ x: p.x, y: p.y, w: p.w, h: p.h }, r);
+        if (v) pageHits.push({ c: c, size: i, v: v, r: r });
+      });
+    });
+    o.push('<rect x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h +
+           '" fill="none" stroke="var(--ink-faint)" stroke-width="1.1" stroke-dasharray="3 4" opacity="0.6"/>');
+    var lx = p.x + p.w * 0.09, lw = p.w * 0.82, step = p.h / 20;
+    for (var i = 1; i < 19; i++) {
+      o.push('<rect x="' + lx + '" y="' + (p.y + i * step) + '" width="' + (lw * (i % 6 === 5 ? 0.6 : 1)) +
+             '" height="' + Math.max(3, step * 0.26) + '" fill="var(--ink)" opacity="0.13"/>');
+    }
+    // hatch the page where a SMALL window would land on it — the case being solved
+    pageHits.filter(function (h) { return h.size === 0; }).forEach(function (h) {
+      var ix = Math.max(p.x, h.r.x), iy = Math.max(p.y, h.r.y);
+      o.push('<rect x="' + ix + '" y="' + iy + '" width="' + (Math.min(p.x + p.w, h.r.x + h.r.w) - ix) +
+             '" height="' + (Math.min(p.y + p.h, h.r.y + h.r.h) - iy) + '" fill="url(#hz)"/>');
+    });
+
+    // Controls. A top-row hit is a failure and hatches red; a bottom-row hit is
+    // the overlap already accepted, so it only tints -- the two are not the
+    // same fact and must not read the same.
+    L.pads.forEach(function (g) {
+      var hit = null;
+      CORNERS.forEach(function (c) {
+        if (ovl(g, pipAt(c.cx, c.cy, st.small))) hit = pipAt(c.cx, c.cy, st.small);
+      });
+      var fatal = hit && g.h > HALF + 0.1;
+      if (hit) {
+        var ix = Math.max(g.x, hit.x), iy = Math.max(g.y, hit.y);
+        o.push('<rect x="' + ix + '" y="' + iy + '" width="' + (Math.min(g.x + g.w, hit.x + hit.w) - ix) +
+               '" height="' + (Math.min(g.y + g.h, hit.y + hit.h) - iy) +
+               '" fill="' + (fatal ? "url(#hz)" : "var(--pip-fill)") + '"/>');
+      }
+      var stroke = fatal ? "var(--bad)" : (hit ? "var(--pip-soft)" : "var(--hair)");
+      o.push('<rect x="' + g.x + '" y="' + g.y + '" width="' + g.w + '" height="' + g.h + '" rx="' +
+             Math.min(12, g.h / 2) + '" fill="none" stroke="' + stroke +
+             '" stroke-width="' + (fatal ? 2 : 1.5) + '"/>');
+      for (var c2 = 1; c2 < g.c; c2++) {
+        var sx = g.x + g.w * c2 / g.c;
+        o.push('<line x1="' + sx + '" y1="' + (g.y + g.h * 0.28) + '" x2="' + sx + '" y2="' + (g.y + g.h * 0.72) +
+               '" stroke="' + stroke + '" stroke-width="1.4"/>');
+      }
+    });
+
+    // every window, all eight at once: large dashed behind, small solid in front
+    CORNERS.forEach(function (c) {
+      var big = pipAt(c.cx, c.cy, st.large);
+      o.push('<rect x="' + big.x + '" y="' + big.y + '" width="' + big.w + '" height="' + big.h +
+             '" rx="15" fill="none" stroke="var(--pip-soft)" stroke-width="1.3" stroke-dasharray="7 5"/>');
+      var sm = pipAt(c.cx, c.cy, st.small);
+      o.push('<rect x="' + sm.x + '" y="' + sm.y + '" width="' + sm.w + '" height="' + sm.h +
+             '" rx="13" fill="var(--pip-fill)" stroke="var(--pip)" stroke-width="1.7"/>');
+    });
+    o.push("</svg>");
+    return o.join("");
+  }
+
+  function render() {
+    var L = solve(st.top, st.lift);
+    var p = L.panel;
+
+    document.getElementById("topRead").textContent =
+      fmt(st.top) + " pt · page top " + fmt(p.y) + (st.top >= needTop() - 0.2 ? "  ✓ clears small" : "");
+    document.getElementById("liftRead").textContent =
+      fmt(st.lift) + " pt · gap " + fmt(L.gap - st.lift) + " pt = " + fmt((L.gap - st.lift) / (p.h / PANEL_MM || 1)) + " mm";
+    document.getElementById("smallRead").textContent =
+      fmt(st.small * 100) + "% · " + fmt(st.small * W) + " × " + fmt(smallH()) + " pt";
+    document.getElementById("largeRead").textContent =
+      fmt(st.large * 100) + "% · " + fmt(st.large * W) + " × " + fmt(st.large * W * ASPECT) + " pt";
+
+    document.getElementById("frame").innerHTML = draw(L);
+
+    var mmPerPt = p.h > 0 ? PANEL_MM / p.h : 0;
+    var specs = [
+      ["page", fmt(p.w) + " × " + fmt(p.h) + " pt at " + L.sc + "×", L.sc < 2 ? "bad" : ""],
+      ["page top → bottom", fmt(p.y) + " → " + fmt(p.bot) + " pt", ""],
+      ["top row", fmt(L.upperY) + " → " + fmt(L.upperY + CELL) + " pt", ""],
+      ["bottom row", fmt(L.lowerY) + " → " + fmt(L.lowerY + HALF) + " pt", ""],
+      ["panel gap", fmt(L.gap - st.lift) + " pt · " + fmt((L.gap - st.lift) * mmPerPt) + " mm on the X3",
+        (L.gap - st.lift) * mmPerPt < 4 ? "warn" : "good"],
+      ["rows squeezed", L.squeezed ? "yes — clamped to the 16 pt minimum" : "no", L.squeezed ? "warn" : ""]
+    ];
+    document.getElementById("specs").innerHTML = specs.map(function (s) {
+      return "<dt>" + s[0] + "</dt><dd" + (s[2] ? ' class="' + s[2] + '"' : "") + ">" + s[1] + "</dd>";
+    }).join("");
+
+    // 8-cell status. Bottom-row overlap is the accepted case, not a failure.
+    var g8 = ['<div class="h"></div><div class="h">Small</div><div class="h">Large</div>'];
+    var smallPageHits = 0, smallTopHits = 0;
+    CORNERS.forEach(function (c) {
+      g8.push('<div class="h" style="align-self:center">' + c.label + "</div>");
+      [st.small, st.large].forEach(function (f, i) {
+        var r = pipAt(c.cx, c.cy, f);
+        var pv = ovl({ x: p.x, y: p.y, w: p.w, h: p.h }, r);
+        var hits = L.pads.filter(function (q) { return ovl(q, r); });
+        var top = hits.filter(function (q) { return q.h > HALF + 0.1; });
+        var cls = top.length ? "hit" : (pv ? "page" : (hits.length ? "soft" : "ok"));
+        var txt = top.length ? top.map(function (q) { return q.n; }).join(", ")
+                : (pv ? fmt(pv.y) + " pt of page"
+                      : (hits.length ? hits.map(function (q) { return q.n; }).join(", ") + " · accepted" : "clear"));
+        if (i === 0) { if (pv) smallPageHits++; if (top.length) smallTopHits++; }
+        g8.push('<div class="c ' + cls + '">' + txt + "</div>");
+      });
+    });
+    document.getElementById("grid").innerHTML = g8.join("");
+
+    var v = document.getElementById("verdict");
+    v.className = "note" + (L.sc < 2 ? " alarm" : "");
+    if (L.sc < 2) {
+      v.innerHTML = "<b>The page has fallen to " + L.sc + "×.</b> The reserve plus the band below now exceed " +
+        fmt(L.ceiling) + " pt, so the page halves to " + fmt(p.h) + " pt. Nothing about the window is worth this — " +
+        "back the top reserve off.";
+    } else if (smallPageHits === 0 && smallTopHits === 0) {
+      var head = fmt(L.ceiling - (st.top + L.band));
+      v.innerHTML = "<b>Every small window is off the page and off the top row.</b> Only the bottom row is behind " +
+        "one, which is the overlap already accepted. Page still 2×. Two prices: the panel gap falls to <b>" +
+        fmt(L.gap - st.lift) + " pt</b>, " + fmt((L.gap - st.lift) * mmPerPt) + " mm of the X3's 11.6, and the " +
+        "budget closes to <b>" + head + " pt</b> of headroom — under 6 pt there is nothing left for a device whose " +
+        "safe area reads differently.";
+    } else if (smallPageHits === 0) {
+      v.innerHTML = "<b>Page clear, top row not.</b> The reserve pushed the page's bottom edge down and the top row " +
+        "hangs off it, so a small bottom-corner window now reaches into " +
+        L.pads.filter(function (q) {
+          return q.h > HALF + 0.1 && CORNERS.some(function (c) { return ovl(q, pipAt(c.cx, c.cy, st.small)); });
+        }).map(function (q) { return q.n; }).join(" and ") + ". Raise the lift until it lets go.";
+    } else {
+      v.innerHTML = "<b>A small window still lands on the page.</b> The reserve needs to reach <b>" +
+        fmt(needTop()) + " pt</b> — the safe-area top, the window's own 11 pt inset, and its " + fmt(smallH()) +
+        " pt height — before the text is out from under it.";
+    }
+
+    // Why the bottom row cannot clear as well: with the page pushed down, the
+    // space between its bottom edge and a small bottom-corner window is less
+    // than the pad's own height, so something has to be behind the window.
+    var pipTopS = H - BOT - PIP_INSET - smallH();
+    var room = pipTopS - p.bot, needs = CELL + ROW_CLEAR + HALF;
+    document.getElementById("cannot").innerHTML =
+      "<b>The bottom row cannot join it.</b> With the page ending at " + fmt(p.bot) +
+      " pt, the space left above a small bottom-corner window is <b>" + fmt(room) + " pt</b>, and the pad's two rows " +
+      "stand <b>" + fmt(needs) + " pt</b> tall at their minimum spacing" +
+      (room >= needs
+        ? " — which fits, so both rows could clear."
+        : ", " + fmt(needs - room) + " pt more than there is. Whatever the lift, one row stays behind the window; " +
+          "the choice is only which one, and the half-height row is the cheaper loss.") +
+      " No panel gap buys this back — the shortfall is below the page, not above it.";
+
+    document.getElementById("ceil").textContent = fmt(L.ceiling);
+    document.getElementById("want").textContent = fmt(st.top + L.band);
+    document.getElementById("needTop").textContent = fmt(needTop());
+    document.getElementById("budget").innerHTML = [
+      ["top reserve", fmt(st.top) + " pt" + (st.top > SAFE_TOP ? "  (system asks " + SAFE_TOP + ")" : ""), ""],
+      ["band below page", fmt(L.band) + " pt", ""],
+      ["sum", fmt(st.top + L.band) + " pt of " + fmt(L.ceiling) + " available",
+        st.top + L.band > L.ceiling ? "bad" : (L.ceiling - (st.top + L.band) < 6 ? "warn" : "good")],
+      ["headroom", fmt(L.ceiling - (st.top + L.band)) + " pt",
+        L.ceiling - (st.top + L.band) < 0 ? "bad" : ""]
+    ].map(function (s) {
+      return "<dt>" + s[0] + "</dt><dd" + (s[2] ? ' class="' + s[2] + '"' : "") + ">" + s[1] + "</dd>";
+    }).join("");
+  }
+
+  // --- controls -------------------------------------------------------------
+  function bind(id, key, div) {
+    var el = document.getElementById(id);
+    el.addEventListener("input", function () { st[key] = el.value / div; sync(false); render(); });
+    return el;
+  }
+  var elTop = bind("top", "top", 10), elLift = bind("lift", "lift", 10);
+  var elSmall = bind("small", "small", 1000), elLarge = bind("large", "large", 1000);
+
+  function sync(setSliders) {
+    if (setSliders) {
+      elTop.value = Math.round(st.top * 10);
+      elLift.value = Math.round(st.lift * 10);
+    }
+    var pset = document.getElementById("presets");
+    Array.prototype.forEach.call(pset.children, function (b, i) {
+      var pr = PRESETS[i];
+      b.setAttribute("aria-pressed", Math.abs(pr.top - st.top) < 0.3 && Math.abs(pr.lift - st.lift) < 0.3);
+    });
+  }
+
+  // "small clear, both ends" is derived, not guessed: reserve exactly what a
+  // small window needs at the top, then lift until the top row lets go of a
+  // small window at the bottom.
+  var PRESET_CLEAR = 4;   // daylight the solved preset leaves, rather than an edge-to-edge touch
+  function solvePresets() {
+    var top = needTop();
+    var L = solve(top, 0);
+    var pipTop = H - BOT - PIP_INSET - smallH();
+    var lift = Math.max(0, Math.ceil((L.panel.bot + L.gap + CELL + PRESET_CLEAR - pipTop) * 10) / 10);
+    PRESETS[1].top = top; PRESETS[1].lift = lift;
+    PRESETS[2].top = top;
+  }
+
+  var pbox = document.getElementById("presets");
+  PRESETS.forEach(function (pr) {
+    var b = document.createElement("button");
+    b.className = "chip"; b.textContent = pr.label;
+    b.addEventListener("click", function () {
+      solvePresets();
+      st.top = pr.top; st.lift = pr.lift; sync(true); render();
+    });
+    pbox.appendChild(b);
+  });
+
+  solvePresets();
+  sync(true);
+  render();
+})();
+</script>

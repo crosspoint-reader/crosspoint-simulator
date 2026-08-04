@@ -1,0 +1,413 @@
+<title>How far up — pad shift options</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0; --ghost: #C9C9C4;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.13);
+    --dim: #1F7A6B; --bad: #A83A2B; --warn: #8A6320;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+      --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A; --ghost: #3A3A38;
+      --pip: #97A1E0; --pip-fill: rgba(151,161,224,.15);
+      --dim: #63C4B0; --bad: #E08472; --warn: #D3A44E;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+    --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A; --ghost: #3A3A38;
+    --pip: #97A1E0; --pip-fill: rgba(151,161,224,.15);
+    --dim: #63C4B0; --bad: #E08472; --warn: #D3A44E; color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0; --ghost: #C9C9C4;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.13);
+    --dim: #1F7A6B; --bad: #A83A2B; --warn: #8A6320; color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.5; -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 20px 90px; }
+  h1, h2 { font-family: ui-serif, "New York", "Iowan Old Style", Palatino, Georgia, serif; font-weight: 600; text-wrap: balance; }
+  h1 { font-size: 1.85rem; line-height: 1.15; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 .8rem; }
+  .eyebrow { font: 500 .7rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-faint); }
+  header { padding: 36px 0 22px; border-bottom: 1px solid var(--rule); }
+  header p { color: var(--ink-soft); margin: .6rem 0 0; max-width: 32rem; font-size: 1rem; }
+  .num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  .bar { position: sticky; top: 0; z-index: 10; background: var(--paper); border-bottom: 1px solid var(--rule); padding: 11px 0 12px; }
+  .row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+  .row + .row { margin-top: 9px; }
+  .lab { font: 500 .67rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); min-width: 4.4rem; }
+  button.chip {
+    font: 500 .8rem/1 system-ui, sans-serif; padding: 6px 9px; border: 1px solid var(--rule);
+    background: transparent; color: var(--ink-soft); border-radius: 3px; cursor: pointer;
+  }
+  button.chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--sunk); }
+  button.chip:focus-visible, input:focus-visible { outline: 2px solid var(--pip); outline-offset: 2px; }
+  input[type=range] { accent-color: var(--dim); flex: 1 1 140px; min-width: 120px; max-width: 260px; }
+  .read { font: 500 .78rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  .hero { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; margin-top: 24px; }
+  .hero figure { margin: 0; flex: 0 0 auto; width: 280px; max-width: 100%; }
+  .hero svg { display: block; width: 100%; height: auto; }
+  .hero .side { flex: 1 1 14rem; min-width: 0; }
+
+  dl.k { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0 0 14px; font-size: .85rem; }
+  dl.k dt { color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .76rem; }
+  dl.k dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  dd.good { color: var(--dim); } dd.warn { color: var(--warn); } dd.bad { color: var(--bad); }
+
+  .strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 8px; }
+  .strip figure { margin: 0; cursor: pointer; }
+  .strip svg { display: block; width: 100%; height: auto; border: 1px solid transparent; border-radius: 3px; }
+  .strip figure[aria-current="true"] svg { border-color: var(--ink); }
+  .strip figcaption { text-align: center; margin-top: 5px; font: 500 .7rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .strip figure[aria-current="true"] figcaption { color: var(--ink); }
+  .strip figcaption b { display: block; font-weight: 600; font-size: .82rem; color: inherit; }
+  @media (max-width: 620px) { .strip { grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; } .strip figcaption { font-size: .62rem; } }
+
+  section { margin-top: 30px; }
+  .note { border-left: 2px solid var(--rule); padding-left: 14px; font-size: .9rem; color: var(--ink-soft); }
+  .note b { color: var(--ink); }
+  footer { border-top: 1px solid var(--rule); margin-top: 32px; padding-top: 16px; font-size: .8rem; color: var(--ink-faint); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">CrossPoint X3 · iOS harness · one constant</div>
+  <h1>How far up</h1>
+  <p>The top row clears the floating window by <span class="num">6.7 pt</span> today. Everything here moves the pad up
+  and nothing else — same grid, same cells, same controls, page unmoved. The only question is how many points.</p>
+</header>
+
+<div class="bar">
+  <div class="row">
+    <span class="lab">Move up</span>
+    <input type="range" id="shift" min="0" max="1000" step="5" value="120" aria-label="Distance the pad moves up, in points">
+    <span class="read" id="shiftRead"></span>
+  </div>
+  <div class="row">
+    <span class="lab">Bottom row</span>
+    <div class="row" style="gap:6px;margin:0">
+      <button class="chip" id="ride" aria-pressed="true">rides up with it</button>
+      <button class="chip" id="stay" aria-pressed="false">stays anchored</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="lab">Window</span>
+    <input type="range" id="pipw" min="240" max="720" step="5" value="471" aria-label="PiP window width as a percentage of screen width">
+    <span class="read" id="pipRead"></span>
+  </div>
+</div>
+
+<div class="hero">
+  <figure id="hero"></figure>
+  <div class="side">
+    <h2 id="heroTitle"></h2>
+    <dl class="k" id="heroSpecs"></dl>
+    <p class="note" id="heroNote"></p>
+  </div>
+</div>
+
+<section>
+  <h2>The five stops</h2>
+  <p style="font-size:.9rem;color:var(--ink-soft)">Tap one to load it above. Dashed grey is where the pad sits today.</p>
+  <div class="strip" id="strip"></div>
+</section>
+
+<section>
+  <h2>The gap the chassis asks for</h2>
+  <p style="font-size:.93rem">The panel-to-top-row gap is not a taste value — it is a measurement. On the real X3 the
+  front buttons' top edge sits <b>11.6 mm</b> below the panel window, on a <b>78.2 mm</b> panel: <b>14.8%</b> of panel
+  height. That ratio is what <span class="num">kPanelGapRatio</span> stores, so the proportion survives any device scale,
+  and at the Air's presented panel it comes out as the <span class="num">78.3 pt</span> in use today. Measured off
+  Xteink's straight-on product renders; the full table is in the firmware repo's
+  <span class="num">docs/hardware-dimensions.md</span>.</p>
+  <p style="font-size:.93rem">So every point of shift is a millimetre of chassis fidelity spent. Read the right-hand
+  column as "what this gap would be on real hardware":</p>
+  <div style="overflow-x:auto"><table id="mmtable" style="width:100%;border-collapse:collapse;font-size:.85rem"></table></div>
+  <p class="note" style="margin-top:14px">Under about <b>4 mm</b> the pad stops reading as a separate control surface
+  below the page and starts reading as a border around it — that is the point where the resemblance is not being
+  reduced, it is being abandoned. <b>The chosen 12 pt sits at 9.8 mm</b>, well clear of that line; 48 pt of clearance would
+  sit at 5.5 mm, the last stop on the near side of it.</p>
+</section>
+
+<section>
+  <h2>What it survives</h2>
+  <p style="font-size:.93rem">The window is resizable by pinch, so the number that matters is not today's clearance but
+  how wide the window can get before it eats the top row. At the shipped position that limit is
+  <span class="num">50%</span> of screen width — and the window in your screenshot is already at
+  <span class="num">47.1%</span>.</p>
+  <figure style="margin:0"><svg id="survive" viewBox="0 0 420 96" role="img" aria-label="Window width the top row survives, at each shift"></svg></figure>
+</section>
+
+<footer>
+  Computed from <span class="num">layoutPad()</span> in <span class="num">ios/CrossPointIOSShim.cpp</span>, iPhone Air
+  at <span class="num">420×912 pt</span>, measured top inset <span class="num">74 pt</span>. Window geometry measured off
+  the reference screenshot: <span class="num">197.8 × 111.3 pt</span>, <span class="num">10.3 pt</span> in from the right,
+  <span class="num">45.0 pt</span> up from the bottom. Shift is one constant — <span class="num">kPanelGapRatio</span>.
+</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var W = 420, H = 912, S = 3, TOP = 74, BOT = 34;
+  var PANEL_W = 352, PANEL_H = 528, PANEL_TOP = 79.33;      // presented page, 2x
+  var PANEL_BOT = PANEL_TOP + PANEL_H;                       // 607.33
+  var MARGIN = 20, COLS = 6, CELL = (W - 2 * MARGIN) / COLS, HALF = CELL / 2;
+  // The X3's own gap: the front buttons' top edge sits 11.6 mm below the panel
+  // window, on a 78.2 mm panel. Stored as that ratio so it holds at any device
+  // scale; PT_PER_MM converts a shifted gap back to millimetres of real chassis.
+  var CHASSIS_MM = 11.6, PANEL_MM = 78.2;
+  var PT_PER_MM = PANEL_H / PANEL_MM;                        // 6.75 pt per mm
+  var CHASSIS = PANEL_H * (CHASSIS_MM / PANEL_MM);           // 78.32 pt, today's gap
+  var ROW_MIN = 16;
+  var UPPER0 = PANEL_BOT + CHASSIS;                          // 685.65
+  var LOWER0 = H - BOT - HALF;                               // 846.33
+  var PIP_EDGE = 10.3, PIP_FLOOR = 11.0, ASPECT = 9 / 16;
+
+  var st = { shift: 12.0, ride: true, frac: 0.471 };
+
+  var STOPS = [
+    { x: 0.0,  name: "today" },
+    { x: 12.0, name: "chosen" },
+    { x: 25.3, name: "32 pt" },
+    { x: 41.3, name: "48 pt" },
+    { x: 78.3, name: "flush" }
+  ];
+
+  function pip() {
+    var w = st.frac * W, h = w * ASPECT;
+    return { x: W - PIP_EDGE - w, y: H - BOT - PIP_FLOOR - h, w: w, h: h };
+  }
+  function layout(x) {
+    var upper = UPPER0 - x;
+    var lower = st.ride ? LOWER0 - x : LOWER0;
+    return {
+      upper: upper, lower: lower,
+      groups: [
+        { x: MARGIN, y: upper, w: 2 * CELL, h: CELL, n: 2 },
+        { x: MARGIN + 4 * CELL, y: upper, w: 2 * CELL, h: CELL, n: 2 },
+        { x: MARGIN, y: lower, w: CELL, h: HALF, n: 1 },
+        { x: MARGIN + 4 * CELL, y: lower, w: 2 * CELL, h: HALF, n: 2 }
+      ]
+    };
+  }
+  function fmt(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+
+  // ---- drawing -------------------------------------------------------------
+  function draw(x, o) {
+    o = o || {};
+    var L = layout(x), p = pip(), P = [];
+    var y0 = o.y0 !== undefined ? o.y0 : 540;
+    var y1 = H + 6;
+    P.push('<svg viewBox="-6 ' + y0 + " " + (W + 12) + " " + (y1 - y0) + '" role="img" aria-label="' +
+           (o.alt || "pad shifted up " + fmt(x) + " points") + '">');
+
+    // chassis + safe line
+    P.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="46" ry="46" fill="none" stroke="var(--ink-faint)" stroke-width="1.4"/>');
+    P.push('<line x1="0" y1="' + (H - BOT) + '" x2="' + W + '" y2="' + (H - BOT) +
+           '" stroke="var(--ink-faint)" stroke-width="0.8" stroke-dasharray="5 5" opacity="0.5"/>');
+
+    // page: outline + last lines of text, so the gap above the pad is legible
+    P.push('<rect x="' + (W - PANEL_W) / 2 + '" y="' + PANEL_TOP + '" width="' + PANEL_W + '" height="' + PANEL_H +
+           '" fill="none" stroke="var(--ink-faint)" stroke-width="0.9" stroke-dasharray="3 4" opacity="0.6"/>');
+    var lx = (W - PANEL_W) / 2 + PANEL_W * 0.09, lw = PANEL_W * 0.82;
+    for (var i = 0; i < 7; i++) {
+      var ly = PANEL_BOT - 24 - i * 23;
+      if (ly < y0 - 10) break;
+      P.push('<rect x="' + lx + '" y="' + ly + '" width="' + (lw * (i === 0 ? 0.55 : 1)) +
+             '" height="6" fill="var(--ink)" opacity="0.14"/>');
+    }
+
+    // ghost of today's position
+    if (o.ghost && x > 0.05) {
+      var G = layout(0);
+      G.groups.forEach(function (g) {
+        P.push('<rect x="' + g.x + '" y="' + g.y + '" width="' + g.w + '" height="' + g.h + '" rx="' +
+               Math.min(12, g.h / 2) + '" fill="none" stroke="var(--ghost)" stroke-width="1.1" stroke-dasharray="4 4"/>');
+      });
+    }
+
+    // controls
+    L.groups.forEach(function (g, idx) {
+      var r = Math.min(12, g.h / 2);
+      var hit = g.y < p.y + p.h && p.y < g.y + g.h && g.x < p.x + p.w && p.x < g.x + g.w;
+      var over = g.y < PANEL_BOT - 0.1;                       // intruding on the page
+      var col = idx < 2 ? (over ? "var(--bad)" : "var(--ink)") : "var(--hair)";
+      P.push('<rect x="' + g.x + '" y="' + g.y + '" width="' + g.w + '" height="' + g.h + '" rx="' + r +
+             '" fill="' + (hit && idx >= 2 ? "var(--pip-fill)" : "none") + '" stroke="' + col +
+             '" stroke-width="' + (idx < 2 ? 1.7 : 1.3) + '"/>');
+      for (var c = 1; c < g.n; c++) {
+        var sx = g.x + g.w * c / g.n;
+        P.push('<line x1="' + sx + '" y1="' + (g.y + g.h * 0.28) + '" x2="' + sx + '" y2="' + (g.y + g.h * 0.72) +
+               '" stroke="' + col + '" stroke-width="1.2"/>');
+      }
+    });
+
+    // the window
+    P.push('<rect x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h +
+           '" rx="15" fill="var(--pip-fill)" stroke="var(--pip)" stroke-width="1.5"/>');
+    if (!o.mini)
+      P.push('<text x="' + (p.x + p.w / 2) + '" y="' + (p.y + p.h / 2 + 4) + '" text-anchor="middle" ' +
+             'font-family="ui-monospace, Menlo, monospace" font-size="13" letter-spacing="1.2" fill="var(--pip)" opacity="0.8">PiP</text>');
+
+    // the dimension that is being judged: top row -> window
+    var cl = p.y - (L.upper + CELL);
+    if (!o.mini) {
+      var dx = p.x + p.w * 0.5;
+      var a = L.upper + CELL, b = p.y;
+      var neg = cl < 0;
+      var dcol = neg ? "var(--bad)" : "var(--dim)";
+      P.push('<line x1="' + (MARGIN + 4 * CELL) + '" y1="' + a + '" x2="' + (W - MARGIN + 4) + '" y2="' + a +
+             '" stroke="' + dcol + '" stroke-width="0.9" stroke-dasharray="3 3" opacity="0.8"/>');
+      P.push('<line x1="' + p.x + '" y1="' + b + '" x2="' + (W - MARGIN + 4) + '" y2="' + b +
+             '" stroke="' + dcol + '" stroke-width="0.9" stroke-dasharray="3 3" opacity="0.8"/>');
+      if (!neg) {
+        P.push('<line x1="' + dx + '" y1="' + a + '" x2="' + dx + '" y2="' + b + '" stroke="' + dcol + '" stroke-width="1.2"/>');
+        P.push('<path d="M' + (dx - 4) + " " + (a + 5) + "L" + dx + " " + a + "L" + (dx + 4) + " " + (a + 5) +
+               'Z" fill="' + dcol + '"/>');
+        P.push('<path d="M' + (dx - 4) + " " + (b - 5) + "L" + dx + " " + b + "L" + (dx + 4) + " " + (b - 5) +
+               'Z" fill="' + dcol + '"/>');
+      }
+      var ty = neg ? b + 16 : (a + b) / 2 + 4.5;
+      P.push('<rect x="' + (dx + 7) + '" y="' + (ty - 11) + '" width="' + (neg ? 74 : 52) + '" height="15" fill="var(--paper)" opacity="0.92"/>');
+      P.push('<text x="' + (dx + 10) + '" y="' + ty + '" font-family="ui-monospace, Menlo, monospace" font-size="12.5" ' +
+             'fill="' + dcol + '">' + (neg ? "−" + fmt(-cl) + " pt" : fmt(cl) + " pt") + "</text>");
+    }
+    P.push("</svg>");
+    return P.join("");
+  }
+
+  // ---- render --------------------------------------------------------------
+  function render() {
+    var x = st.shift, L = layout(x), p = pip();
+    var clear = p.y - (L.upper + CELL);
+    var gapLeft = CHASSIS - x;
+    var pinch = (H - BOT - PIP_FLOOR - (L.upper + CELL)) / (W * ASPECT);
+
+    document.getElementById("shiftRead").textContent = fmt(x) + " pt  (" + Math.round(x * S) + " px)";
+    document.getElementById("pipRead").textContent =
+      Math.round(st.frac * 1000) / 10 + "% · " + fmt(st.frac * W) + " × " + fmt(st.frac * W * ASPECT) + " pt";
+
+    document.getElementById("hero").innerHTML = draw(x, { ghost: true, y0: 540 });
+    document.getElementById("heroTitle").textContent =
+      x < 0.05 ? "As shipped" : "Up " + fmt(x) + " pt";
+
+    var specs = [
+      ["clearance", (clear < 0 ? "overlapped by " + fmt(-clear) : fmt(clear)) + " pt", clear < 0 ? "bad" : (clear < 16 ? "warn" : "good")],
+      ["top row", fmt(L.upper) + " → " + fmt(L.upper + CELL) + " pt", ""],
+      ["page gap", fmt(gapLeft) + " pt" + (gapLeft < 0 ? " — over the page" : " (" + fmt(gapLeft / PANEL_H * 100) + "% of page)"),
+        gapLeft < 0 ? "bad" : (gapLeft < 8 ? "warn" : "")],
+      ["on the X3 that is", fmt(gapLeft / PT_PER_MM) + " mm  (chassis: 11.6)",
+        gapLeft / PT_PER_MM < 4 ? "warn" : ""],
+      ["bottom row", fmt(L.lower) + " → " + fmt(L.lower + HALF) + " pt", ""],
+      ["survives pinch to", Math.round(pinch * 1000) / 10 + "% width", pinch < st.frac ? "bad" : (pinch < 0.55 ? "warn" : "good")],
+      ["page moves", "no — 2× at " + fmt(PANEL_TOP) + " pt", ""]
+    ];
+    document.getElementById("heroSpecs").innerHTML = specs.map(function (s) {
+      return "<dt>" + s[0] + "</dt><dd" + (s[2] ? ' class="' + s[2] + '"' : "") + ">" + s[1] + "</dd>";
+    }).join("");
+
+    document.getElementById("heroNote").innerHTML =
+      gapLeft < 0
+        ? "<b>Past the ceiling.</b> The top row is drawing over the last " + fmt(-gapLeft) +
+          " pt of the page. Allowed — the pad paints after the panel — but it is a different decision from the shift itself."
+        : clear < 0
+          ? "<b>The window is over the top row.</b> Widen the shift or narrow the window."
+          : "<b>" + fmt(clear) + " pt</b> between the top row and the window, with <b>" + fmt(gapLeft) +
+            " pt</b> of page gap still in hand. The page does not move or shrink: it is top-aligned at an integer " +
+            "scale and the pad slides in the space underneath.";
+
+    // strip
+    document.getElementById("strip").innerHTML = STOPS.map(function (s, i) {
+      var l2 = layout(s.x), c2 = p.y - (l2.upper + CELL);
+      return '<figure data-i="' + i + '" aria-current="' + (Math.abs(s.x - x) < 0.6) + '" tabindex="0" role="button">' +
+             draw(s.x, { mini: true, y0: 590, alt: "pad up " + fmt(s.x) + " points" }) +
+             "<figcaption><b>" + (c2 < 0 ? "−" + fmt(-c2) : fmt(c2)) + "</b>up " + fmt(s.x) + "</figcaption></figure>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".strip figure"), function (f) {
+      function pick() { st.shift = STOPS[+f.dataset.i].x; document.getElementById("shift").value = Math.round(st.shift * 10); render(); }
+      f.addEventListener("click", pick);
+      f.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+    });
+
+    // gap-in-millimetres table
+    var mm = ['<tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule);' +
+              'font:500 .7rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;' +
+              'color:var(--ink-faint)">Move up</th>' +
+              '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--rule);' +
+              'font:500 .7rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;' +
+              'color:var(--ink-faint)">Clearance</th>' +
+              '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--rule);' +
+              'font:500 .7rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;' +
+              'color:var(--ink-faint)">Page gap</th>' +
+              '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--rule);' +
+              'font:500 .7rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;' +
+              'color:var(--ink-faint)">On the X3</th></tr>'];
+    STOPS.forEach(function (s) {
+      var l2 = layout(s.x), c2 = p.y - (l2.upper + CELL), g2 = CHASSIS - s.x;
+      var on = Math.abs(s.x - x) < 0.6;
+      var td = 'padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right;' +
+               'font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;';
+      mm.push('<tr style="' + (on ? "background:var(--sunk)" : "") + '">' +
+        '<td style="' + td + 'text-align:left;font-weight:' + (on ? 600 : 400) + '">' + fmt(s.x) + " pt</td>" +
+        '<td style="' + td + '">' + fmt(c2) + " pt</td>" +
+        '<td style="' + td + '">' + fmt(g2) + " pt</td>" +
+        '<td style="' + td + 'color:' + (g2 / PT_PER_MM < 4 ? "var(--warn)" : "var(--ink)") + '">' +
+          fmt(g2 / PT_PER_MM) + " mm</td></tr>");
+    });
+    document.getElementById("mmtable").innerHTML = mm.join("");
+
+    // survives-pinch bar
+    var sv = [], BX = 12, BW = 396;
+    function fx(f) { return BX + (f - 0.24) / (0.72 - 0.24) * BW; }
+    sv.push('<line x1="' + BX + '" y1="52" x2="' + (BX + BW) + '" y2="52" stroke="var(--rule)" stroke-width="2"/>');
+    [0.3, 0.4, 0.5, 0.6, 0.7].forEach(function (f) {
+      sv.push('<line x1="' + fx(f) + '" y1="48" x2="' + fx(f) + '" y2="56" stroke="var(--ink-faint)" stroke-width="1"/>');
+      sv.push('<text x="' + fx(f) + '" y="72" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" ' +
+              'font-size="11" fill="var(--ink-faint)">' + Math.round(f * 100) + "%</text>");
+    });
+    STOPS.forEach(function (s) {
+      var l2 = layout(s.x);
+      var lim = (H - BOT - PIP_FLOOR - (l2.upper + CELL)) / (W * ASPECT);
+      var on = Math.abs(s.x - x) < 0.6;
+      sv.push('<line x1="' + BX + '" y1="52" x2="' + fx(Math.min(lim, 0.72)) + '" y2="52" stroke="' +
+              (on ? "var(--dim)" : "var(--rule)") + '" stroke-width="' + (on ? 5 : 2) + '" opacity="' + (on ? 1 : 0) + '"/>');
+      sv.push('<circle cx="' + fx(Math.min(lim, 0.72)) + '" cy="52" r="' + (on ? 5 : 3.2) + '" fill="' +
+              (on ? "var(--dim)" : "var(--ink-faint)") + '"/>');
+      sv.push('<text x="' + fx(Math.min(lim, 0.72)) + '" y="' + (on ? 30 : 38) + '" text-anchor="middle" ' +
+              'font-family="ui-monospace, Menlo, monospace" font-size="' + (on ? 13 : 11) + '" fill="' +
+              (on ? "var(--dim)" : "var(--ink-faint)") + '">' + fmt(s.x) + "</text>");
+    });
+    sv.push('<line x1="' + fx(st.frac) + '" y1="40" x2="' + fx(st.frac) + '" y2="64" stroke="var(--pip)" stroke-width="1.6"/>');
+    sv.push('<text x="' + fx(st.frac) + '" y="88" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" ' +
+            'font-size="11" fill="var(--pip)">now</text>');
+    document.getElementById("survive").innerHTML = sv.join("");
+  }
+
+  var sh = document.getElementById("shift");
+  sh.addEventListener("input", function () { st.shift = sh.value / 10; render(); });
+  var pw = document.getElementById("pipw");
+  pw.addEventListener("input", function () { st.frac = pw.value / 1000; render(); });
+  var ride = document.getElementById("ride"), stay = document.getElementById("stay");
+  ride.addEventListener("click", function () { st.ride = true; ride.setAttribute("aria-pressed", "true"); stay.setAttribute("aria-pressed", "false"); render(); });
+  stay.addEventListener("click", function () { st.ride = false; ride.setAttribute("aria-pressed", "false"); stay.setAttribute("aria-pressed", "true"); render(); });
+
+  render();
+})();
+</script>
