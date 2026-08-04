@@ -474,6 +474,38 @@ resetting it in `setup()`, next to the same reset for `deepSleepInProgress`.
   capability the hardware exposes. Known, accepted dead zone.
 - **Physical device.** Signing identities exist; no iPhone Air is paired.
 
+## Rejected reading-UX proposals — do not re-propose
+
+Owner rulings, 2026-08-04, from a round of "what would help distraction-free
+reading". All four were rejected. They are written down because each one is the
+sort of idea that reads as obviously good in the abstract and gets re-invented
+by the next session.
+
+| Proposal | Ruling |
+| --- | --- |
+| Hide or auto-hide the home indicator; defer the bottom screen edge to make swiping out take two swipes | **No.** "The bottom bar has been fine." Covers the *whole* bottom edge, gesture as well as pixels — this was re-proposed once in the same conversation as a swipe change rather than a visual one and rejected again. |
+| Dim below the iOS brightness floor | **No.** Dark mode already covers it. |
+| Fade or auto-hide the button pad after idle | **No.** "The buttons are already low contrast and animating them is very distracting and hostile." |
+| A "you've been reading a while" mark or session timer | **No.** "The opposite of what we are trying to solve." |
+
+The principles underneath, which are the reusable part:
+
+- **Nothing on the page moves.** Animation is not a way to reduce distraction;
+  it *is* the distraction. This rules out fades, auto-hide, reveal-on-touch and
+  anything else that changes the screen while the owner is reading it.
+- **The goal is staying in the book, not moderating it.** Anything that
+  interrupts to inform — elapsed time, progress nudges, streaks — solves
+  stopping, and stopping is not the problem.
+- **Do not invent the problem.** Accidental exits, glare and screen clutter were
+  all proposed without the owner ever reporting them. An idea whose motivation
+  came from the assistant rather than from use is the failure mode here.
+
+Still open, and the only survivor: a **Focus Filter** (App Intents) so opening
+the app silences other notifications and closing it restores them. It addresses
+interruptions arriving, rather than attention wandering, which is the problem as
+actually described. Not started — it needs a Swift/App Intents surface in an app
+that today has ~30 lines of Objective-C.
+
 ## Source-set translation
 
 `cmake/CrossPointSources.cmake` is **generated**, never hand-edited — 135
