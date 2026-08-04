@@ -111,6 +111,17 @@ flag, not on-screen UI.
 
 ## Deploying without touching the Mac
 
+**A `build-N` tag does not identify the firmware inside the build.** The tag is
+created in this repo and points at whatever `main` was, but the app compiles the
+firmware source set live out of `CROSSPOINT_FIRMWARE_DIR` — so two TestFlight
+builds can carry materially different readers under the same simulator commit.
+Builds 22 and 23 (2026-08-03) both tag `1fba621`; everything that changed between
+them was firmware-side, and nothing records that. If a tester reports a
+difference, the build number is the only handle you have, and it will not tell
+you which reader they ran. Worth stamping the firmware `git describe` into the
+build if that ever matters — see also `CROSSPOINT_RC_HASH` on the firmware side,
+which has the same "clean and dirty builds are indistinguishable" property.
+
 Signing needs the login keychain, which only a GUI Terminal session has — an
 SSH shell fails at codesign with `errSecInternalComponent`. The bridge, same as
 crds-ios: let AppleScript hand the command to Terminal.app, which runs it under

@@ -134,6 +134,19 @@ like a screenshot of a screen that never changed.
 - The app boots into **Home**, not the reader. Under the Lyra Six theme Home
   renders the current book's page, so a startup screenshot looks exactly like
   the reader. Do not read that as "the reader is open."
+- **But it does not always boot into Home**, and this is the single biggest
+  time-sink in scripting these runs. Depending on the state the previous run
+  left behind, a launch either lands on Home or resumes straight into the book
+  (`Boot -> Reader -> EpubReader`, all within ~5 ms, before any input). The two
+  need opposite openings: from Home the first key must be a `DOWN`, while from
+  the reader it must be a `BACK` to get to Home first — and a `BACK` sent while
+  already on Home *opens* the most recent book instead, landing you in the wrong
+  place with a script that looks correct. Do not write the script blind and
+  trust it: run it, grep `[ACT] Entering activity:`, and only believe the
+  screenshot once the log shows the activity you meant to reach. Four
+  consecutive runs were burned on this on 2026-08-03. `rm -rf ./fs_/.crosspoint/`
+  forces the Home path deterministically, at the cost of the sim's settings and
+  reading positions.
 - On Home, **Back** opens the most recently read book and **Confirm/ENTER**
   activates the selected row. Home lists the recent books followed by the menu
   items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
