@@ -500,11 +500,16 @@ The principles underneath, which are the reusable part:
   all proposed without the owner ever reporting them. An idea whose motivation
   came from the assistant rather than from use is the failure mode here.
 
-Still open, and the only survivor: a **Focus Filter** (App Intents) so opening
-the app silences other notifications and closing it restores them. It addresses
-interruptions arriving, rather than attention wandering, which is the problem as
-actually described. Not started — it needs a Swift/App Intents surface in an app
-that today has ~30 lines of Objective-C.
+A fifth, a **Focus Filter** (App Intents, so opening the app silences other
+notifications), was also rejected. It was offered as the survivor on the grounds
+that it addressed interruptions arriving rather than attention wandering. That
+did not save it either.
+
+**So the topic is closed.** Nothing in this area is open, and the correct number
+of unprompted "this would help you focus" proposals is zero. The reading surface
+is the panel and the pad, and it is finished unless the owner says otherwise —
+which is the same ruling the firmware's own SOUL doc reached about feature
+sprawl, arrived at from the other direction.
 
 ## Source-set translation
 
