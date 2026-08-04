@@ -22,6 +22,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "CrossPointHarness.h"
+#include "CrossPointPrefs.h"
 #else
 #define CROSSPOINT_SIM_IOS 0
 #endif
@@ -58,9 +59,23 @@ extern HalDisplay display; // defined in main.cpp
 // for the same reason that one is: UIKit/Cocoa must not be touched off-thread.
 // It is not in PadCore (which is pure and SDL-free) and it does not read the
 // SDL event queue, so HalGPIO keeps sole ownership of the event pump.
+// ON iOS THE SOURCE OF TRUTH IS Settings > CrossPoint X3, not the firmware row.
+// Sleep behaviour is a property of the phone, not of the reader, and it is also
+// power-state dependent there — the owner sets it separately for battery and
+// for charging, which a single firmware boolean cannot express.
+//
+// The firmware's "Keep Screen Awake" row is deliberately left alone for now and
+// therefore has no effect on iOS. That is a known, temporary overlap: two
+// controls for one behaviour, pending a ruling on what the firmware row should
+// become. Do not "fix" it by deleting either side without that ruling. On the
+// desktop simulator the firmware row is still the only control and still works.
 static void applyKeepScreenAwake() {
   static int8_t applied = -1;  // -1 = nothing applied yet
+#if CROSSPOINT_SIM_IOS
+  const int8_t want = CrossPointPrefs_wantsScreenAwake() ? 1 : 0;
+#else
   const int8_t want = SETTINGS.keepScreenAwake ? 1 : 0;
+#endif
   if (want == applied) return;
   applied = want;
   if (want) {

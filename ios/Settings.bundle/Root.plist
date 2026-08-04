@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Settings > CrossPoint X3.
+
+  Keys MUST match ios/CrossPointPrefs.mm. DefaultValue here only controls what
+  the switch renders as before the owner has ever touched it; the values the
+  CODE falls back to come from registerDefaults in that file. Both are YES, and
+  they have to stay in agreement or the switch will show one thing while the app
+  does another.
+-->
+<plist version="1.0">
+<dict>
+  <key>StringsTable</key>
+  <string>Root</string>
+  <key>PreferenceSpecifiers</key>
+  <array>
+    <dict>
+      <key>Type</key>
+      <string>PSGroupSpecifier</string>
+      <key>Title</key>
+      <string>Screen</string>
+      <key>FooterText</key>
+      <string>CrossPoint holds the screen on while you read. Turn these off to keep it awake instead — useful propped on a stand, where the screen dimming mid-page is the interruption.</string>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSToggleSwitchSpecifier</string>
+      <key>Title</key>
+      <string>Allow Device to Sleep on Battery</string>
+      <key>Key</key>
+      <string>allowSleepOnBattery</string>
+      <key>DefaultValue</key>
+      <true/>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSToggleSwitchSpecifier</string>
+      <key>Title</key>
+      <string>Allow Device to Sleep While Charging</string>
+      <key>Key</key>
+      <string>allowSleepWhileCharging</string>
+      <key>DefaultValue</key>
+      <true/>
+    </dict>
+  </array>
+</dict>
+</plist>

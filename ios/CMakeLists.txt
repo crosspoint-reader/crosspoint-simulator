@@ -32,20 +32,32 @@ set(CROSSPOINT_ASSETS ${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets)
 set_source_files_properties(${CROSSPOINT_ASSETS} PROPERTIES
   MACOSX_PACKAGE_LOCATION Resources)
 
+# Settings > CrossPoint X3. A .bundle is just a directory, and the only file in
+# it is Root.plist, so it goes in as a resource at that path rather than needing
+# a bundle target of its own.
+set(CROSSPOINT_SETTINGS_BUNDLE ${CMAKE_CURRENT_SOURCE_DIR}/Settings.bundle/Root.plist)
+set_source_files_properties(${CROSSPOINT_SETTINGS_BUNDLE} PROPERTIES
+  MACOSX_PACKAGE_LOCATION "Resources/Settings.bundle")
+
 add_executable(CrossPointX3 MACOSX_BUNDLE
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointIOSShim.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointAppearance.mm
+  ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointPrefs.mm
   ${CMAKE_CURRENT_SOURCE_DIR}/PadCore.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointFsPrep.cpp
+  ${CROSSPOINT_SETTINGS_BUNDLE}
   ${CROSSPOINT_ASSETS})
 
-# The one Objective-C++ translation unit in the tree: the live-appearance probe
-# (CrossPointAppearance.h explains why SDL's cached theme is not usable). ARC is
-# set per-file rather than on the target because everything else here is plain
-# C++, where the flag is meaningless. UIKit is named explicitly rather than
-# leaned on as a transitive SDL3 dependency -- this file's link requirement is
-# its own, and it should not break if SDL rearranges its interface libraries.
-set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/CrossPointAppearance.mm
+# The Objective-C++ translation units: the live-appearance probe
+# (CrossPointAppearance.h explains why SDL's cached theme is not usable) and the
+# iOS-native preferences behind Settings.bundle. ARC is set per-file rather than
+# on the target because everything else here is plain C++, where the flag is
+# meaningless. UIKit is named explicitly rather than leaned on as a transitive
+# SDL3 dependency -- this link requirement is these files' own, and it should
+# not break if SDL rearranges its interface libraries.
+set_source_files_properties(
+  ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointAppearance.mm
+  ${CMAKE_CURRENT_SOURCE_DIR}/CrossPointPrefs.mm
   PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
 # Optional bundled font families. Point this at a build-sd-fonts.py output
