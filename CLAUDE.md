@@ -155,6 +155,19 @@ like a screenshot of a screen that never changed.
   version of this file claimed it did. Verified 2026-08-04: with the directory
   deleted the sim still went `Boot -> Reader -> EpubReader` within 500 ms. It
   clears caches; it does not decide the boot destination.
+- **To force a Home boot, set `readerActivityLoadCount` to 1 in
+  `fs_/.crosspoint/state.json`.** Booting into the last book is deliberate —
+  `main.cpp`'s comment is "The device IS the current book" — and Home exists only
+  as an escape hatch for the two cases that need it: holding BACK during boot, or
+  a non-zero `readerActivityLoadCount` (the crash-recovery counter). Setting that
+  counter is the only lever a headless script has, since it cannot hold a button
+  during boot. Clearing `openEpubPath` or `lastSleepFromReader` does NOT work —
+  both are checked, then the branch opens the book anyway unless one of those two
+  escape conditions holds.
+- `HOME` is **not** handled by the reader. It reaches Home from Home (a no-op)
+  and does nothing from `EpubReader`, so it is not the state-independent opener
+  an earlier version of this file suggested. Force the boot state with the
+  counter above and script from Home; do not try to normalise at runtime.
 - On Home, **Back** opens the most recently read book and **Confirm/ENTER**
   activates the selected row. Home lists the recent books followed by the menu
   items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
