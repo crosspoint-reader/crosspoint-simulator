@@ -295,13 +295,34 @@ void layoutPad(int outW, int outH) {
   // system rather than a constant like kHomeInset because the top inset is what
   // varies most across devices (Island vs notch vs neither). SDL reports the
   // safe area in window (point) coordinates, hence the * S into device pixels.
-  int topInsetPx = 0;
+  //
+  // FLOORED AT kTopReserve (owner ruling 2026-08-04). The safe area is the
+  // minimum the system asks for, not a margin: on an iPhone Air it reads 74 pt,
+  // which puts the first line of text 5 pt below the Island rather than clear
+  // of it. 80 pt is a floor rather than a replacement, so a device whose safe
+  // area is deeper still gets its own value.
+  //
+  // What this does NOT do is clear a floating Picture-in-Picture window parked
+  // in a top corner: that wants 159.2 pt (the safe area, the window's own 11 pt
+  // inset and a small window's 74.2 pt height), and mockups/pip-envelope.html
+  // has the reason it is not taken -- at 159.2 the reserve plus the band below
+  // total 382.5 pt of the 384 available before the page halves to 1x, and the
+  // pad, which hangs off the page's bottom edge, follows it down into the
+  // bottom-corner windows.
+  //
+  // Cost of the 6 pt: the page's bottom edge moves down with its top, so the
+  // top row does too, and the clearance kPipLift bought falls 18.7 -> 12.7 pt
+  // at the reference window size. Both bands still fit twice over -- the budget
+  // goes from 86.7 pt of headroom to 80.7.
+  constexpr float kTopReserve = 80.0f;
+  float topInset = 0.0f;
   if (SDL_Window *win = SDL_GetWindowFromID(g_windowId)) {
     SDL_Rect safe{};
     if (SDL_GetWindowSafeArea(win, &safe) && safe.y > 0)
-      topInsetPx = static_cast<int>(safe.y * S);
+      topInset = static_cast<float>(safe.y);
   }
-  SimulatorOverlay::setTopInset(topInsetPx);
+  topInset = SDL_max(topInset, kTopReserve);
+  SimulatorOverlay::setTopInset(static_cast<int>(topInset * S));
 }
 
 // --- Appearance ------------------------------------------------------------

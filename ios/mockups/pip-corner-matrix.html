@@ -75,8 +75,9 @@
 <header>
   <div class="eyebrow">CrossPoint X3 · iOS harness · applied</div>
   <h1>+12 pt, both rows</h1>
-  <p>The pad now sits 12 pt higher, moved as a block, out of the panel gap and nothing else. Here it is against every
-  place a floating video window can be parked, at the smallest and largest pinch sizes.</p>
+  <p>The pad sits 12 pt higher, moved as a block out of the panel gap, and the page sits under an 80 pt top
+  reserve rather than the safe area’s 74. Here it is against every place a floating video window can be parked, at the
+  smallest and largest pinch sizes.</p>
   <dl class="k" id="head"></dl>
 </header>
 
@@ -96,7 +97,7 @@
 
 <footer>
   Computed from <span class="num">layoutPad()</span> in <span class="num">ios/CrossPointIOSShim.cpp</span> with
-  <span class="num">kPipLift = 12</span>, iPhone Air <span class="num">420×912 pt</span>, measured top inset
+  <span class="num">kPipLift = 12</span> and <span class="num">kTopReserve = 80</span>, iPhone Air <span class="num">420×912 pt</span>, measured top inset
   <span class="num">74 pt</span>. Window insets measured off the reference screenshot: <span class="num">10.3 pt</span>
   from the side, <span class="num">11.0 pt</span> above the home-indicator inset.
 </footer>
@@ -105,8 +106,8 @@
 <script>
 (function () {
   "use strict";
-  var W = 420, H = 912, TOP = 74, BOT = 34;
-  var PANEL_W = 352, PANEL_H = 528, PANEL_TOP = 79.33, PANEL_BOT = PANEL_TOP + PANEL_H;
+  var W = 420, H = 912, SAFE_TOP = 74, TOP_RESERVE = 80, BOT = 34;
+  var PANEL_W = 352, PANEL_H = 528, PANEL_TOP = 85.33, PANEL_BOT = PANEL_TOP + PANEL_H;
   var MARGIN = 20, CELL = (W - 2 * MARGIN) / 6, HALF = CELL / 2;
   var PANEL_MM = 78.2, PT_PER_MM = PANEL_H / PANEL_MM;
   var CHASSIS = PANEL_H * (11.6 / PANEL_MM);        // 78.32
@@ -124,8 +125,8 @@
     { key: "tl", label: "Top left",     x: 0, y: 0 }
   ];
 
-  var UPPER = PANEL_BOT + CHASSIS - LIFT;           // 673.65
-  var LOWER = H - BOT - HALF - LIFT;                // 834.33
+  var UPPER = PANEL_BOT + CHASSIS - LIFT;           // 679.65
+  var LOWER = H - BOT - HALF - LIFT;                // 834.33 (the reserve does not reach it)
   var PADS = [
     { n: "BACK|SELECT", x: MARGIN,             y: UPPER, w: 2 * CELL, h: CELL, c: 2 },
     { n: "LEFT|RIGHT",  x: MARGIN + 4 * CELL,  y: UPPER, w: 2 * CELL, h: CELL, c: 2 },
@@ -138,7 +139,7 @@
     var w = frac * W, h = w * ASPECT;
     return {
       x: corner.x ? W - PIP_EDGE - w : PIP_EDGE,
-      y: corner.y ? H - BOT - PIP_FLOOR - h : TOP + PIP_FLOOR,
+      y: corner.y ? H - BOT - PIP_FLOOR - h : SAFE_TOP + PIP_FLOOR,
       w: w, h: h
     };
   }
@@ -157,8 +158,11 @@
     o.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="46" fill="none" stroke="var(--ink-faint)" stroke-width="1.6"/>');
     o.push('<line x1="0" y1="' + (H - BOT) + '" x2="' + W + '" y2="' + (H - BOT) +
            '" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>');
-    o.push('<line x1="0" y1="' + TOP + '" x2="' + W + '" y2="' + TOP +
+    o.push('<line x1="0" y1="' + SAFE_TOP + '" x2="' + W + '" y2="' + SAFE_TOP +
            '" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>');
+    // the 6 pt kTopReserve adds over the safe area
+    o.push('<rect x="1" y="' + SAFE_TOP + '" width="' + (W - 2) + '" height="' + (TOP_RESERVE - SAFE_TOP) +
+           '" fill="var(--ink)" opacity="0.06"/>');
 
     // page
     var pageHit = ovl({ x: (W - PANEL_W) / 2, y: PANEL_TOP, w: PANEL_W, h: PANEL_H }, p);
@@ -245,14 +249,20 @@
   }).join("");
 
   // summary
-  var brSmall = verdict(pipRect(CORNERS[0], SIZES[0].frac));
-  var brLarge = verdict(pipRect(CORNERS[0], SIZES[1].frac));
+  var smallTop = H - BOT - PIP_FLOOR - SIZES[0].frac * W * ASPECT;
+  var largeTop = H - BOT - PIP_FLOOR - SIZES[1].frac * W * ASPECT;
+  var measTop  = H - BOT - PIP_FLOOR - MEASURED * W * ASPECT;
+  var rowBot   = UPPER + CELL;
+  var liftForLarge = PANEL_BOT + CHASSIS + CELL - largeTop;
   document.getElementById("summary").innerHTML =
-    "<b>The lift does what it was asked to.</b> At the small and measured sizes the window sits entirely below the top " +
-    "row in either bottom corner — 55.8 pt and 18.7 pt of daylight — and only the bottom row, which you have already " +
-    "called acceptable, is behind it. <b>The large size is the one case it does not cover:</b> at 62.8% the window is " +
-    "148 pt tall and reaches 18.4 pt into the top row's bottom edge. Clearing that too would need 30 pt of lift rather " +
-    "than 12, i.e. 4.5 mm of chassis gap rather than 9.8 — the trade this stops short of. Top corners never touch the " +
-    "pad at any size; they cover page text instead, which no pad layout can prevent.";
+    "<b>The lift does what it was asked to.</b> At the small and measured sizes the window sits entirely below the " +
+    "top row in either bottom corner — " + fmt(smallTop - rowBot) + " pt and " + fmt(measTop - rowBot) +
+    " pt of daylight — and only the bottom row, which you have already called acceptable, is behind it. " +
+    "<b>The large size is the one case it does not cover:</b> at " + fmt(SIZES[1].frac * 100) + "% the window is " +
+    fmt(SIZES[1].frac * W * ASPECT) + " pt tall and reaches " + fmt(rowBot - largeTop) +
+    " pt into the top row's bottom edge. Clearing that too would need <b>" + fmt(liftForLarge) +
+    " pt</b> of lift rather than 12 — " + fmt((CHASSIS - liftForLarge) / PT_PER_MM) +
+    " mm of chassis gap rather than 9.8 — the trade this stops short of. Top corners never touch the pad at any " +
+    "size; they cover page text instead, which no pad layout can prevent.";
 })();
 </script>

@@ -296,6 +296,15 @@ the page and starts reading as a border around it.
 | 41.3 pt | 48 pt | 37.0 pt | 5.5 mm |
 | 78.3 pt | 85 pt | 0 | 0 mm |
 
+**Settled too: `kTopReserve` = 80 pt (owner ruling 2026-08-04).** The top band is
+now `max(safe area, 80 pt)` rather than the safe area alone — a floor, not a
+replacement, so a deeper safe area still wins. The safe area is the minimum the
+system asks for, not a margin: on an iPhone Air it reads 74, which starts the
+text 5 pt below the Island rather than clear of it. The page moves 79.3 → 85.3,
+and because the pad hangs off the page's bottom edge it moves with it, so the
+clearance `kPipLift` bought falls **18.7 → 12.7 pt** and the pinch the top row
+survives falls 55.0% → 52.5%. Page still 2×, headroom 86.7 → 80.7 pt.
+
 **Explored and not taken: reserving a top band so a small window misses the
 page.** `setTopInset` would grow from the safe area's 74 pt to 159.2 pt (safe
 area + the window's own 11 pt inset + a small window's 74.2 pt height), which

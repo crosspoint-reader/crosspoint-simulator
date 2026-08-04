@@ -168,10 +168,10 @@
   var PANEL_MM = 78.2, RATIO = 11.6 / PANEL_MM;
   var PIP_EDGE = 10.3, PIP_INSET = 11.0, ASPECT = 9 / 16;
 
-  var st = { top: 159.2, lift: 36.8, small: 0.314, large: 0.628 };
+  var st = { top: 80, lift: 12, small: 0.314, large: 0.628 };
 
   var PRESETS = [
-    { k: "today", label: "today (+12)", top: SAFE_TOP, lift: 12 },
+    { k: "today", label: "shipped (80, +12)", top: 80, lift: 12 },
     { k: "small", label: "page + top row clear", top: 0, lift: 0 },   // solved below
     { k: "toponly", label: "page clear, pad unmoved", top: 0, lift: 12 }
   ];
@@ -464,7 +464,6 @@
   });
 
   solvePresets();
-  st.top = PRESETS[1].top; st.lift = PRESETS[1].lift;
   sync(true);
   render();
 })();
