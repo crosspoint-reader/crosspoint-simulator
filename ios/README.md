@@ -296,7 +296,21 @@ the page and starts reading as a border around it.
 | 41.3 pt | 48 pt | 37.0 pt | 5.5 mm |
 | 78.3 pt | 85 pt | 0 | 0 mm |
 
-Two mockups, both computed from this file's own layout math rather than sketched:
+**Explored and not taken: reserving a top band so a small window misses the
+page.** `setTopInset` would grow from the safe area's 74 pt to 159.2 pt (safe
+area + the window's own 11 pt inset + a small window's 74.2 pt height), which
+puts the page at 160-688 rather than 79-607. Two things follow. The top row
+hangs off the page's bottom edge, so it descends with it and lands in the
+bottom-corner windows unless the lift goes from 12 pt to ~41 pt — taking the
+panel gap to 5.5 mm. And the budget closes to **1.5 pt**: top band plus the band
+below may total 384 pt before the page halves to 1x, and this arrangement wants
+382.5. A device whose safe area reads a few points differently loses the page.
+The bottom row cannot be saved at any lift — with the page ending at 688 there
+are 104.8 pt above a small bottom window and the two rows stand 111 pt tall, so
+one of them is always behind it. Live, with both bands on sliders:
+[mockups/pip-envelope.html](mockups/pip-envelope.html).
+
+Two more mockups, both computed from this file's own layout math rather than sketched:
 [mockups/pip-gap-shift.html](mockups/pip-gap-shift.html) puts the shift and the
 window width on live sliders, and
 [mockups/pip-corner-matrix.html](mockups/pip-corner-matrix.html) checks the
