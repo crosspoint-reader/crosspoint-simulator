@@ -60,7 +60,7 @@ The simulator is a collection of host-side reimplementations of the firmware's h
 - **`SimulatorOverlay` for chrome outside the panel.** [src/SimulatorOverlay.h](src/SimulatorOverlay.h) is a free hook `presentIfNeeded` calls, deliberately *not* a `HalDisplay` method — the HAL's public surface must mirror the firmware's, and on-screen chrome has no analog on real hardware. The callback runs with logical presentation disabled and receives the real output size, so it can paint the letterboxed margins the panel's logical space cannot reach. `requestPresent()` exists because an e-ink firmware presents rarely, so overlay state changes would otherwise not appear until the next page render.
 - **Panel palette + reserved pad band.** The 1bpp/AA framebuffer presents as tinted ink on tinted paper (`PanelPalette` in [src/HalDisplay.cpp](src/HalDisplay.cpp): 2D2D2D-on-FBFBF9 light, E0E0DE-on-121212 dark; the dark ramp's ink→paper direction IS the inversion — no separate 255−level flip). `SimulatorOverlay::setBottomInset` reserves a bottom band for chrome: the panel then fits TOP-ALIGNED above the band (manual placement, integer scale preserved under `CROSSPOINT_SIM_PIXEL_EXACT`) and publishes its bottom edge via `panelBottomPx()` — the iOS pad anchors to it. Desktop keeps inset 0 and the plain letterbox path.
 - **Inversion changes re-present from a cached frame.** `setInverted` posts an atomic reconvert request that `presentIfNeeded` (main thread) services from the cached BW base and grayscale AA planes — inversion applies at 1bpp→ARGB conversion time, and e-ink firmware refreshes rarely, so without this a dark-mode flip would wait for the next page turn. `SimulatorOverlay::setPanelDark` is the single polarity entry point: the iOS harness follows the system appearance through it, and `CROSSPOINT_SIM_DARK=1/0` forces either state for headless runs. Book covers/images render as negatives in dark mode; accepted for now.
-- **POSIX fds, not std::fstream, in [src/HalStorage.cpp](src/HalStorage.cpp).** This was a deliberate rewrite. fstream's separate get/put pointers, eofbit-blocks-seek behaviour, and write-only seek restrictions caused several silent-corruption bugs. Do not reintroduce fstream here. All paths are prefixed with `./fs_` so the simulated filesystem stays sandboxed under the binary's working directory; `/books/` on the SD card maps to `./fs_/books/`. Directory iteration skips entries starting with `.`.
+- **POSIX fds, not std::fstream, in [src/HalStorage.cpp](src/HalStorage.cpp).** This was a deliberate rewrite. fstream's separate get/put pointers, eofbit-blocks-seek behaviour, and write-only seek restrictions caused several silent-corruption bugs. Do not reintroduce fstream here. All paths are prefixed with `./fs_` so the simulated filesystem stays sandboxed under the binary's working directory; `/books/` on the SD card maps to `./fs_/books/`. Directory iteration skips only `.` and `..` — dotfiles ARE returned, matching SdFat on device (an earlier version of this file claimed all dot-entries were skipped; the firmware does its own hidden-file filtering, and the Manage Files screen deliberately lists them).
 - **FreeRTOS shim.** [src/freertos/](src/freertos/) maps `xTaskCreate` to `std::thread`, task notifies to a condvar + counter, and `SemaphoreHandle_t` to `std::recursive_mutex`. A `thread_local SimTaskHandle*` lets each task thread find its own handle.
 - **`_exit(0)` not `return 0`, on desktop.** [src/simulator_main.cpp](src/simulator_main.cpp) ends with `_exit(0)` after `SDL_Quit()` to skip C++ global destructors. The render task is `[[noreturn]]`, so running destructors while it is mid-render races and produces a "quit unexpectedly" dialog. Keep this. iOS is the one exception — it reports a self-terminating process as a crash, so that build returns normally.
 - **Time uses `steady_clock`.** `millis()` / `micros()` in [src/Arduino.h](src/Arduino.h) deliberately use `steady_clock`, not `system_clock`, so wall-clock changes do not perturb timing.
@@ -170,9 +170,18 @@ like a screenshot of a screen that never changed.
   counter above and script from Home; do not try to normalise at runtime.
 - On Home, **Back** opens the most recently read book and **Confirm/ENTER**
   activates the selected row. Home lists the recent books followed by the menu
-  items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
-  with no wrap-around — so `DOWN` x15 then `ENTER` reaches Settings regardless
-  of how many books are listed.
+  items — on the bunnyfield fork as of 2026-08-04: Browse Files, Recents,
+  File Transfer, Manage Files, Settings (no OPDS), Settings last, with no
+  wrap-around — so `DOWN` x15 then `ENTER` reaches Settings regardless of how
+  many books are listed, and `DOWN` x15 then `UP` then `ENTER` reaches Manage
+  Files.
+- **Scripts that list ALL files (Manage Files) shift by one after the first
+  run**: the firmware creates `.crosspoint/` on the test card during boot, and
+  in a show-everything list it sorts to row 0 of the root. A DOWN-count written
+  against a fresh card acts on the wrong rows in every later run. Recount
+  against the current card (`find fs_ -print`) or grep the activity's log
+  before trusting the script — this burned a debugging cycle on 2026-08-04
+  (the "wrong file moved" was the script, not the firmware).
 - Inside the reader **Confirm does nothing** — there is no reader menu. Sending
   `ENTER` while still on Home opens a book, which logs a page render; that is
   the only thing ENTER does on either screen.
