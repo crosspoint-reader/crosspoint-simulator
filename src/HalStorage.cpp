@@ -329,8 +329,11 @@ HalFile HalFile::openNextFile() {
     struct dirent *entry = readdir(impl->dir);
     if (!entry)
       return HalFile();
-    if (entry->d_name[0] == '.')
-      continue; // skip . and ..
+    const char *nm = entry->d_name;
+    if (nm[0] == '.' && (nm[1] == '\0' || (nm[1] == '.' && nm[2] == '\0')))
+      continue; // skip . and .. only — SdFat on device DOES return dotfiles
+                // (.crosspoint, .fonts), and firmware filters them itself
+                // (FileBrowserActivity, WebDAV PROPFIND)
 
     std::string childFsPath = impl->path;
     if (childFsPath.back() != '/')
@@ -554,9 +557,10 @@ std::vector<String> HalStorage::listFiles(const char *path, int maxFiles) {
     return result;
   struct dirent *entry;
   while ((entry = readdir(dir)) != nullptr && (int)result.size() < maxFiles) {
-    if (entry->d_name[0] == '.')
-      continue; // skip . and ..
-    result.push_back(String(entry->d_name));
+    const char *nm = entry->d_name;
+    if (nm[0] == '.' && (nm[1] == '\0' || (nm[1] == '.' && nm[2] == '\0')))
+      continue; // skip . and .. only — device SdFat returns dotfiles
+    result.push_back(String(nm));
   }
   closedir(dir);
   return result;
