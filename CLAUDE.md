@@ -144,9 +144,17 @@ like a screenshot of a screen that never changed.
   place with a script that looks correct. Do not write the script blind and
   trust it: run it, grep `[ACT] Entering activity:`, and only believe the
   screenshot once the log shows the activity you meant to reach. Four
-  consecutive runs were burned on this on 2026-08-03. `rm -rf ./fs_/.crosspoint/`
-  forces the Home path deterministically, at the cost of the sim's settings and
-  reading positions.
+  consecutive runs were burned on this on 2026-08-03.
+- **Open every script with `2000:HOME`, not `BACK`.** This is the fix for the
+  above, found on 2026-08-04 after four more wasted runs. `HOME` reaches Home
+  from either starting state and is a no-op when already there, so the rest of
+  the script can assume Home. `BACK` cannot: it means "up" from the reader and
+  "open the last book" from Home, so with a boot path that alternates run to
+  run it lands you somewhere different every other time.
+- `rm -rf ./fs_/.crosspoint/` does **not** force the Home path — an earlier
+  version of this file claimed it did. Verified 2026-08-04: with the directory
+  deleted the sim still went `Boot -> Reader -> EpubReader` within 500 ms. It
+  clears caches; it does not decide the boot destination.
 - On Home, **Back** opens the most recently read book and **Confirm/ENTER**
   activates the selected row. Home lists the recent books followed by the menu
   items (File Browser, Recents, OPDS, File Transfer, Settings), Settings last,
