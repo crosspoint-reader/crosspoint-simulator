@@ -3,11 +3,19 @@
 <!--
   Settings > CrossPoint X3.
 
-  Keys MUST match ios/CrossPointPrefs.mm. DefaultValue here only controls what
-  the switch renders as before the owner has ever touched it; the values the
-  CODE falls back to come from registerDefaults in that file. Both are YES, and
-  they have to stay in agreement or the switch will show one thing while the app
-  does another.
+  THIS FILE IS THE SOURCE OF TRUTH FOR THE DEFAULTS.
+
+  A Settings.bundle needs its defaults stated twice — DefaultValue decides what
+  Settings.app DISPLAYS for an untouched key, registerDefaults decides what
+  -boolForKey: RETURNS for it, and neither can see the other. Rather than write
+  them out twice and hope they stay in step, CrossPointPrefs.mm reads this file
+  at launch and builds its registration domain from these DefaultValues.
+
+  So: edit defaults HERE, and only here. Adding another switch needs no code
+  change at all — give it a Key and a DefaultValue and it is registered.
+
+  Keys still have to match the ones CrossPointPrefs.mm reads; checkKnown() there
+  logs a key that is missing from this file rather than silently answering NO.
 -->
 <plist version="1.0">
 <dict>
