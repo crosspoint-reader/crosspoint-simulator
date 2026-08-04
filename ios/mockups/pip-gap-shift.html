@@ -96,7 +96,7 @@
 <div class="bar">
   <div class="row">
     <span class="lab">Move up</span>
-    <input type="range" id="shift" min="0" max="1000" step="5" value="413" aria-label="Distance the pad moves up, in points">
+    <input type="range" id="shift" min="0" max="1000" step="5" value="120" aria-label="Distance the pad moves up, in points">
     <span class="read" id="shiftRead"></span>
   </div>
   <div class="row">
@@ -141,8 +141,8 @@
   <div style="overflow-x:auto"><table id="mmtable" style="width:100%;border-collapse:collapse;font-size:.85rem"></table></div>
   <p class="note" style="margin-top:14px">Under about <b>4 mm</b> the pad stops reading as a separate control surface
   below the page and starts reading as a border around it — that is the point where the resemblance is not being
-  reduced, it is being abandoned. <b>48 pt of clearance sits at 5.5 mm</b>, which is the last stop on the near side
-  of that line.</p>
+  reduced, it is being abandoned. <b>The chosen 12 pt sits at 9.8 mm</b>, well clear of that line; 48 pt of clearance would
+  sit at 5.5 mm, the last stop on the near side of it.</p>
 </section>
 
 <section>
@@ -180,11 +180,11 @@
   var LOWER0 = H - BOT - HALF;                               // 846.33
   var PIP_EDGE = 10.3, PIP_FLOOR = 11.0, ASPECT = 9 / 16;
 
-  var st = { shift: 41.3, ride: true, frac: 0.471 };
+  var st = { shift: 12.0, ride: true, frac: 0.471 };
 
   var STOPS = [
     { x: 0.0,  name: "today" },
-    { x: 9.3,  name: "16 pt" },
+    { x: 12.0, name: "chosen" },
     { x: 25.3, name: "32 pt" },
     { x: 41.3, name: "48 pt" },
     { x: 78.3, name: "flush" }

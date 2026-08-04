@@ -176,6 +176,26 @@ void layoutPad(int outW, int outH) {
   // so the proportion holds at any device scale; kGap is the pre-first-present
   // fallback only.
   constexpr float kPanelGapRatio = 11.6f / 78.2f;
+  // ...and then the WHOLE PAD is lifted this far back off the chassis figure
+  // (owner ruling 2026-08-04). A system Picture-in-Picture window parks in a
+  // bottom corner, and at the pad's chassis position the top row cleared such a
+  // window's top edge by 6.7 pt on an iPhone Air -- close enough to read as a
+  // collision. 12 pt takes that to 18.7 pt and, more to the point, takes the
+  // width the window can be pinched to before it covers the top row from 50% of
+  // the screen to 55%.
+  //
+  // It comes out of the panel gap and NOTHING ELSE: both rows move up together,
+  // the reserved band below (setBottomInset) is unchanged, so the page neither
+  // moves nor changes scale -- the pad just sits higher in the space it already
+  // had. A flat point value rather than a ratio because what it buys clearance
+  // from is a system window sized in points, not a proportion of the panel.
+  //
+  // The cost is chassis fidelity, and the honest unit for it is millimetres:
+  // the Air presents 6.75 pt per real millimetre, so this leaves 66.3 pt =
+  // 9.8 mm of the X3's 11.6 mm. Below about 4 mm the pad stops reading as a
+  // control surface under the page and starts reading as a border around it;
+  // this is well clear of that.
+  constexpr float kPipLift = 12.0f;
   constexpr float kRowClear = kGap;     // top row keeps at least this above the bottom row
   constexpr float kHomeInsetFallback = 34.0f;  // when the safe area is unreadable
   constexpr float kHomeInsetMin = 16.0f;       // floor for home-button devices (safe area 0)
@@ -219,11 +239,13 @@ void layoutPad(int outW, int outH) {
   }
   bottomInset = SDL_max(bottomInset, kHomeInsetMin);
 
-  // Bottom row: half-height, anchored at the bottom of the screen.
-  const float lowerY = H - bottomInset - kHalf;
+  // Bottom row: half-height, anchored at the bottom of the screen, then lifted
+  // with the rest of the pad. Lifting it here rather than only the top row is
+  // what keeps the pad's own proportions: the two rows move as a block.
+  const float lowerY = H - bottomInset - kHalf - kPipLift;
 
-  // Top row hugs the panel at the chassis-matched gap, clamped clear of the
-  // bottom row.
+  // Top row hugs the panel at the chassis-matched gap less the lift, clamped
+  // clear of the bottom row and never over the page.
   const float maxUpper = lowerY - kRowClear - kSquare;
   const int panelBottomPx = SimulatorOverlay::panelBottomPx();
   const int panelHeightPx = SimulatorOverlay::panelHeightPx();
@@ -231,7 +253,9 @@ void layoutPad(int outW, int outH) {
       panelHeightPx > 0 ? (static_cast<float>(panelHeightPx) / S) * kPanelGapRatio : kGap;
   float upperY;
   if (panelBottomPx > 0) {
-    upperY = static_cast<float>(panelBottomPx) / S + panelGap;
+    const float panelBottom = static_cast<float>(panelBottomPx) / S;
+    upperY = panelBottom + panelGap - kPipLift;
+    if (upperY < panelBottom) upperY = panelBottom;
     if (upperY > maxUpper) upperY = maxUpper;
   } else {
     upperY = maxUpper;

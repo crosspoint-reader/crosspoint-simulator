@@ -1,0 +1,258 @@
+<title>Pad at +12 pt — every corner, both pinch sizes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.13);
+    --dim: #1F7A6B; --bad: #A83A2B; --bad-fill: rgba(168,58,43,.10); --warn: #8A6320;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+      --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A;
+      --pip: #97A1E0; --pip-fill: rgba(151,161,224,.15);
+      --dim: #63C4B0; --bad: #E08472; --bad-fill: rgba(224,132,114,.13); --warn: #D3A44E;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121212; --ink: #E0E0DE; --ink-soft: #9A9A96; --ink-faint: #6A6A66;
+    --rule: #2A2A2A; --hair: #333333; --sunk: #1A1A1A;
+    --pip: #97A1E0; --pip-fill: rgba(151,161,224,.15);
+    --dim: #63C4B0; --bad: #E08472; --bad-fill: rgba(224,132,114,.13); --warn: #D3A44E;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --paper: #FBFBF9; --ink: #2D2D2D; --ink-soft: #6A6A66; --ink-faint: #9A9A94;
+    --rule: #DFDFDA; --hair: #D9D9D7; --sunk: #F3F3F0;
+    --pip: #4B5A9B; --pip-fill: rgba(75,90,155,.13);
+    --dim: #1F7A6B; --bad: #A83A2B; --bad-fill: rgba(168,58,43,.10); --warn: #8A6320;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.5;
+    -webkit-text-size-adjust: 100%; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 20px 80px; }
+  h1, h2 { font-family: ui-serif, "New York", "Iowan Old Style", Palatino, Georgia, serif; font-weight: 600; text-wrap: balance; }
+  h1 { font-size: 1.8rem; line-height: 1.15; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 .4rem; }
+  p { margin: 0 0 .8rem; }
+  .num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .eyebrow { font: 500 .7rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-faint); }
+  header { padding: 36px 0 20px; border-bottom: 1px solid var(--rule); }
+  header p { color: var(--ink-soft); margin: .6rem 0 0; max-width: 32rem; }
+
+  dl.k { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 18px 0 0; font-size: .85rem; }
+  dl.k dt { color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .76rem; }
+  dl.k dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  dd.good { color: var(--dim); } dd.warn { color: var(--warn); }
+
+  .matrix { margin-top: 22px; }
+  .mrow { border-top: 1px solid var(--rule); padding: 16px 0 4px; }
+  .mrow > h2 { margin-bottom: 10px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cell figure { margin: 0; }
+  .cell svg { display: block; width: 100%; height: auto; }
+  .sizelab { font: 500 .68rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em;
+             text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+  .verdict { margin-top: 7px; font-size: .8rem; line-height: 1.35; }
+  .verdict b { display: block; font: 600 .74rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 2px; }
+  .verdict.clear b { color: var(--dim); }
+  .verdict.page b { color: var(--warn); }
+  .verdict.hit b { color: var(--bad); }
+  .verdict span { color: var(--ink-soft); }
+
+  .note { border-left: 2px solid var(--rule); padding-left: 14px; font-size: .9rem; color: var(--ink-soft); margin: 20px 0; }
+  .note b { color: var(--ink); }
+  footer { border-top: 1px solid var(--rule); margin-top: 30px; padding-top: 16px; font-size: .8rem; color: var(--ink-faint); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">CrossPoint X3 · iOS harness · applied</div>
+  <h1>+12 pt, both rows</h1>
+  <p>The pad now sits 12 pt higher, moved as a block, out of the panel gap and nothing else. Here it is against every
+  place a floating video window can be parked, at the smallest and largest pinch sizes.</p>
+  <dl class="k" id="head"></dl>
+</header>
+
+<div class="matrix" id="matrix"></div>
+
+<div class="note" id="summary"></div>
+
+<section>
+  <h2>What the sizes are</h2>
+  <p style="font-size:.92rem">iOS gives the window three sizes by pinch, and only the middle one is measurable from
+  your screenshot: <span class="num">197.8 × 111.3 pt</span>, <span class="num">47.1%</span> of screen width. The other
+  two are modelled from Apple's own description of the steps — the small window is about two app icons, the large about
+  eight — which puts them at roughly <span class="num">⅔×</span> and <span class="num">4⁄3×</span> the measured one.
+  Apple also documents that the largest size parks only at the top or bottom rather than in a corner, so the large-size
+  frames below are the pessimistic reading: they show it cornered anyway.</p>
+</section>
+
+<footer>
+  Computed from <span class="num">layoutPad()</span> in <span class="num">ios/CrossPointIOSShim.cpp</span> with
+  <span class="num">kPipLift = 12</span>, iPhone Air <span class="num">420×912 pt</span>, measured top inset
+  <span class="num">74 pt</span>. Window insets measured off the reference screenshot: <span class="num">10.3 pt</span>
+  from the side, <span class="num">11.0 pt</span> above the home-indicator inset.
+</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var W = 420, H = 912, TOP = 74, BOT = 34;
+  var PANEL_W = 352, PANEL_H = 528, PANEL_TOP = 79.33, PANEL_BOT = PANEL_TOP + PANEL_H;
+  var MARGIN = 20, CELL = (W - 2 * MARGIN) / 6, HALF = CELL / 2;
+  var PANEL_MM = 78.2, PT_PER_MM = PANEL_H / PANEL_MM;
+  var CHASSIS = PANEL_H * (11.6 / PANEL_MM);        // 78.32
+  var LIFT = 12;
+  var PIP_EDGE = 10.3, PIP_FLOOR = 11.0, ASPECT = 9 / 16;
+  var MEASURED = 0.471;
+  var SIZES = [
+    { key: "small", label: "Small · 31.4%", frac: MEASURED * 2 / 3 },
+    { key: "large", label: "Large · 62.8%", frac: MEASURED * 4 / 3 }
+  ];
+  var CORNERS = [
+    { key: "br", label: "Bottom right", x: 1, y: 1 },
+    { key: "bl", label: "Bottom left",  x: 0, y: 1 },
+    { key: "tr", label: "Top right",    x: 1, y: 0 },
+    { key: "tl", label: "Top left",     x: 0, y: 0 }
+  ];
+
+  var UPPER = PANEL_BOT + CHASSIS - LIFT;           // 673.65
+  var LOWER = H - BOT - HALF - LIFT;                // 834.33
+  var PADS = [
+    { n: "BACK|SELECT", x: MARGIN,             y: UPPER, w: 2 * CELL, h: CELL, c: 2 },
+    { n: "LEFT|RIGHT",  x: MARGIN + 4 * CELL,  y: UPPER, w: 2 * CELL, h: CELL, c: 2 },
+    { n: "POWER",       x: MARGIN,             y: LOWER, w: CELL,     h: HALF, c: 1 },
+    { n: "UP|DOWN",     x: MARGIN + 4 * CELL,  y: LOWER, w: 2 * CELL, h: HALF, c: 2 }
+  ];
+
+  function fmt(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+  function pipRect(corner, frac) {
+    var w = frac * W, h = w * ASPECT;
+    return {
+      x: corner.x ? W - PIP_EDGE - w : PIP_EDGE,
+      y: corner.y ? H - BOT - PIP_FLOOR - h : TOP + PIP_FLOOR,
+      w: w, h: h
+    };
+  }
+  function ovl(a, b) {
+    var ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    var oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return (ox > 1 && oy > 1) ? { x: ox, y: oy } : null;
+  }
+
+  function draw(p, uid) {
+    var o = [];
+    o.push('<svg viewBox="-5 -5 ' + (W + 10) + " " + (H + 10) + '" role="img" aria-label="device frame">');
+    o.push('<defs><pattern id="hx' + uid + '" width="6" height="6" patternUnits="userSpaceOnUse" ' +
+           'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--bad)" ' +
+           'stroke-width="1.8" opacity="0.5"/></pattern></defs>');
+    o.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="46" fill="none" stroke="var(--ink-faint)" stroke-width="1.6"/>');
+    o.push('<line x1="0" y1="' + (H - BOT) + '" x2="' + W + '" y2="' + (H - BOT) +
+           '" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>');
+    o.push('<line x1="0" y1="' + TOP + '" x2="' + W + '" y2="' + TOP +
+           '" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>');
+
+    // page
+    var pageHit = ovl({ x: (W - PANEL_W) / 2, y: PANEL_TOP, w: PANEL_W, h: PANEL_H }, p);
+    o.push('<rect x="' + (W - PANEL_W) / 2 + '" y="' + PANEL_TOP + '" width="' + PANEL_W + '" height="' + PANEL_H +
+           '" fill="none" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="3 4" opacity="' +
+           (pageHit ? 0.9 : 0.55) + '"/>');
+    var lx = (W - PANEL_W) / 2 + PANEL_W * 0.09, lw = PANEL_W * 0.82;
+    for (var i = 0; i < 19; i++) {
+      var ly = PANEL_TOP + 46 + i * 26;
+      if (ly > PANEL_BOT - 20) break;
+      o.push('<rect x="' + lx + '" y="' + ly + '" width="' + (lw * (i % 6 === 5 ? 0.6 : 1)) +
+             '" height="7" fill="var(--ink)" opacity="0.13"/>');
+    }
+
+    // controls
+    PADS.forEach(function (g) {
+      var hit = ovl(g, p);
+      var r = Math.min(12, g.h / 2);
+      // Hatch only the part the window actually takes -- a control clipped at
+      // its bottom edge is a different fact from a control swallowed whole.
+      if (hit) {
+        var ix = Math.max(g.x, p.x), iy = Math.max(g.y, p.y);
+        o.push('<rect x="' + ix + '" y="' + iy + '" width="' + (Math.min(g.x + g.w, p.x + p.w) - ix) +
+               '" height="' + (Math.min(g.y + g.h, p.y + p.h) - iy) + '" fill="url(#hx' + uid + ')"/>');
+      }
+      o.push('<rect x="' + g.x + '" y="' + g.y + '" width="' + g.w + '" height="' + g.h + '" rx="' + r +
+             '" fill="none" stroke="' + (hit ? "var(--bad)" : "var(--hair)") +
+             '" stroke-width="' + (hit ? 2 : 1.5) + '"/>');
+      for (var c = 1; c < g.c; c++) {
+        var sx = g.x + g.w * c / g.c;
+        o.push('<line x1="' + sx + '" y1="' + (g.y + g.h * 0.28) + '" x2="' + sx + '" y2="' + (g.y + g.h * 0.72) +
+               '" stroke="' + (hit ? "var(--bad)" : "var(--hair)") + '" stroke-width="1.4"/>');
+      }
+    });
+
+    o.push('<rect x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h +
+           '" rx="15" fill="var(--pip-fill)" stroke="var(--pip)" stroke-width="1.8"/>');
+    o.push('<text x="' + (p.x + p.w / 2) + '" y="' + (p.y + p.h / 2 + 5) + '" text-anchor="middle" ' +
+           'font-family="ui-monospace, Menlo, monospace" font-size="15" letter-spacing="1.4" fill="var(--pip)" opacity="0.8">PiP</text>');
+    o.push("</svg>");
+    return o.join("");
+  }
+
+  function verdict(p) {
+    var hits = PADS.filter(function (g) { return ovl(g, p); });
+    var page = ovl({ x: (W - PANEL_W) / 2, y: PANEL_TOP, w: PANEL_W, h: PANEL_H }, p);
+    // distance from the top row's bottom edge to the window, when the window is below it
+    var gapTop = p.y - (UPPER + CELL);
+    if (hits.length) {
+      var top = hits.filter(function (g) { return g.y === UPPER; });
+      return { cls: "hit", head: "covers " + hits.map(function (g) { return g.n; }).join(" + "),
+               body: top.length
+                 ? "reaches " + fmt((p.y < UPPER + CELL) ? (UPPER + CELL - p.y) : 0) + " pt into the top row"
+                 : "bottom row only — the top row clears it by " + fmt(gapTop) + " pt" };
+    }
+    if (page) return { cls: "page", head: "covers page text",
+                       body: "no control touched; " + fmt(page.y) + " pt of the page behind it" };
+    return { cls: "clear", head: "nothing touched",
+             body: gapTop > 0 ? fmt(gapTop) + " pt below the top row" : "clear of the pad" };
+  }
+
+  // header numbers
+  var pm = pipRect(CORNERS[0], MEASURED);
+  document.getElementById("head").innerHTML = [
+    ["top row", fmt(UPPER) + " → " + fmt(UPPER + CELL) + " pt", ""],
+    ["bottom row", fmt(LOWER) + " → " + fmt(LOWER + HALF) + " pt", ""],
+    ["panel gap", fmt(CHASSIS - LIFT) + " pt · " + fmt((CHASSIS - LIFT) / PT_PER_MM) + " mm on the X3", "good"],
+    ["clearance at 47.1%", fmt(pm.y - (UPPER + CELL)) + " pt  (was 6.7)", "good"],
+    ["survives pinch to", fmt((H - BOT - PIP_FLOOR - (UPPER + CELL)) / (W * ASPECT) * 100) + "% width  (was 50.0)", "good"],
+    ["page", "unmoved — 2× at " + fmt(PANEL_TOP) + " pt", ""]
+  ].map(function (r) {
+    return "<dt>" + r[0] + "</dt><dd" + (r[2] ? ' class="' + r[2] + '"' : "") + ">" + r[1] + "</dd>";
+  }).join("");
+
+  // matrix
+  var uid = 0;
+  document.getElementById("matrix").innerHTML = CORNERS.map(function (c) {
+    return '<div class="mrow"><h2>' + c.label + "</h2><div class='pair'>" +
+      SIZES.map(function (s) {
+        var p = pipRect(c, s.frac), v = verdict(p);
+        return '<div class="cell"><div class="sizelab">' + s.label + "</div><figure>" + draw(p, ++uid) +
+               '</figure><div class="verdict ' + v.cls + '"><b>' + v.head + "</b><span>" + v.body + "</span></div></div>";
+      }).join("") + "</div></div>";
+  }).join("");
+
+  // summary
+  var brSmall = verdict(pipRect(CORNERS[0], SIZES[0].frac));
+  var brLarge = verdict(pipRect(CORNERS[0], SIZES[1].frac));
+  document.getElementById("summary").innerHTML =
+    "<b>The lift does what it was asked to.</b> At the small and measured sizes the window sits entirely below the top " +
+    "row in either bottom corner — 55.8 pt and 18.7 pt of daylight — and only the bottom row, which you have already " +
+    "called acceptable, is behind it. <b>The large size is the one case it does not cover:</b> at 62.8% the window is " +
+    "148 pt tall and reaches 18.4 pt into the top row's bottom edge. Clearing that too would need 30 pt of lift rather " +
+    "than 12, i.e. 4.5 mm of chassis gap rather than 9.8 — the trade this stops short of. Top corners never touch the " +
+    "pad at any size; they cover page text instead, which no pad layout can prevent.";
+})();
+</script>

@@ -273,33 +273,39 @@ layout math with the window movable to any corner and resizable:
 [mockups/pip-window-alignment.html](mockups/pip-window-alignment.html). Nothing
 is approved yet.
 
-**If the answer is just "move the pad up", the budget is the chassis gap.** The
-narrower ask — the TOP row (LEFT|RIGHT) clears the window's top edge by only
-6.7 pt, and it is that near-miss rather than the buried bottom row that reads
-wrong — needs no restructuring at all: shifting the pad up spends the
-panel-to-top-row gap and nothing else. The page does not move or shrink at any
-shift, being top-aligned at an integer scale, so the ceiling is simply the gap
-itself, 78.3 pt. **Record the gap in millimetres, not points, when judging it**:
-the value is a chassis measurement (11.6 mm below the panel window on a 78.2 mm
-panel, 14.8%), and the Air presents 6.75 pt per real millimetre, so a shift of X
-points leaves `(78.3 - X) / 6.75` mm of the hardware's gap.
+**Settled part: `kPipLift` = 12 pt (owner ruling 2026-08-04).** The narrower
+complaint was not the buried bottom row — it was the TOP row (LEFT|RIGHT)
+clearing the window's top edge by only 6.7 pt, close enough to read as a
+collision. That needs no restructuring: **both rows move up 12 pt as a block**,
+taken out of the panel gap and nothing else. The reserved band is unchanged, so
+the page neither moves nor changes scale — the pad just sits higher in the space
+it already had. Clearance goes 6.7 → 18.7 pt, and the width the window can be
+pinched to before it reaches the top row goes 50% → 55% of the screen.
+
+**Judge the gap in millimetres, not points.** It is a chassis measurement (11.6
+mm below the panel window on a 78.2 mm panel, 14.8%) and the Air presents 6.75 pt
+per real millimetre, so a shift of X points leaves `(78.3 - X) / 6.75` mm of the
+hardware's gap. Below about 4 mm the pad stops reading as a control surface under
+the page and starts reading as a border around it.
 
 | move up | clearance | page gap | on the X3 |
 |---|---|---|---|
-| 0 pt (today) | 6.7 pt | 78.3 pt | 11.6 mm |
-| 9.3 pt | 16 pt | 69.0 pt | 10.2 mm |
+| 0 pt (was) | 6.7 pt | 78.3 pt | 11.6 mm |
+| **12 pt (now)** | **18.7 pt** | **66.3 pt** | **9.8 mm** |
 | 25.3 pt | 32 pt | 53.0 pt | 7.9 mm |
 | 41.3 pt | 48 pt | 37.0 pt | 5.5 mm |
 | 78.3 pt | 85 pt | 0 | 0 mm |
 
-Below about 4 mm the pad stops reading as a control surface below the page and
-starts reading as a border around it, so 5.5 mm is the last stop on the near
-side of that line. The other number worth weighing is pinch survival: at the
-shipped position the top row is clear only up to a 50%-wide window and the
-reference screenshot is already at 47.1%, so a shift buys headroom against a
-resize as much as against today's frame — 41.3 pt holds to 67%. Drawn to scale,
-with the shift and the window size both live:
-[mockups/pip-gap-shift.html](mockups/pip-gap-shift.html).
+Two mockups, both computed from this file's own layout math rather than sketched:
+[mockups/pip-gap-shift.html](mockups/pip-gap-shift.html) puts the shift and the
+window width on live sliders, and
+[mockups/pip-corner-matrix.html](mockups/pip-corner-matrix.html) checks the
+settled 12 pt against all four corners at both pinch extremes. The one case 12 pt
+does not cover is the largest pinch size (~62.8% of width, 148 pt tall), which
+reaches 18.4 pt into the top row from either bottom corner; clearing that too
+would want 30 pt of lift, i.e. 4.5 mm of chassis gap, which is the trade this
+stops short of. Top corners never touch the pad at any size — they cover page
+text, which no pad layout can prevent.
 
 ## How the harness attaches
 
