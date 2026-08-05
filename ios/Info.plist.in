@@ -34,12 +34,16 @@
   <false/>
 
   <!-- Portrait only. The X3 panel is presented portrait and the control zones
-       are laid out beneath it; rotation would invalidate the integer-scale
-       geometry the 1-bit panel depends on. -->
+       are laid out beneath it (phone) or beside it (iPad); rotation would
+       invalidate the integer-scale geometry the 1-bit panel depends on.
+       UIRequiresFullScreen is what makes portrait-only legal on iPad: without
+       it the App Store demands all four orientations for Split View. -->
   <key>UISupportedInterfaceOrientations</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>
   </array>
+  <key>UIRequiresFullScreen</key>
+  <true/>
 
   <!-- File sharing, so EPUB/TXT can be sideloaded via Files. The real X3 has no
        USB port (pogo pins), so this is the only practical way to get books in. -->

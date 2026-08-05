@@ -219,22 +219,45 @@ There is no control for the simulator's own SLEEP (`S`) either: that is a harnes
 command, not a button the hardware has.
 
 
-**iPad (family 2) — approved spec, NOT implemented.** Owner-approved
-2026-08-03 after mockup iteration (computed mockups: the "device_mockups"
-artifact, built from the shipped layout math). If TARGETED_DEVICE_FAMILY ever
-gains family 2, `layoutPad()` branches for iPad:
+**iPad (family 2) — IMPLEMENTED 2026-08-04** (owner-approved spec 2026-08-03,
+computed mockups: the "device_mockups" artifact). `TARGETED_DEVICE_FAMILY` is
+"1,2" and `layoutPad()` branches on `CrossPointAppearance_isPad()` into
+`layoutPadTablet()`:
 
 - The panel takes the full safe height, centered — no reserved bottom band.
+  Centering is by construction: the tablet branch replicates HalDisplay's
+  manual fit over the full safe height, then sets top+bottom insets that
+  sandwich the panel exactly, so HalDisplay's own fit lands on the same scale
+  and its top-margin term collapses to the band edge.
 - Front rockers move to the side margins, vertically centered to the screen:
   Back|Select in the left margin, Left|Right in the right (thumb height when
   gripping the tablet's sides).
 - The bottom row keeps its screen-bottom anchor in the same margin columns:
   Power bottom-left, Up|Down rocker bottom-right.
 - Cell = min(60pt, margin fit): 60pt everywhere except iPad mini portrait
-  (54pt). Computed panel scales: 1x on all frames except iPad mini landscape
-  (0.875x — the portrait-only firmware caps what a short window can show).
+  (54pt — its 108pt margin holds a two-cell rocker exactly, flush to both
+  edges). The phone's kPipLift / kTopReserve / chassis gap do not apply — the
+  pad is beside the page, not under it.
+- Portrait stays the only orientation, now made legal on iPad by
+  `UIRequiresFullScreen` in Info.plist (a portrait-only iPad app without it
+  fails App Store validation over Split View). The spec's iPad-mini-landscape
+  0.875x row stays theoretical until landscape is ever enabled.
 
-Until then the app stays iPhone-only, and below is the shipped iPhone layout.
+Verified 2026-08-04 on iPad Pro 13-inch (M5) and iPad mini (A17 Pro)
+simulators (iOS 26.5): panel centered at 2x panel px (1x pt on the 2x glass),
+hi-res LibreFranklin 2x companion loaded, rockers/Power/Up|Down placed as
+above on both frames, and a scripted `injectButton` press navigated Home —
+touch hit-testing itself is PadCore + the rects, covered by
+`tests/pad_core_test.cpp`. Not yet exercised with a real finger.
+
+**Regenerating the source list: clean first.** `pio run -e simulator -t
+compiledb` emits compile actions only for TUs that are not restored from the
+firmware's build cache (`build_cache_policy.py`), so an incremental run
+produces a silently PARTIAL DB — this cost a full build cycle on 2026-08-04
+(the missing FileManagerActivity/FsOps TUs surfaced only at link). Always
+`rm -rf .pio/build/simulator` in the firmware repo before `-t compiledb`.
+
+Below is the shipped iPhone layout.
 
 **Placement mirrors the chassis where it's measurable.** The SDK describes the
 buttons only electrically (six on a resistor ladder across two ADC pins, POWER

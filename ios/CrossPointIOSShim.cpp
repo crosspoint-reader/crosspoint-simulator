@@ -57,6 +57,7 @@
 #include <cstdint>
 
 #include "CrossPointAppearance.h"
+#include "HalDisplay.h"
 #include "HalGPIO.h"
 #include "PadCore.h"
 #include "SimulatorOverlay.h"
@@ -160,13 +161,98 @@ void applyActions(const std::vector<PadCore::Action> &actions) {
 // The top row hugs the panel (SimulatorOverlay::panelBottomPx) so thumbs rest
 // at the page; before the first present it falls back to sitting just above
 // the bottom row.
+constexpr float kOptimalSquare = 60.0f;      // owner-picked target size
+constexpr float kHomeInsetFallback = 34.0f;  // when the safe area is unreadable
+constexpr float kHomeInsetMin = 16.0f;  // floor for home-button devices (safe area 0)
+
+// iPad (family 2) — owner-approved spec 2026-08-03 (ios/README.md, "iPad
+// (family 2)"), implemented 2026-08-04. The tablet's spare dimension is WIDTH,
+// so the pad moves into the side margins and the panel takes the full safe
+// height, centered:
+//
+//   [Back|Select]  <- left margin,  |  [Left|Right]  <- right margin,
+//      vertically centered          |     vertically centered
+//   [Power]        <- bottom-left   |  [Up|Down]     <- bottom-right, same
+//      in the same margin column    |     margin columns, half height
+//
+// None of the phone constraints apply here: no reserved bottom band (the pad
+// is beside the page, not under it), no chassis gap (nothing hugs the panel's
+// bottom edge), no kPipLift (a corner PiP window parks over margins or page,
+// never over a control), no kTopReserve (the centered panel clears the status
+// bar by construction).
+//
+// Cell = min(60 pt, margin fit): a fused pair is two cells wide, so the cell
+// halves the margin when the margin is tighter than 2x60 — 60 pt everywhere
+// except iPad mini portrait, whose 108 pt margin gives 54 pt cells.
+//
+// The panel is CENTERED by construction: this function replicates HalDisplay's
+// manual fit over the full safe height, then sets the top and bottom insets to
+// sandwich the panel exactly — availH equals the panel height, so HalDisplay's
+// own fit lands on the same scale and its top margin term collapses to the
+// band edge. One relayout after the first present settles the published
+// panelBottom, same as the phone path.
+void layoutPadTablet(float W, float H, float S) {
+  float safeTop = 0.0f, safeBottom = 0.0f;
+  if (SDL_Window *win = SDL_GetWindowFromID(g_windowId)) {
+    int lw = 0, lh = 0;
+    SDL_Rect safe{};
+    if (SDL_GetWindowSize(win, &lw, &lh) && lh > 0 &&
+        SDL_GetWindowSafeArea(win, &safe)) {
+      safeTop = static_cast<float>(safe.y);
+      safeBottom = static_cast<float>(lh - (safe.y + safe.h));
+    }
+  }
+
+  // Panel fit, in device pixels, over the full safe height. The firmware
+  // renders the X3 portrait, so the portrait framebuffer mapping applies
+  // (logical width = DISPLAY_HEIGHT). Fractional scale below 1 is kept, same
+  // as HalDisplay's fallback for windows shorter than the panel.
+  const float logW = static_cast<float>(HalDisplay::DISPLAY_HEIGHT);
+  const float logH = static_cast<float>(HalDisplay::DISPLAY_WIDTH);
+  const float outWpx = W * S, outHpx = H * S;
+  const float availPx = SDL_max(1.0f, (H - safeTop - safeBottom) * S);
+  float scale = SDL_min(outWpx / logW, availPx / logH);
+  if (scale >= 1.0f) scale = SDL_floorf(scale);
+  const float panelWpx = logW * scale, panelHpx = logH * scale;
+  const float topPx = safeTop * S + (availPx - panelHpx) / 2.0f;
+  SimulatorOverlay::setTopInset(static_cast<int>(topPx));
+  SimulatorOverlay::setBottomInset(
+      static_cast<int>(SDL_max(0.0f, outHpx - topPx - panelHpx)));
+
+  const float margin = (W - panelWpx / S) / 2.0f;
+  const float cell = SDL_min(kOptimalSquare, margin / 2.0f);
+  const float half = cell / 2.0f;
+  const float leftX = (margin - 2.0f * cell) / 2.0f;
+  const float rightX = W - margin + leftX;
+  const float midY = (H - cell) / 2.0f;
+  const float lowerY = H - SDL_max(safeBottom, kHomeInsetMin) - half;
+
+  auto place = [&](int idx, float x, float y, float w, float h) {
+    g_pad[idx].rect = {x * S, y * S, w * S, h * S};
+  };
+
+  place(kPadBack, leftX, midY, cell, cell);
+  place(kPadConfirm, leftX + cell, midY, cell, cell);
+  place(kPadLeft, rightX, midY, cell, cell);
+  place(kPadRight, rightX + cell, midY, cell, cell);
+
+  place(kPadPower, leftX, lowerY, cell, half);
+  place(kPadUp, rightX, lowerY, cell, half);
+  place(kPadDown, rightX + cell, lowerY, cell, half);
+}
+
 void layoutPad(int outW, int outH) {
   const float S = g_ptScale;
   const float W = static_cast<float>(outW) / S;
   const float H = static_cast<float>(outH) / S;
 
+  static const bool s_isPad = CrossPointAppearance_isPad() == 1;
+  if (s_isPad) {
+    layoutPadTablet(W, H, S);
+    return;
+  }
+
   constexpr float kMargin = 20.0f;      // side inset
-  constexpr float kOptimalSquare = 60.0f;  // owner-picked target size
   constexpr float kGap = 16.0f;
   // Panel -> top row gap MATCHES THE CHASSIS (owner ruling 2026-08-02): on the
   // X3 the front buttons' top edge sits 11.6 mm below the panel window, 14.8%
@@ -197,8 +283,6 @@ void layoutPad(int outW, int outH) {
   // this is well clear of that.
   constexpr float kPipLift = 12.0f;
   constexpr float kRowClear = kGap;     // top row keeps at least this above the bottom row
-  constexpr float kHomeInsetFallback = 34.0f;  // when the safe area is unreadable
-  constexpr float kHomeInsetMin = 16.0f;       // floor for home-button devices (safe area 0)
 
   // STRICT SQUARE GRID, cell constrained to the optimum (owner ruling
   // 2026-08-02): the cell no longer stretches with device width. The COLUMN

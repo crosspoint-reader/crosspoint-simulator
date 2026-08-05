@@ -64,6 +64,12 @@ UIWindow *resolveWindow() {
 // the poll applies the change within one ~1 kHz frame of the app resuming, ~65
 // ms, and consistently wins the race against SDL's event, which arrived up to a
 // second later.
+int CrossPointAppearance_isPad(void) {
+  return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
+             ? 1
+             : 0;
+}
+
 int CrossPointAppearance_isDark(void) {
   // Property getters can hand back autoreleased objects. main()'s loop is not a
   // UIKit callback, so there is no pool being drained around it -- at ~1 kHz an
