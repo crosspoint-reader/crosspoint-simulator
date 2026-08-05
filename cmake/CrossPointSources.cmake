@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : c94a6823a1c4fd88774c4de0a75246c6c9d1dbd5
-# TU counts  : 118 firmware, 20 simulator (6 C, 132 C++)
+# pinned at  : 1043a287cbca47291b608b8f3622f76e473a845c
+# TU counts  : 121 firmware, 20 simulator (6 C, 135 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "c94a6823a1c4fd88774c4de0a75246c6c9d1dbd5")
+set(CROSSPOINT_FIRMWARE_PIN "1043a287cbca47291b608b8f3622f76e473a845c")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -113,6 +113,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/boot_sleep/SleepActivity.cpp
   src/activities/home/CrashActivity.cpp
   src/activities/home/FileBrowserActivity.cpp
+  src/activities/home/FileManagerActivity.cpp
   src/activities/home/HomeActivity.cpp
   src/activities/home/RecentBooksActivity.cpp
   src/activities/network/CrossPointWebServerActivity.cpp
@@ -140,12 +141,12 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/util/FullScreenMessageActivity.cpp
   src/activities/util/IntervalSelectionActivity.cpp
   src/activities/util/KeyboardEntryActivity.cpp
+  src/activities/util/TextViewerActivity.cpp
   src/components/UITheme.cpp
   src/components/themes/BaseTheme.cpp
   src/components/themes/lyra/Lyra3CoversTheme.cpp
   src/components/themes/lyra/LyraSixTheme.cpp
   src/components/themes/lyra/LyraTheme.cpp
-  src/components/themes/roundedraff/RoundedRaffTheme.cpp
   src/main.cpp
   src/network/CrossPointWebServer.cpp
   src/network/HttpDownloader.cpp
@@ -153,6 +154,8 @@ set(CROSSPOINT_FW_SOURCES
   src/network/WifiDiagnostics.cpp
   src/util/BookCacheUtils.cpp
   src/util/ButtonNavigator.cpp
+  src/util/DeviceId.cpp
+  src/util/FsOps.cpp
   src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
   src/util/QrUtils.cpp
@@ -186,34 +189,6 @@ set(CROSSPOINT_FW_INCLUDE_DIRS
   lib/miniz/src
   lib/uzlib/src
   src
-)
-
-# TUs excluded for the iOS target only (BUGS.md B-008). Network/OTA/SD-flash
-# require WiFi and SD-slot hardware that do not exist on a phone. The desktop
-# simulator keeps all of them: it has working networking stubs and the web UI
-# genuinely functions there. Apply these via list(REMOVE_ITEM ...) in the root
-# CMakeLists.txt before crosspoint_core is built.
-set(CROSSPOINT_IOS_EXCLUDED_SIM_SOURCES
-  src/CrossPointWebServer.cpp
-  src/NetworkClient.cpp
-  src/WebServer.cpp
-  src/WebSocketsServer.cpp
-  src/qrcode.cpp
-  src/simulator_ota.cpp
-)
-set(CROSSPOINT_IOS_EXCLUDED_FW_SOURCES
-  src/activities/network/CrossPointWebServerActivity.cpp
-  src/activities/network/NetworkModeSelectionActivity.cpp
-  src/activities/network/WifiSelectionActivity.cpp
-  src/activities/settings/FontDownloadActivity.cpp
-  src/activities/settings/OtaUpdateActivity.cpp
-  src/activities/settings/SdFirmwareUpdateActivity.cpp
-  src/WifiCredentialStore.cpp
-  src/network/CrossPointWebServer.cpp
-  src/network/HttpDownloader.cpp
-  src/network/WebDAVHandler.cpp
-  src/network/WifiDiagnostics.cpp
-  src/util/QrUtils.cpp
 )
 
 # Compile definitions, verbatim from the working desktop env.
