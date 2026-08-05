@@ -39,6 +39,25 @@ static int simulatorWindowScale() {
   return scale;
 }
 
+// CROSSPOINT_SIM_DEVICE_PIXELS=1: size the window so one panel pixel lands on
+// one DEVICE pixel. A window sized in logical points shows each panel pixel
+// across contentScale^2 device pixels on a HiDPI display -- physically about
+// twice the panel's real size on a Retina Mac, which reads as "zoomed 2x"
+// next to the hardware. Dividing the point size by the display content scale
+// undoes that; CROSSPOINT_SIM_WINDOW_SCALE then multiplies on top, so
+// SCALE=2 + DEVICE_PIXELS=1 is an exact 2x-device-pixel presentation.
+//
+// Opt-in, not the default: the full-panel-size window is a deliberate desktop
+// choice (see the comment above simulatorWindowScale) and headless capture
+// geometry depends on it. The Mac app bundles set this via LSEnvironment.
+static bool simulatorWantsDevicePixels() {
+  static const bool wants = [] {
+    const char *env = std::getenv("CROSSPOINT_SIM_DEVICE_PIXELS");
+    return env && env[0] == '1';
+  }();
+  return wants;
+}
+
 // Pixel buffer written by the render task, read by the main thread for
 // SDL_RenderPresent. On macOS, SDL calls must happen on the main thread.
 static uint32_t
@@ -315,8 +334,38 @@ static void getLogicalWindowSize(GfxRenderer::Orientation orientation,
   const bool isPortrait = isPortraitOrientation(orientation);
   const int panelW = HalDisplay::DISPLAY_WIDTH / HalDisplay::RENDER_SCALE;
   const int panelH = HalDisplay::DISPLAY_HEIGHT / HalDisplay::RENDER_SCALE;
-  *width = (isPortrait ? panelH : panelW) * simulatorWindowScale();
-  *height = (isPortrait ? panelW : panelH) * simulatorWindowScale();
+  float w = static_cast<float>((isPortrait ? panelH : panelW) *
+                               simulatorWindowScale());
+  float h = static_cast<float>((isPortrait ? panelW : panelH) *
+                               simulatorWindowScale());
+  if (simulatorWantsDevicePixels()) {
+    // One panel pixel -> one device pixel: shrink the point size by the
+    // display's content scale (2.0 on Retina, 1.0 elsewhere). Read from the
+    // primary display because the window may not exist yet on the first call.
+    const float s = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+    if (s > 1.0f) {
+      w /= s;
+      h /= s;
+    }
+  }
+  *width = static_cast<int>(SDL_roundf(w));
+  *height = static_cast<int>(SDL_roundf(h));
+}
+
+// The logical presentation space is the FRAMEBUFFER's, not the window's. The
+// dst rects in presentIfNeeded are in framebuffer pixels (kW/kH include
+// RENDER_SCALE), so the logical size handed to SDL must match them and only
+// the WINDOW size may track CROSSPOINT_SIM_WINDOW_SCALE / _DEVICE_PIXELS.
+// Passing the window size here instead is the 2x-zoom bug: at RENDER_SCALE=2
+// with a 1x window the texture was drawn double-size into a panel-sized
+// logical space and only its top-left quarter was visible. The two sizes
+// coincide at RENDER_SCALE=1 and at WINDOW_SCALE==RENDER_SCALE, which is why
+// the plain desktop build and the phone/2x presentations never showed it.
+static void getLogicalPresentationSize(GfxRenderer::Orientation orientation,
+                                       int *width, int *height) {
+  const bool isPortrait = isPortraitOrientation(orientation);
+  *width = isPortrait ? HalDisplay::DISPLAY_HEIGHT : HalDisplay::DISPLAY_WIDTH;
+  *height = isPortrait ? HalDisplay::DISPLAY_WIDTH : HalDisplay::DISPLAY_HEIGHT;
 }
 
 static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
@@ -329,8 +378,11 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
   if (winW == currentWindowWidth && winH == currentWindowHeight)
     return;
 
+  int logW = 0;
+  int logH = 0;
+  getLogicalPresentationSize(orientation, &logW, &logH);
   SDL_SetWindowSize(window, winW, winH);
-  SDL_SetRenderLogicalPresentation(sdl_renderer, winW, winH,
+  SDL_SetRenderLogicalPresentation(sdl_renderer, logW, logH,
                                    kLogicalPresentation);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
@@ -438,9 +490,13 @@ void HalDisplay::begin() {
                             SDL_WINDOW_HIGH_PIXEL_DENSITY);
   sdl_renderer = SDL_CreateRenderer(window, nullptr);
 
-  // Keep all rendering logic in logical (winW×winH) coordinates; SDL maps to
-  // drawable pixels.
-  SDL_SetRenderLogicalPresentation(sdl_renderer, winW, winH,
+  // Rendering logic runs in FRAMEBUFFER coordinates (see
+  // getLogicalPresentationSize); SDL maps that space into the window's
+  // drawable pixels, whatever size the window chose above.
+  int logW = 0;
+  int logH = 0;
+  getLogicalPresentationSize(renderer.getOrientation(), &logW, &logH);
+  SDL_SetRenderLogicalPresentation(sdl_renderer, logW, logH,
                                    kLogicalPresentation);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
@@ -670,8 +726,10 @@ void HalDisplay::presentIfNeeded() {
     int outW = 0, outH = 0;
     if (SDL_GetCurrentRenderOutputSize(sdl_renderer, &outW, &outH) && outW > 0)
       SimulatorOverlay::overlayDraw(sdl_renderer, outW, outH);
-    SDL_SetRenderLogicalPresentation(sdl_renderer, currentWindowWidth,
-                                     currentWindowHeight, kLogicalPresentation);
+    int logW = 0, logH = 0;
+    getLogicalPresentationSize(orientation, &logW, &logH);
+    SDL_SetRenderLogicalPresentation(sdl_renderer, logW, logH,
+                                     kLogicalPresentation);
   }
 
   if (screenshotDue) {

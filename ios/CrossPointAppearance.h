@@ -50,6 +50,11 @@ extern "C" {
 // MAIN THREAD ONLY, like every other UIKit call in this repo.
 int CrossPointAppearance_isDark(void);
 
+// 1 = iPad (UIUserInterfaceIdiomPad), 0 = anything else. The idiom is fixed
+// for the process lifetime, so callers may cache it. layoutPad() branches on
+// this for the family-2 layout (see ios/README.md, "iPad (family 2)").
+int CrossPointAppearance_isPad(void);
+
 #ifdef __cplusplus
 }
 #endif

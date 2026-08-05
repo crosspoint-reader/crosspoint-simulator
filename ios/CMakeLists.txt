@@ -162,9 +162,10 @@ set_target_properties(CrossPointX3 PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
   XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${CROSSPOINT_IOS_BUNDLE_ID}
   XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "26.0"
-  # 1 = iPhone only. The panel and control rows are laid out for a phone in
-  # portrait; iPad would just letterbox.
-  XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
+  # 1,2 = iPhone + iPad. layoutPad() branches on the idiom: phone keeps the
+  # two-row pad under the panel; iPad centers the panel full-safe-height and
+  # moves the pad into the side margins (owner-approved spec, ios/README.md).
+  XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
   XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
   # Required for `xcodebuild archive` to produce a DISTRIBUTABLE archive.

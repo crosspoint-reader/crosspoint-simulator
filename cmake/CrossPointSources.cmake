@@ -5,13 +5,13 @@
 # adds, removes, or renames a translation unit.
 #
 # firmware   : /Users/natebunnyfield/src/crosspoint-reader
-# pinned at  : ec12a13a39b1e1b470bf99f5abd75dbab69a851e
-# TU counts  : 118 firmware, 20 simulator (6 C, 132 C++)
+# pinned at  : 1043a287cbca47291b608b8f3622f76e473a845c
+# TU counts  : 121 firmware, 20 simulator (6 C, 135 C++)
 
 # The firmware commit this source set was generated from. Upstream restructures
 # its tree frequently; a source list is only valid against the tree it was
 # derived from, so CI builds this commit by default rather than a moving branch.
-set(CROSSPOINT_FIRMWARE_PIN "ec12a13a39b1e1b470bf99f5abd75dbab69a851e")
+set(CROSSPOINT_FIRMWARE_PIN "1043a287cbca47291b608b8f3622f76e473a845c")
 
 
 # Simulator HAL + Arduino/ESP-IDF shims. Paths relative to this repo root.
@@ -113,6 +113,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/boot_sleep/SleepActivity.cpp
   src/activities/home/CrashActivity.cpp
   src/activities/home/FileBrowserActivity.cpp
+  src/activities/home/FileManagerActivity.cpp
   src/activities/home/HomeActivity.cpp
   src/activities/home/RecentBooksActivity.cpp
   src/activities/network/CrossPointWebServerActivity.cpp
@@ -140,6 +141,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/util/FullScreenMessageActivity.cpp
   src/activities/util/IntervalSelectionActivity.cpp
   src/activities/util/KeyboardEntryActivity.cpp
+  src/activities/util/TextViewerActivity.cpp
   src/components/UITheme.cpp
   src/components/themes/BaseTheme.cpp
   src/components/themes/lyra/Lyra3CoversTheme.cpp
@@ -153,6 +155,7 @@ set(CROSSPOINT_FW_SOURCES
   src/util/BookCacheUtils.cpp
   src/util/ButtonNavigator.cpp
   src/util/DeviceId.cpp
+  src/util/FsOps.cpp
   src/util/HtmlToPlainText.cpp
   src/util/NextBookFinder.cpp
   src/util/QrUtils.cpp

@@ -28,6 +28,13 @@ CROSSPOINT_RENDER_SCALE=2 pio run -e simulator_x3 -t run_simulator
 
 It must be an env var rather than `PLATFORMIO_BUILD_FLAGS="-DCROSSPOINT_RENDER_SCALE=1"`, because PlatformIO *appends* that variable: with a `-D` in `platformio.ini` the compiler saw both definitions and warned `-Wmacro-redefined` in every translation unit, which buried the real warnings. Prepending `-UCROSSPOINT_RENDER_SCALE` does not help — SCons parks unrecognised flags in `CCFLAGS`, and `CCCOM` expands `$CCFLAGS` *before* `$_CPPDEFFLAGS`, so the undef is consumed before either `-D` is seen. The pre-script picks the value once, so exactly one definition ever reaches the command line. An explicit `-D` still wins if you pass one. iOS is unaffected: [ios/CMakeLists.txt](ios/CMakeLists.txt) sets the macro directly.
 
+`CROSSPOINT_SIM_DEVICE_PIXELS=1` (runtime env) sizes the window in DEVICE
+pixels — point size divided by the display content scale — so one panel pixel
+lands on one screen pixel instead of a 2×2 Retina block. Opt-in because the
+full-panel-point window is the deliberate desktop default; the packaged Mac
+apps set it through `LSEnvironment`, composed with
+`CROSSPOINT_SIM_WINDOW_SCALE=2` for the double-size app.
+
 To confirm which scale a binary actually got, count hi-res font loads (1 = 2x, 0 = 1x) — do not use the screenshot dimensions, since the window is sized in *logical* panel pixels and tracks `CROSSPOINT_SIM_WINDOW_SCALE`, not the render scale:
 
 ```bash
