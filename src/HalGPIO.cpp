@@ -52,6 +52,12 @@ static const SDL_Scancode buttonScancode[NUM_BUTTONS] = {
 static bool pressedThisFrame[NUM_BUTTONS] = {};
 static bool releasedThisFrame[NUM_BUTTONS] = {};
 static unsigned long buttonPressTime[NUM_BUTTONS] = {};
+// Span of the most recent completed press. The device's InputManager keeps
+// returning buttonPressFinish - buttonPressStart after release, and firmware
+// release handlers (short- vs long-press branches) read getHeldTime() on the
+// release frame — without this the shim reports 0 there and every release
+// classifies as a short press.
+static unsigned long lastReleasedSpan = 0;
 static bool syntheticButtonDown[NUM_BUTTONS] = {};
 // Set by injectButtonDown, consumed only by the deep-sleep wake loop. An EDGE,
 // not a level: a fast tap's down and up can both land inside one event-pump
@@ -515,6 +521,8 @@ void HalGPIO::update() {
       int btn = scancodeToButton(e.key.scancode);
       if (btn >= 0) {
         releasedThisFrame[btn] = true;
+        if (buttonPressTime[btn] > 0)
+          lastReleasedSpan = SDL_GetTicks() - buttonPressTime[btn];
       }
     } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
                e.button.button == SDL_BUTTON_LEFT) {
@@ -604,22 +612,30 @@ void HalGPIO::injectButtonUp(uint8_t buttonIndex) {
     return;
   releasedThisFrame[buttonIndex] = true;
   syntheticButtonDown[buttonIndex] = false;
+  if (buttonPressTime[buttonIndex] > 0)
+    lastReleasedSpan = SDL_GetTicks() - buttonPressTime[buttonIndex];
 }
 
 unsigned long HalGPIO::getHeldTime() const {
-  // Return the longest held time among all currently pressed buttons
+  // While a button is held: longest held time among the pressed buttons.
+  // Nothing held: span of the last completed press, matching the device's
+  // InputManager (buttonPressFinish - buttonPressStart survives the release).
   unsigned long now = SDL_GetTicks();
   unsigned long maxHeld = 0;
+  bool anyPressed = false;
   // SDL3 returns const bool* here; SDL2 returned const Uint8*.
   const bool *state = SDL_GetKeyboardState(NULL);
   for (int i = 0; i < NUM_BUTTONS; i++) {
     if ((state[buttonScancode[i]] || syntheticButtonDown[i]) &&
         buttonPressTime[i] > 0) {
+      anyPressed = true;
       unsigned long held = now - buttonPressTime[i];
       if (held > maxHeld)
         maxHeld = held;
     }
   }
+  if (!anyPressed)
+    return lastReleasedSpan;
   return maxHeld;
 }
 
