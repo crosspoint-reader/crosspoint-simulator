@@ -138,6 +138,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/settings/SettingsActivity.cpp
   src/activities/util/BmpViewerActivity.cpp
   src/activities/util/ConfirmationActivity.cpp
+  src/activities/util/DaisyEntryActivity.cpp
   src/activities/util/FullScreenMessageActivity.cpp
   src/activities/util/IntervalSelectionActivity.cpp
   src/activities/util/KeyboardEntryActivity.cpp
