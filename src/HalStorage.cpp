@@ -7,6 +7,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <ctime>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -230,6 +231,45 @@ size_t HalFile::size() {
 }
 size_t HalFile::fileSize() { return size(); }
 uint64_t HalFile::fileSize64() { return size(); }
+
+static bool fatEncodeTime(time_t t, uint16_t *pdate, uint16_t *ptime) {
+  struct tm tmv;
+  if (!localtime_r(&t, &tmv))
+    return false;
+  int year = tmv.tm_year + 1900;
+  if (year < 1980)
+    year = 1980;
+  if (pdate)
+    *pdate = (uint16_t)(((year - 1980) << 9) | ((tmv.tm_mon + 1) << 5) |
+                        tmv.tm_mday);
+  if (ptime)
+    *ptime = (uint16_t)((tmv.tm_hour << 11) | (tmv.tm_min << 5) |
+                        (tmv.tm_sec / 2));
+  return true;
+}
+
+bool HalFile::getCreateDateTime(uint16_t *pdate, uint16_t *ptime) {
+  if (!impl || impl->path.empty())
+    return false;
+  struct stat st;
+  if (::stat(impl->path.c_str(), &st) != 0)
+    return false;
+#ifdef __APPLE__
+  return fatEncodeTime(st.st_birthtimespec.tv_sec, pdate, ptime);
+#else
+  return fatEncodeTime(st.st_ctime, pdate, ptime);
+#endif
+}
+
+bool HalFile::getModifyDateTime(uint16_t *pdate, uint16_t *ptime) {
+  if (!impl || impl->path.empty())
+    return false;
+  struct stat st;
+  if (::stat(impl->path.c_str(), &st) != 0)
+    return false;
+  return fatEncodeTime(st.st_mtime, pdate, ptime);
+}
+
 bool HalFile::seek(size_t pos) {
   if (!impl || impl->fd < 0)
     return false;

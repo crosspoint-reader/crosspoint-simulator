@@ -90,6 +90,10 @@ public:
   size_t size();
   size_t fileSize();
   uint64_t fileSize64();
+  // FAT-encoded timestamps, matching the device HalFile API (date: bits 15-9
+  // year-1980, 8-5 month, 4-0 day; time: 15-11 hour, 10-5 min, 4-0 sec/2).
+  bool getCreateDateTime(uint16_t *pdate, uint16_t *ptime);
+  bool getModifyDateTime(uint16_t *pdate, uint16_t *ptime);
   bool seek(size_t pos);
   bool seek64(uint64_t pos);
   bool seekCur(int64_t offset);
