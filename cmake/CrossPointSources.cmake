@@ -142,6 +142,7 @@ set(CROSSPOINT_FW_SOURCES
   src/activities/util/FullScreenMessageActivity.cpp
   src/activities/util/IntervalSelectionActivity.cpp
   src/activities/util/KeyboardEntryActivity.cpp
+  src/activities/util/PrettyView.cpp
   src/activities/util/TextViewerActivity.cpp
   src/components/UITheme.cpp
   src/components/themes/BaseTheme.cpp

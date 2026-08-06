@@ -57,6 +57,7 @@
 #include <cstdint>
 
 #include "CrossPointAppearance.h"
+#include "CrossPointPrefs.h"
 #include "HalDisplay.h"
 #include "HalGPIO.h"
 #include "PadCore.h"
@@ -430,26 +431,33 @@ void layoutPad(int outW, int outH) {
 // app's warm paper.)
 //
 // THE PRESS IS THE ONLY FEEDBACK, the controls being unlabelled, and it is a
-// large-area change rather than a loud one. The wash is 14/255 against a 34/255
-// stroke, but it covers a 58.8 pt cell where the stroke covers a line, and area
-// is what makes it read. If it ever feels soft on device the knob is one step:
-// E9E9E7 / 242424 takes the wash to 18 and still leaves 15 clear of the stroke.
+// large-area change rather than a loud one. At the default the wash is 14/255
+// against a 34/255 stroke, but it covers a 58.8 pt cell where the stroke covers
+// a line, and area is what makes it read.
 //
-// Every pair that must be told apart is >= 13/255, the floor below which a step
-// is not reliably visible on a phone. Verified on the values below:
+// Every pair that must be told apart is >= 13/255 at the defaults, the floor
+// below which a step is not reliably visible on a phone. Verified:
 //   light  stroke/field 34, wash/field 14, stroke/wash 20
 //   dark   stroke/field 33, wash/field 14, stroke/wash 19
 //
-// NOT ACCESSIBLE, and knowingly so. WCAG 1.4.11 asks 3:1 against the adjacent
-// colour for the visual information that identifies a control, and the
-// exemption it grants a button with a label does not apply to a pad that has
-// none. These strokes measure 1.36:1 in light and 1.48:1 in dark; 3:1 against
-// these fields would be about 929292 and 616161, i.e. 105/255 and 79/255. The
-// pad has never met that bar -- the ring this replaces measured 1.33:1 and
-// 1.60:1 -- so this is a difference of degree rather than of kind, but it is a
-// choice made with the number in hand, not an oversight. The mitigation, if one
-// is ever wanted, is behavioural rather than tonal: paint the pad a step
-// stronger for the first few launches and settle to these values after.
+// THE TONES BELOW ARE THE DEFAULTS OF A DIAL, not fixed constants. Both of them
+// are owner-settable, separately for each appearance, through Settings >
+// CrossPoint X3 (Root.plist -> CrossPointPrefs_padOutlineContrast /
+// _padFillContrast -> the delta tables below). The scale is signed: 0 puts the
+// tone ON the field so the control draws nothing, negative goes darker,
+// positive lighter, +/-9 is the end of the gamut. The shipped tones are the
+// +/-1 rows, which is why the light defaults are -1 and the dark +1 and why a
+// pad left alone is pixel-identical to what shipped before the dial existed.
+//
+// ACCESSIBLE ONLY IF ASKED, and the number is on the row. WCAG 1.4.11 wants 3:1
+// against the adjacent colour for the visual information that identifies a
+// control, and the exemption it grants a labelled button does not apply to a pad
+// that has none. The default strokes measure 1.36:1 in light and 1.48:1 in dark
+// -- deliberately, this being a reading surface -- but 3:1 is now a row rather
+// than a rebuild: level -4 in light (929290) and +4 in dark (616161) hit it
+// exactly, and the ladder runs on past it to 20.3:1 and 18.7:1 at the ends. The
+// mitigation this comment used to propose (paint stronger for the first few
+// launches, settle after) is unnecessary now that the owner can just turn it up.
 struct Palette {
   Uint8 field[3];     // behind the panel and the pad
   Uint8 hairline[3];  // the stroke: control outlines and pair ticks
@@ -462,6 +470,11 @@ struct Palette {
 // the page floats edgeless in the field in both appearances. `face` repeats it
 // on purpose: paintPad's existing stroke-then-face draw paints a hollow control
 // when the two are equal, so nothing structural is needed to get an outline.
+//
+// `hairline` and `faceDown` here are the DEFAULT (+/-1) tones. The live palette
+// is built by makePalette() from `field` plus a delta out of the tables below;
+// the static_asserts pin the two together, so these four lines stay the honest
+// documentation of what ships rather than drifting into decoration.
 constexpr Palette kLightPalette{{0xFB, 0xFB, 0xF9},
                                 {0xD9, 0xD9, 0xD7},
                                 {0xFB, 0xFB, 0xF9},
@@ -471,8 +484,136 @@ constexpr Palette kDarkPalette{{0x12, 0x12, 0x12},
                                {0x12, 0x12, 0x12},
                                {0x20, 0x20, 0x20}};
 
+// --- The contrast ladder ---------------------------------------------------
+//
+// PRECOMPUTED, NOT DERIVED AT RUNTIME. Each entry is a delta added to every
+// channel of the field and clamped; the rungs were chosen for their measured
+// sRGB contrast ratio against that field, so the arithmetic that produced them
+// is relative-luminance work that has no business running on a phone every
+// frame. The ratios each row lands on are the ones Root.plist prints as its row
+// labels -- the two must be read together, and neither is a guess.
+//
+// Indexed by level + kContrastOffset, i.e. -9 first and +9 last.
+//
+//   light outline  -9 000000 20.3:1 | -8 292927 14:1 | -7 40403E 10:1
+//                  -6 565654  7:1   | -5 747472 4.5:1| -4 929290  3:1
+//                  -3 B4B4B2  2:1   | -2 C3C3C1 1.7:1| -1 D9D9D7 1.4:1 (default)
+//   light fill     -9 000000 20.3:1 | -8 40403E 10:1 | -7 565654   7:1
+//                  -6 747472 4.5:1  | -5 929290  3:1 | -4 B4B4B2   2:1
+//                  -3 CFCFCD 1.5:1  | -2 DEDEDC 1.3:1| -1 EDEDEB 1.13:1 (default)
+//   dark outline   +9 FFFFFF 18.7:1 | +8 DFDFDF 14:1 | +7 BEBEBE 10:1
+//                  +6 9F9F9F  7:1   | +5 7D7D7D 4.5:1| +4 616161  3:1
+//                  +3 474747  2:1   | +2 3D3D3D 1.7:1| +1 333333 1.5:1 (default)
+//   dark fill      +9 FFFFFF 18.7:1 | +8 BEBEBE 10:1 | +7 9F9F9F   7:1
+//                  +6 7D7D7D 4.5:1  | +5 616161  3:1 | +4 474747   2:1
+//                  +3 343434 1.5:1  | +2 2A2A2A 1.3:1| +1 202020 1.15:1 (default)
+//
+// THE FILL LADDER IS GENTLER at the low end than the outline's -- 1.3 / 1.5 / 2
+// where the outline runs 1.7 / 2 / 3 -- because a wash covers a whole cell and
+// a stroke covers a line, and equal ratios do not read as equal emphasis.
+//
+// EACH APPEARANCE'S OTHER DIRECTION RUNS TO ITS GAMUT END TOO, and on the light
+// side that is a dead zone by construction: the paper is already 4 levels off
+// white, so +1..+9 spans four distinct tones (FBFBF9 -> FFFFFD, 1.00:1 to
+// 1.03:1) and several rows repeat. The rows are kept, honestly labelled, and
+// the group's FooterText says so. Dark's -1..-9 steps two levels at a time down
+// to black and needs no such caveat.
+constexpr int kContrastMin = -9;
+constexpr int kContrastMax = 9;
+constexpr int kContrastOffset = -kContrastMin;
+constexpr int kContrastLevels = kContrastMax - kContrastMin + 1;
+
+constexpr int16_t kOutlineDeltaLight[kContrastLevels] = {
+    -251, -210, -187, -165, -135, -105, -71, -56, -34, 0,
+    0,    1,    1,    2,    2,    3,    3,   4,   4};
+constexpr int16_t kFillDeltaLight[kContrastLevels] = {
+    -251, -187, -165, -135, -105, -71, -44, -29, -14, 0,
+    0,    1,    1,    2,    2,    3,   3,   4,   4};
+constexpr int16_t kOutlineDeltaDark[kContrastLevels] = {
+    -18, -16, -14, -12, -10, -8,  -6,  -4,  -2,  0,
+    33,  43,  53,  79,  107, 141, 172, 205, 237};
+constexpr int16_t kFillDeltaDark[kContrastLevels] = {
+    -18, -16, -14, -12, -10, -8,  -6,  -4,  -2,  0,
+    14,  24,  34,  53,  79,  107, 141, 172, 237};
+
+constexpr int clampLevel(int level) {
+  return level < kContrastMin ? kContrastMin
+                              : (level > kContrastMax ? kContrastMax : level);
+}
+
+constexpr Uint8 toneChannel(Uint8 field, int16_t delta) {
+  return static_cast<Uint8>(field + delta < 0
+                                ? 0
+                                : (field + delta > 255 ? 255 : field + delta));
+}
+
+constexpr bool toneIs(const Uint8 (&field)[3], int16_t delta, Uint8 r, Uint8 g,
+                      Uint8 b) {
+  return toneChannel(field[0], delta) == r && toneChannel(field[1], delta) == g &&
+         toneChannel(field[2], delta) == b;
+}
+
+constexpr bool toneMatches(const Uint8 (&field)[3], int16_t delta,
+                           const Uint8 (&want)[3]) {
+  return toneIs(field, delta, want[0], want[1], want[2]);
+}
+
+// THE TABLES CANNOT DRIFT FROM THE PALETTE ABOVE OR FROM THE COMMENT.
+// +/-1 must reproduce the shipped tones exactly (this is what makes an untouched
+// pad pixel-identical), +/-4 must land on the 3:1 rung the accessibility note
+// names, and +/-9 must reach the gamut end.
+static_assert(toneMatches(kLightPalette.field,
+                          kOutlineDeltaLight[-1 + kContrastOffset],
+                          kLightPalette.hairline),
+              "light outline level -1 must be the shipped D9D9D7 stroke");
+static_assert(toneMatches(kLightPalette.field,
+                          kFillDeltaLight[-1 + kContrastOffset],
+                          kLightPalette.faceDown),
+              "light fill level -1 must be the shipped EDEDEB wash");
+static_assert(toneMatches(kDarkPalette.field,
+                          kOutlineDeltaDark[1 + kContrastOffset],
+                          kDarkPalette.hairline),
+              "dark outline level +1 must be the shipped 333333 stroke");
+static_assert(toneMatches(kDarkPalette.field, kFillDeltaDark[1 + kContrastOffset],
+                          kDarkPalette.faceDown),
+              "dark fill level +1 must be the shipped 202020 wash");
+static_assert(toneIs(kLightPalette.field,
+                     kOutlineDeltaLight[-4 + kContrastOffset], 0x92, 0x92, 0x90),
+              "light outline level -4 must be 929290, the 3:1 rung");
+static_assert(toneIs(kDarkPalette.field, kOutlineDeltaDark[4 + kContrastOffset],
+                     0x61, 0x61, 0x61),
+              "dark outline level +4 must be 616161, the 3:1 rung");
+static_assert(toneIs(kLightPalette.field,
+                     kOutlineDeltaLight[-9 + kContrastOffset], 0, 0, 0) &&
+                  toneIs(kLightPalette.field,
+                         kFillDeltaLight[-9 + kContrastOffset], 0, 0, 0),
+              "light level -9 must reach black");
+static_assert(toneIs(kDarkPalette.field, kOutlineDeltaDark[9 + kContrastOffset],
+                     0xFF, 0xFF, 0xFF) &&
+                  toneIs(kDarkPalette.field, kFillDeltaDark[9 + kContrastOffset],
+                         0xFF, 0xFF, 0xFF),
+              "dark level +9 must reach white");
+
+// The live palette. `field` and `face` come straight from the appearance's
+// constants -- only the stroke and the wash are on a dial.
+Palette makePalette(bool dark, int outlineLevel, int fillLevel) {
+  const Palette &base = dark ? kDarkPalette : kLightPalette;
+  const int16_t *outline = dark ? kOutlineDeltaDark : kOutlineDeltaLight;
+  const int16_t *fill = dark ? kFillDeltaDark : kFillDeltaLight;
+  const int oi = clampLevel(outlineLevel) + kContrastOffset;
+  const int fi = clampLevel(fillLevel) + kContrastOffset;
+  Palette p = base;
+  for (int c = 0; c < 3; c++) {
+    p.face[c] = base.field[c];
+    p.hairline[c] = toneChannel(base.field[c], outline[oi]);
+    p.faceDown[c] = toneChannel(base.field[c], fill[fi]);
+  }
+  return p;
+}
+
 bool g_dark = false;
-const Palette &palette() { return g_dark ? kDarkPalette : kLightPalette; }
+Palette g_palette = kLightPalette;
+const Palette &palette() { return g_palette; }
 
 // THE FIELD AND THE PANEL BOTH FOLLOW THE APPEARANCE.
 //
@@ -516,9 +657,21 @@ bool systemIsDark() {
 // the SDL theme watch) also satisfy the edge and cannot cause a double apply.
 int g_appliedDark = -1;
 
+// What makePalette was last called with. Out of range on purpose so the first
+// pollPadContrast after a theme change cannot mistake a stale level for a match;
+// applyTheme writes them itself, so in practice the poll is already satisfied.
+int g_appliedOutline = kContrastMin - 1;
+int g_appliedFill = kContrastMin - 1;
+
 void applyTheme() {
   g_dark = systemIsDark();
   g_appliedDark = g_dark ? 1 : 0;
+  // The levels are per-appearance, so a light->dark flip changes which pair is
+  // in force. Read them here rather than leaving it to the next poll: the
+  // palette this call publishes has to be the finished one.
+  g_appliedOutline = CrossPointPrefs_padOutlineContrast(g_appliedDark);
+  g_appliedFill = CrossPointPrefs_padFillContrast(g_appliedDark);
+  g_palette = makePalette(g_dark, g_appliedOutline, g_appliedFill);
   const Palette &p = palette();
   SimulatorOverlay::setClearColor(p.field[0], p.field[1], p.field[2]);
   SimulatorOverlay::setPanelDark(g_dark);
@@ -589,6 +742,32 @@ void pollAppearance() {
   if (want == g_appliedDark) return;
   applyTheme();
   SDL_Log("[harness] appearance -> %s", g_dark ? "dark" : "light");
+}
+
+// The pad's two tones, on the same terms as pollAppearance above and for the
+// same reasons.
+//
+// SETTINGS.APP IS A SEPARATE APP, so a change to these arrives while CrossPoint
+// is backgrounded and there is no event to hang it on -- iOS posts
+// NSUserDefaultsDidChangeNotification only for changes this process made.
+// Reading the level here costs a dictionary lookup in an in-memory store, and
+// the repaint is EDGE-TRIGGERED on the applied level: without that this would
+// force a present every frame on a panel whose presentation model assumes it
+// presents rarely.
+//
+// Main thread only, pumps no SDL events, holds no timer -- the same three
+// constraints pollAppearance lives under.
+void pollPadContrast() {
+  const int dark = g_dark ? 1 : 0;
+  const int outline = CrossPointPrefs_padOutlineContrast(dark);
+  const int fill = CrossPointPrefs_padFillContrast(dark);
+  if (outline == g_appliedOutline && fill == g_appliedFill) return;
+  g_appliedOutline = outline;
+  g_appliedFill = fill;
+  g_palette = makePalette(g_dark, outline, fill);
+  SimulatorOverlay::requestPresent();
+  SDL_Log("[harness] pad contrast (%s) -> outline %+d, fill %+d",
+          g_dark ? "dark" : "light", outline, fill);
 }
 
 // THE FIRST FRAMES AFTER A FOREGROUND RETURN ARE THROWN AWAY, so keep asking.
@@ -878,7 +1057,8 @@ void CrossPointHarness_begin() {
   // theme is populated and can be read straight away; the watch keeps it current
   // if the user flips the system between light and dark while the app is up.
   applyTheme();
-  SDL_Log("[harness] appearance: %s", g_dark ? "dark" : "light");
+  SDL_Log("[harness] appearance: %s, pad contrast outline %+d fill %+d",
+          g_dark ? "dark" : "light", g_appliedOutline, g_appliedFill);
 
   SimulatorOverlay::requestPresent();
 
@@ -895,5 +1075,6 @@ void CrossPointHarness_begin() {
 
 void CrossPointHarness_perFrame() {
   pollAppearance();
+  pollPadContrast();
   repaintAfterForeground();
 }

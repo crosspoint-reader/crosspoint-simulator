@@ -51,6 +51,256 @@
       <key>DefaultValue</key>
       <true/>
     </dict>
+
+    <!--
+      Button pad contrast.
+
+      The pad's controls are hollow: a one-pixel outline around nothing, and a
+      wash laid inside it while a control is held. These four pickers set how far
+      each of those two tones sits from the page behind it, separately for light
+      and dark appearance, because the two have opposite headroom (the paper is 4
+      levels off white, the dark field is 18 off black).
+
+      The scale is signed and shared by all four. 0 means the tone EQUALS the
+      field — 1:1, i.e. nothing is drawn. Negative is darker than the field,
+      positive is lighter, and +/-9 is the end of the gamut (black or white).
+      Each row is labelled with its real measured contrast ratio against that
+      appearance's field, so 3:1 is a row you can pick rather than a number to
+      work out. The shipped tones are the +/-1 rows and are the defaults.
+    -->
+    <dict>
+      <key>Type</key>
+      <string>PSGroupSpecifier</string>
+      <key>Title</key>
+      <string>Button Pad — Light Appearance</string>
+      <key>FooterText</key>
+      <string>Contrast against the page, measured. 0 draws nothing; 3:1 meets WCAG 1.4.11 for an unlabelled control. The lighter-than-the-page rows exist for symmetry and are close to useless: the paper is already near white, so they span four tones between 1.00:1 and 1.03:1 and several of them repeat.</string>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSMultiValueSpecifier</string>
+      <key>Title</key>
+      <string>Outline Contrast</string>
+      <key>Key</key>
+      <string>padOutlineContrastLight</string>
+      <key>DefaultValue</key>
+      <integer>-1</integer>
+      <key>Values</key>
+      <array>
+        <integer>-9</integer>
+        <integer>-8</integer>
+        <integer>-7</integer>
+        <integer>-6</integer>
+        <integer>-5</integer>
+        <integer>-4</integer>
+        <integer>-3</integer>
+        <integer>-2</integer>
+        <integer>-1</integer>
+        <integer>0</integer>
+        <integer>1</integer>
+        <integer>2</integer>
+        <integer>3</integer>
+        <integer>4</integer>
+        <integer>5</integer>
+        <integer>6</integer>
+        <integer>7</integer>
+        <integer>8</integer>
+        <integer>9</integer>
+      </array>
+      <key>Titles</key>
+      <array>
+        <string>20.3:1 — black</string>
+        <string>14:1</string>
+        <string>10:1</string>
+        <string>7:1</string>
+        <string>4.5:1</string>
+        <string>3:1 — accessible</string>
+        <string>2:1</string>
+        <string>1.7:1</string>
+        <string>1.4:1 — default</string>
+        <string>1:1 — invisible</string>
+        <string>Lighter than the page — 1.00:1</string>
+        <string>Lighter than the page — 1.01:1</string>
+        <string>Lighter than the page — 1.01:1</string>
+        <string>Lighter than the page — 1.02:1</string>
+        <string>Lighter than the page — 1.02:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+      </array>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSMultiValueSpecifier</string>
+      <key>Title</key>
+      <string>Pressed Fill Contrast</string>
+      <key>Key</key>
+      <string>padFillContrastLight</string>
+      <key>DefaultValue</key>
+      <integer>-1</integer>
+      <key>Values</key>
+      <array>
+        <integer>-9</integer>
+        <integer>-8</integer>
+        <integer>-7</integer>
+        <integer>-6</integer>
+        <integer>-5</integer>
+        <integer>-4</integer>
+        <integer>-3</integer>
+        <integer>-2</integer>
+        <integer>-1</integer>
+        <integer>0</integer>
+        <integer>1</integer>
+        <integer>2</integer>
+        <integer>3</integer>
+        <integer>4</integer>
+        <integer>5</integer>
+        <integer>6</integer>
+        <integer>7</integer>
+        <integer>8</integer>
+        <integer>9</integer>
+      </array>
+      <key>Titles</key>
+      <array>
+        <string>20.3:1 — black</string>
+        <string>10:1</string>
+        <string>7:1</string>
+        <string>4.5:1</string>
+        <string>3:1 — accessible</string>
+        <string>2:1</string>
+        <string>1.5:1</string>
+        <string>1.3:1</string>
+        <string>1.13:1 — default</string>
+        <string>1:1 — invisible</string>
+        <string>Lighter than the page — 1.00:1</string>
+        <string>Lighter than the page — 1.01:1</string>
+        <string>Lighter than the page — 1.01:1</string>
+        <string>Lighter than the page — 1.02:1</string>
+        <string>Lighter than the page — 1.02:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+        <string>Lighter than the page — 1.03:1</string>
+      </array>
+    </dict>
+
+    <dict>
+      <key>Type</key>
+      <string>PSGroupSpecifier</string>
+      <key>Title</key>
+      <string>Button Pad — Dark Appearance</string>
+      <key>FooterText</key>
+      <string>The same scale against the dark field. Here the useful direction is lighter, and the darker-than-the-field rows run out at 1.12:1 — the field is only 18 levels off black.</string>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSMultiValueSpecifier</string>
+      <key>Title</key>
+      <string>Outline Contrast</string>
+      <key>Key</key>
+      <string>padOutlineContrastDark</string>
+      <key>DefaultValue</key>
+      <integer>1</integer>
+      <key>Values</key>
+      <array>
+        <integer>9</integer>
+        <integer>8</integer>
+        <integer>7</integer>
+        <integer>6</integer>
+        <integer>5</integer>
+        <integer>4</integer>
+        <integer>3</integer>
+        <integer>2</integer>
+        <integer>1</integer>
+        <integer>0</integer>
+        <integer>-1</integer>
+        <integer>-2</integer>
+        <integer>-3</integer>
+        <integer>-4</integer>
+        <integer>-5</integer>
+        <integer>-6</integer>
+        <integer>-7</integer>
+        <integer>-8</integer>
+        <integer>-9</integer>
+      </array>
+      <key>Titles</key>
+      <array>
+        <string>18.7:1 — white</string>
+        <string>14:1</string>
+        <string>10:1</string>
+        <string>7:1</string>
+        <string>4.5:1</string>
+        <string>3:1 — accessible</string>
+        <string>2:1</string>
+        <string>1.7:1</string>
+        <string>1.5:1 — default</string>
+        <string>1:1 — invisible</string>
+        <string>Darker than the field — 1.02:1</string>
+        <string>Darker than the field — 1.03:1</string>
+        <string>Darker than the field — 1.04:1</string>
+        <string>Darker than the field — 1.06:1</string>
+        <string>Darker than the field — 1.07:1</string>
+        <string>Darker than the field — 1.08:1</string>
+        <string>Darker than the field — 1.09:1</string>
+        <string>Darker than the field — 1.11:1</string>
+        <string>Darker than the field — 1.12:1</string>
+      </array>
+    </dict>
+    <dict>
+      <key>Type</key>
+      <string>PSMultiValueSpecifier</string>
+      <key>Title</key>
+      <string>Pressed Fill Contrast</string>
+      <key>Key</key>
+      <string>padFillContrastDark</string>
+      <key>DefaultValue</key>
+      <integer>1</integer>
+      <key>Values</key>
+      <array>
+        <integer>9</integer>
+        <integer>8</integer>
+        <integer>7</integer>
+        <integer>6</integer>
+        <integer>5</integer>
+        <integer>4</integer>
+        <integer>3</integer>
+        <integer>2</integer>
+        <integer>1</integer>
+        <integer>0</integer>
+        <integer>-1</integer>
+        <integer>-2</integer>
+        <integer>-3</integer>
+        <integer>-4</integer>
+        <integer>-5</integer>
+        <integer>-6</integer>
+        <integer>-7</integer>
+        <integer>-8</integer>
+        <integer>-9</integer>
+      </array>
+      <key>Titles</key>
+      <array>
+        <string>18.7:1 — white</string>
+        <string>10:1</string>
+        <string>7:1</string>
+        <string>4.5:1</string>
+        <string>3:1 — accessible</string>
+        <string>2:1</string>
+        <string>1.5:1</string>
+        <string>1.3:1</string>
+        <string>1.15:1 — default</string>
+        <string>1:1 — invisible</string>
+        <string>Darker than the field — 1.02:1</string>
+        <string>Darker than the field — 1.03:1</string>
+        <string>Darker than the field — 1.04:1</string>
+        <string>Darker than the field — 1.06:1</string>
+        <string>Darker than the field — 1.07:1</string>
+        <string>Darker than the field — 1.08:1</string>
+        <string>Darker than the field — 1.09:1</string>
+        <string>Darker than the field — 1.11:1</string>
+        <string>Darker than the field — 1.12:1</string>
+      </array>
+    </dict>
   </array>
 </dict>
 </plist>

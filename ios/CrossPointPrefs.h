@@ -28,6 +28,23 @@ extern "C" {
 // thread only — it touches UIDevice.
 int CrossPointPrefs_wantsScreenAwake(void);
 
+// How far the button pad's outline / pressed wash sits from the field behind it.
+//
+// One signed scale, -9..9, clamped. 0 means the tone EQUALS the field, so the
+// control draws nothing; negative is darker than the field, positive is
+// lighter, and +/-9 is the end of the gamut. The two tones are set separately
+// because the stroke covers a line and the wash covers a whole cell, and the
+// answer is stored per appearance because light and dark have opposite
+// headroom. `dark` is 1 for the dark appearance, 0 for light.
+//
+// The level indexes the delta tables in CrossPointIOSShim.cpp; the mapping from
+// level to a measured contrast ratio lives there and in Root.plist's row
+// labels, not here.
+//
+// Safe to call every frame. Main thread only.
+int CrossPointPrefs_padOutlineContrast(int dark);
+int CrossPointPrefs_padFillContrast(int dark);
+
 #ifdef __cplusplus
 }
 #endif
