@@ -9,6 +9,14 @@
 static NSString *const kAllowSleepOnBattery = @"allowSleepOnBattery";
 static NSString *const kAllowSleepWhileCharging = @"allowSleepWhileCharging";
 
+// Same trap, worse failure: -integerForKey: on a missing key returns 0, which on
+// this scale means "tone equals the field", i.e. an invisible outline AND an
+// invisible press — a pad that shows nothing at all.
+static NSString *const kPadOutlineContrastLight = @"padOutlineContrastLight";
+static NSString *const kPadOutlineContrastDark = @"padOutlineContrastDark";
+static NSString *const kPadFillContrastLight = @"padFillContrastLight";
+static NSString *const kPadFillContrastDark = @"padFillContrastDark";
+
 // THE DEFAULTS LIVE IN Root.plist AND NOWHERE ELSE.
 //
 // A Settings.bundle needs its defaults stated twice by construction, and the
@@ -53,11 +61,18 @@ static void ensureDefaults(void) {
       // Root.plist missing or unreadable — a packaging fault, not a
       // configuration. Fall back to letting the phone sleep, which is the
       // do-no-harm answer: the alternative failure mode holds a stranger's
-      // screen awake indefinitely on battery.
+      // screen awake indefinitely on battery. The pad levels fall back to the
+      // shipped tones for the same reason — the alternative is 0, an invisible
+      // pad, and an unlabelled control that draws nothing is not recoverable
+      // from inside the app.
       NSLog(@"[CrossPoint] Settings.bundle/Root.plist unreadable; defaulting to allow-sleep");
       [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         kAllowSleepOnBattery : @YES,
         kAllowSleepWhileCharging : @YES,
+        kPadOutlineContrastLight : @(-1),
+        kPadOutlineContrastDark : @(1),
+        kPadFillContrastLight : @(-1),
+        kPadFillContrastDark : @(1),
       }];
     }
 
@@ -103,4 +118,28 @@ int CrossPointPrefs_wantsScreenAwake(void) {
   // after returning — no notification observer, nothing to forget to unregister.
   const BOOL allowSleep = [[NSUserDefaults standardUserDefaults] boolForKey:key];
   return allowSleep ? 0 : 1;
+}
+
+// Read live, same as above and for the same reason: NSUserDefaults is an
+// in-memory store, so this is a dictionary lookup, and a level changed in
+// Settings.app while the app was backgrounded lands on the first frame after it
+// returns. No observer, nothing to unregister.
+static int padContrast(NSString *key) {
+  ensureDefaults();
+  checkKnown(key);
+  NSInteger level = [[NSUserDefaults standardUserDefaults] integerForKey:key];
+  // Clamp rather than trust: the value comes from a plist a user can edit
+  // through a jailbroken Settings or a restored backup, and the caller indexes
+  // a 19-entry table with it.
+  if (level < -9) level = -9;
+  if (level > 9) level = 9;
+  return static_cast<int>(level);
+}
+
+int CrossPointPrefs_padOutlineContrast(int dark) {
+  return padContrast(dark ? kPadOutlineContrastDark : kPadOutlineContrastLight);
+}
+
+int CrossPointPrefs_padFillContrast(int dark) {
+  return padContrast(dark ? kPadFillContrastDark : kPadFillContrastLight);
 }

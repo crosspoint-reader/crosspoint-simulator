@@ -201,6 +201,44 @@ specified in device pixels rather than points because the old `S * 0.5f` was
 position and the rejected alternatives are in the palette comment above
 `struct Palette` in `CrossPointIOSShim.cpp`.
 
+**Both tones are owner-settable**, in Settings > CrossPoint X3, as four pickers:
+outline contrast and pressed-fill contrast, each once for light appearance and
+once for dark (the two appearances have opposite headroom, so one shared answer
+would not serve both).
+
+| Setting | Key | Default |
+|---|---|---|
+| Outline contrast, light | `padOutlineContrastLight` | −1 |
+| Outline contrast, dark | `padOutlineContrastDark` | +1 |
+| Pressed fill contrast, light | `padFillContrastLight` | −1 |
+| Pressed fill contrast, dark | `padFillContrastDark` | +1 |
+
+One signed scale for all four. **0 puts the tone on the field** — 1:1, the
+control draws nothing; negative is darker than the field, positive lighter, and
+±9 is the end of the gamut (black in light, white in dark). The rungs between
+are WCAG-meaningful ratios and every row in Settings.app is labelled with its
+real measured ratio against that appearance's field, so 3:1 — the WCAG 1.4.11
+figure for an unlabelled control — is a row you pick (−4 light, +4 dark) rather
+than a rebuild. **±1 is the shipped tone**, which is why the defaults are −1 in
+light and +1 in dark: an untouched pad is pixel-identical to the build before
+these settings existed. The fill ladder is gentler at the low end than the
+outline's, because a wash covers a whole cell where a stroke covers a line.
+
+Each appearance's *other* direction runs to the gamut end too, and on the light
+side that is a **dead zone by construction**: the paper is already 4 levels off
+white, so +1..+9 spans four distinct tones between 1.00:1 and 1.03:1 and several
+rows repeat. The rows are kept and labelled honestly ("Lighter than the page —
+1.02:1"); the group's footer says so. Dark's −1..−9 steps two levels at a time
+down to black and needs no caveat.
+
+The tones are precomputed delta tables in `CrossPointIOSShim.cpp` (indexed by
+level + 9, `static_assert`ed against the shipped ±1 tones, the ±4 3:1 rung and
+the ±9 gamut ends) — no sRGB luminance is computed at runtime. `pollPadContrast()`
+reads the level every frame from `NSUserDefaults` and repaints only on an edge,
+the same shape as `pollAppearance()`: Settings.app is a separate process, so a
+change made there arrives with no event to hang it on, and an e-ink presentation
+model cannot afford a present per frame.
+
 | Control | Button index |
 |---|---|
 | Back | `HalGPIO::BTN_BACK` |
