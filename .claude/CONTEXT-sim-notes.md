@@ -107,6 +107,47 @@ correctly through the same two planes.
 
 ## Recent Changes (since 2026-03-17)
 
+### The iOS app was building an X4, not an X3 (2026-08-06)
+
+- Symptom, as reported: on the phone every Sleep Screen choice painted the
+  stock logo screen — CrossPoint mark, "SLEEPING", owner name at the bottom.
+- Cause: `SIMULATOR_DEVICE_X3` was `target_compile_definitions(CrossPointX3
+  PRIVATE ...)` in [ios/CMakeLists.txt](../ios/CMakeLists.txt), i.e. on the app
+  target. The firmware and the whole HAL live in `crosspoint_core`, which never
+  saw it and took [src/BoardConfig.h](../src/BoardConfig.h)'s `#else` branch.
+  The seven harness TUs compiled as X3, the other 155 as X4. Exactly the trap
+  `CROSSPOINT_RENDER_SCALE` fell into (15 TestFlight builds shipped 1x); the
+  device macro was never moved when that one was.
+- Why that hits the sleep screen: `HalClock::begin()` only arms the clock for
+  X3 / X4 Pro, so on the X4 build `getDateTime()` returned false and
+  `SleepActivity::renderCalendarSleepScreen` took its "no RTC available"
+  fallback to `renderDefaultSleepScreen` — for all five calendar modes. Custom
+  falls through to the calendar when the card has no image, so it landed on the
+  same stock screen. Cover was the one non-default mode that could still work.
+  Two more silent effects: `gpio.deviceIsX3()` was false, so the X3-only
+  differential refresh in `renderLastScreenSleepScreen()` never ran, and
+  `HalTiltSensor::begin()` left `_available` false against what ios/README.md
+  claims.
+- Fix: define it `PUBLIC` on `crosspoint_core`, so one definition reaches both
+  layers. `SIMULATOR` was already reaching both via `CROSSPOINT_DEFINES`, so
+  the app-target block went away entirely.
+- Side effect worth knowing: the panel is now 792x528 (X3) rather than 800x480,
+  which is what the harness had always been laying out — `CrossPointIOSShim`
+  sizes the panel rect from `HalDisplay::DISPLAY_*`, and those TUs were reading
+  the X3 numbers all along. Cover BMPs cached under `.crosspoint/` at the old
+  geometry are regenerated on demand.
+- Verified on an iPhone 13 mini simulator, A/B against the pre-fix binary with
+  the same card and `sleepScreen: 7`: pre-fix logs `Hardware detect: X4` and
+  paints the stock logo screen; post-fix logs `Hardware detect: X3` and paints
+  the calendar with today highlighted. Cover (`Rendering sleep cover: ...
+  bitmap 528 x 792, screen 528 x 792`) and Custom (`Loading: /sleep.bmp`) also
+  confirmed on screen.
+- Unrelated drift fixed on the way past, because the firmware no longer
+  compiled without it: `HalGPIO` gained the host-keyboard text-entry surface
+  (`setTextEntryActive`, `consumeTypedText`, `TYPED_*`). Stubs — no host
+  keyboard is wired into this HAL yet, so a text field behaves as it does on
+  device.
+
 ### Dark-mode panel inversion with instant re-present (2026-08-01)
 
 - The iOS app now follows the system appearance onto the panel itself: dark

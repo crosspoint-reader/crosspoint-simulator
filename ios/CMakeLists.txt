@@ -130,11 +130,24 @@ endif()
 target_link_libraries(CrossPointX3 PRIVATE crosspoint_core SDL3::SDL3
   "-framework UIKit")
 
-target_compile_definitions(CrossPointX3 PRIVATE
-  # The harness impersonates an X3. Kept consistent with the desktop env so the
-  # two builds cannot silently disagree about which board they are simulating.
-  SIMULATOR
-  SIMULATOR_DEVICE_X3)
+# The harness impersonates an X3. ON THE LIBRARY, PUBLIC -- the same trap
+# CROSSPOINT_RENDER_SCALE fell into below, and it bit harder: the device macro
+# was PRIVATE on CrossPointX3 for 15+ builds, so the seven harness TUs compiled
+# as X3 while all 155 firmware/HAL TUs in crosspoint_core silently took
+# BoardConfig.h's #else branch and built an X4.
+#
+# What that cost, beyond the two layers disagreeing about panel geometry
+# (792x528 vs 800x480):
+#   * HalClock::begin() left _available false (it only arms the clock for X3 /
+#     X4 Pro), so getDateTime() failed and EVERY calendar sleep screen hit
+#     SleepActivity's "no RTC available" fallback and painted the stock logo
+#     screen instead. Custom fell through to the calendar and so to the same
+#     stock screen. That is the "no matter what I pick, I get the logo" bug.
+#   * gpio.deviceIsX3() answered false, so the X3-only differential refresh in
+#     renderLastScreenSleepScreen() never ran.
+#   * HalTiltSensor::begin() left _available false, contrary to ios/README.md.
+# SIMULATOR itself already reaches both layers via CROSSPOINT_DEFINES.
+target_compile_definitions(crosspoint_core PUBLIC SIMULATOR_DEVICE_X3)
 
 # Native-density glyph rasterisation, ON THE LIBRARY, not the app target.
 # HalDisplay.cpp (framebuffer size) and SdCardFontManager.cpp (2x companion

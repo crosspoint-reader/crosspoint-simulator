@@ -4,6 +4,8 @@
 #include <BatteryMonitor.h>
 #include <InputManager.h>
 
+#include <string>
+
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
 #ifndef EPD_SCLK
 #define EPD_SCLK 8 // SPI Clock
@@ -108,6 +110,21 @@ public:
   bool wasTouchActivity() const;
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
   bool consumeSimulatorSleepRequest();
+
+  // --- Host keyboard text entry (firmware HAL surface; see lib/hal/HalGPIO.h)
+  //
+  // The firmware's text-entry activities announce a field opening/closing and
+  // drain typed bytes every frame. Stubs for now: no host keyboard is wired
+  // into this HAL, so a field behaves exactly as it does on device (peck the
+  // characters out of the on-screen grid). They exist because
+  // MappedInputManager.h calls both unconditionally and TypedTextInput.h reads
+  // the three control bytes, so the firmware does not link without them.
+  void setTextEntryActive(bool /*active*/) {}
+  bool consumeTypedText(std::string & /*out*/) { return false; }
+
+  static constexpr char TYPED_BACKSPACE = '\b';
+  static constexpr char TYPED_COMMIT = '\n';
+  static constexpr char TYPED_CANCEL = '\x1b';
 
   // Setup wake up GPIO and enter deep sleep
   void startDeepSleep();
