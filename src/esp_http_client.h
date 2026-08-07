@@ -13,6 +13,7 @@ enum esp_http_client_method_t {
   HTTP_METHOD_GET,
   HTTP_METHOD_POST,
   HTTP_METHOD_PUT,
+  HTTP_METHOD_DELETE,
 };
 
 enum esp_http_client_auth_type_t {
@@ -72,6 +73,8 @@ inline const char *methodName(esp_http_client_method_t method) {
     return "POST";
   case HTTP_METHOD_PUT:
     return "PUT";
+  case HTTP_METHOD_DELETE:
+    return "DELETE";
   case HTTP_METHOD_GET:
   default:
     return "GET";
