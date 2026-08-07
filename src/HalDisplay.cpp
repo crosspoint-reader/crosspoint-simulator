@@ -355,7 +355,10 @@ bool HalDisplay::toggleInverted() {
 
 bool HalDisplay::isInverted() const { return inverted; }
 
-void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
+void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen,
+                               bool /*forceCleanBaseOnHalf*/) {
+  // The simulator has no e-ink half-refresh base to keep clean, so the
+  // base-clearing guarantee this flag requests on-device is a no-op here.
   refreshDisplay(mode, turnOffScreen);
 }
 

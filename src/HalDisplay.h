@@ -41,7 +41,8 @@ public:
   bool isInverted() const;
 
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH,
-                     bool turnOffScreen = false);
+                     bool turnOffScreen = false,
+                     bool forceCleanBaseOnHalf = true);
   void displayBufferAsync(RefreshMode mode = RefreshMode::FAST_REFRESH);
   void waitRefreshComplete();
   bool supportsAsyncRefresh() const;
