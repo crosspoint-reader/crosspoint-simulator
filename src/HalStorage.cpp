@@ -266,7 +266,7 @@ HalFile HalFile::openNextFile() {
     struct dirent *entry = readdir(impl->dir);
     if (!entry)
       return HalFile();
-    if (entry->d_name[0] == '.')
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue; // skip . and ..
 
     std::string childFsPath = impl->path;
