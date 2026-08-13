@@ -167,6 +167,7 @@ void beginTouch(float logicalNx, float logicalNy) {
   touchState.pressedThisFrame = true;
   touchState.activityThisFrame = true;
   touchState.movedBeyondTapSlop = false;
+  touchState.longPressThisFrame = false;
   touchState.longPressFired = false;
   touchState.suppressed = false;
   touchState.startNx = panelNx;
@@ -196,7 +197,8 @@ void endTouch(float logicalNx, float logicalNy) {
 }
 
 void updateTouchHold() {
-  if (touchState.down && !touchState.movedBeyondTapSlop && !touchState.longPressFired && !touchState.suppressed &&
+  if (touchState.down && !touchState.movedBeyondTapSlop &&
+      !touchState.longPressFired && !touchState.suppressed &&
       SDL_GetTicks() - touchState.pressedAt >= TOUCH_LONG_PRESS_MS) {
     touchState.longPressFired = true;
     touchState.longPressThisFrame = true;

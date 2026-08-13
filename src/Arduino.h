@@ -1,11 +1,12 @@
 #pragma once
+#include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
-#include <limits>
 #include <string>
 #include <thread>
 
@@ -43,24 +44,27 @@ inline int digitalRead(int /*pin*/) { return 1; }
 #include "WString.h"
 
 struct ESPMock {
+  static constexpr uint32_t HEAP_SIZE = 1024 * 1024;
+
   static uint32_t heapValue(const char *name) {
     const char *value = std::getenv(name);
     if (!value || *value == '\0')
-      return 1024 * 1024;
+      return HEAP_SIZE;
 
     char *end = nullptr;
+    errno = 0;
     const unsigned long parsed = std::strtoul(value, &end, 10);
-    if (*end != '\0' || parsed > std::numeric_limits<uint32_t>::max())
-      return 1024 * 1024;
+    if (errno == ERANGE || *end != '\0' || parsed > HEAP_SIZE)
+      return HEAP_SIZE;
     return static_cast<uint32_t>(parsed);
   }
 
   uint32_t getFreeHeap() { return heapValue("CROSSPOINT_SIM_FREE_HEAP"); }
   void restart() {}
-  uint32_t getHeapSize() { return 1024 * 1024; }
+  uint32_t getHeapSize() { return HEAP_SIZE; }
   uint32_t getMinFreeHeap() { return getFreeHeap(); }
   uint32_t getMaxAllocHeap() {
-    return heapValue("CROSSPOINT_SIM_MAX_ALLOC_HEAP");
+    return std::min(heapValue("CROSSPOINT_SIM_MAX_ALLOC_HEAP"), getFreeHeap());
   }
 };
 extern ESPMock ESP;

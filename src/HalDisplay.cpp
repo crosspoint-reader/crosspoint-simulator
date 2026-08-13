@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,6 +25,7 @@ static constexpr int SIMULATOR_WINDOW_SCALE = 1;
 // SDL_RenderPresent. On macOS, SDL calls must happen on the main thread.
 static uint32_t
     pixelBuf[HalDisplay::DISPLAY_WIDTH * HalDisplay::DISPLAY_HEIGHT];
+static std::mutex pixelBufMutex;
 static std::atomic<bool> pendingPresent{false};
 // Written by HalGPIO::update() (which owns SDL event polling); read by
 // shouldQuit().
@@ -159,6 +161,7 @@ bool getBit(const uint8_t *buffer, int x, int y) {
 }
 
 void renderBwPixels(const uint8_t *fb) {
+  const std::lock_guard<std::mutex> lock(pixelBufMutex);
   const bool invert = display.isInverted();
   for (int y = 0; y < HalDisplay::DISPLAY_HEIGHT; y++) {
     for (int x = 0; x < HalDisplay::DISPLAY_WIDTH; x++) {
@@ -195,6 +198,7 @@ void copyPlane(std::array<uint8_t, HalDisplay::BUFFER_SIZE> &dst,
 }
 
 void composeGrayscalePreview() {
+  const std::lock_guard<std::mutex> lock(pixelBufMutex);
   const uint8_t *bwBase = grayscalePreviewState.bwBaseValid
                               ? grayscalePreviewState.bwBase.data()
                               : display.getFrameBuffer();
@@ -408,9 +412,8 @@ void HalDisplay::refreshDisplay(RefreshMode /*mode*/, bool /*turnOffScreen*/) {
 // Called from the main thread (simulator_main.cpp) to push pixels to SDL.
 void HalDisplay::presentIfNeeded() {
   const bool screenshotDue = hasDueScreenshot();
-  if (!pendingPresent.load() && !screenshotDue)
+  if (!pendingPresent.exchange(false) && !screenshotDue)
     return;
-  pendingPresent.store(false);
 
   if (!texture || !sdl_renderer)
     return;
@@ -419,8 +422,11 @@ void HalDisplay::presentIfNeeded() {
   const GfxRenderer::Orientation orientation = renderer.getOrientation();
   applyWindowGeometryIfNeeded(orientation);
 
-  SDL_UpdateTexture(texture, nullptr, pixelBuf,
-                    DISPLAY_WIDTH * sizeof(uint32_t));
+  {
+    const std::lock_guard<std::mutex> lock(pixelBufMutex);
+    SDL_UpdateTexture(texture, nullptr, pixelBuf,
+                      DISPLAY_WIDTH * sizeof(uint32_t));
+  }
   SDL_RenderClear(sdl_renderer);
 
   // For portrait modes the landscape panel texture must be rotated to fill the
