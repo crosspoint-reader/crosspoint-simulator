@@ -65,6 +65,7 @@ public:
   bool wasAnyPressed() const;
   bool wasReleased(uint8_t buttonIndex) const;
   bool wasAnyReleased() const;
+  bool isDebouncePending() const { return false; }
   unsigned long getHeldTime() const;
   unsigned long getPowerButtonHeldTime() const;
   bool hasTouch() const;
@@ -77,6 +78,8 @@ public:
   bool wasTouchReleased() const;
   bool isTouchTapCandidate(float &nx, float &ny, unsigned long &heldMs) const;
   bool isTouchHeldAt(float &nx, float &ny) const;
+  bool wasTouchLongPress(float &nx, float &ny) const;
+  void suppressTouchContact();
   unsigned long lastTouchHeldMs() const;
   bool wasSwipe(float &nxStart, float &nyStart, float &nxEnd,
                 float &nyEnd) const;
@@ -97,6 +100,7 @@ public:
 
   // Returns true once per edge (plug or unplug) since the last update()
   bool wasUsbStateChanged() const;
+  void pollUsbState() {}
 
   enum class WakeupReason { PowerButton, AfterFlash, AfterUSBPower, Other };
 

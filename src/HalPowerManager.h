@@ -22,12 +22,22 @@ class HalPowerManager {
 
 public:
   static constexpr int LOW_POWER_FREQ = 10;                   // MHz
-  static constexpr unsigned long IDLE_POWER_SAVING_MS = 3000; // ms
+  static constexpr unsigned long IDLE_DOWNCLOCK_MS = 500;
+  static constexpr unsigned long IDLE_LIGHT_SLEEP_MS = 1000;
 
   void begin();
 
   // Control CPU frequency for power saving
   void setPowerSaving(bool enabled);
+
+  bool lightSleep(const HalGPIO &) const {
+    delay(50);
+    return true;
+  }
+  bool onEinkBusyWaitSlice(int8_t, uint8_t) { return false; }
+  void noteMainLoopIteration() {}
+  void noteRenderWaitBegin() {}
+  void noteRenderWaitEnd() {}
 
   // Setup wake up GPIO and enter deep sleep
   // Should be called inside main loop() to handle the currentLockMode

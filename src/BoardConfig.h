@@ -78,6 +78,13 @@ enum class DisplayController {
   UC8179,
 };
 
+struct ViewableInsets {
+  uint8_t top = 9;
+  uint8_t right = 3;
+  uint8_t bottom = 3;
+  uint8_t left = 3;
+};
+
 struct BoardProfile {
   Board board;
   const char *name;
@@ -87,6 +94,7 @@ struct BoardProfile {
     int8_t up;
     int8_t down;
   } input;
+  ViewableInsets viewableInsets = {};
 };
 
 #if defined(SIMULATOR_DISPLAY_UC8179)

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 static SDL_Window *window = nullptr;
@@ -59,6 +60,7 @@ struct ScreenshotEvent {
 
 std::vector<ScreenshotEvent> screenshotEvents;
 bool screenshotEventsInitialized = false;
+const std::thread::id simulatorMainThread = std::this_thread::get_id();
 
 void initializeScreenshotEvents() {
   if (screenshotEventsInitialized)
@@ -376,6 +378,9 @@ bool HalDisplay::isInverted() const { return inverted; }
 
 void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   refreshDisplay(mode, turnOffScreen);
+  if (std::this_thread::get_id() == simulatorMainThread) {
+    presentIfNeeded();
+  }
 }
 
 void HalDisplay::displayBufferAsync(RefreshMode mode) {

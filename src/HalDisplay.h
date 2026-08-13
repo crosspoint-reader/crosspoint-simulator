@@ -48,6 +48,7 @@ public:
   void displayWindow(int x, int y, int w, int h);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH,
                       bool turnOffScreen = false);
+  void setBusyWaitSliceHook(bool (*)(int8_t, uint8_t)) {}
 
   // Power management
   void deepSleep();
