@@ -170,6 +170,9 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
+- `CROSSPOINT_SIM_FREE_HEAP` and `CROSSPOINT_SIM_MAX_ALLOC_HEAP` override the
+  ESP heap metrics reported to firmware. They are useful for repeatable
+  low-memory paths without exhausting the host process.
 - A sleep/wake test starts a fresh simulator process, matching the existing
   deep-sleep model. Set `CROSSPOINT_SIM_INPUT_SCRIPT_AFTER_WAKE` and
   `CROSSPOINT_SIM_SCREENSHOTS_AFTER_WAKE` for that second process. The
