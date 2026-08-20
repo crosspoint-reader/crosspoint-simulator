@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-// Host model of the X4 Pro dual-channel frontlight. The framebuffer is
+// Host model of device frontlight state. The framebuffer is
 // unchanged; this class preserves the firmware-visible brightness, warmth, and
 // on/off state so the quick panel and persisted settings can be exercised.
 class HalFrontlight {

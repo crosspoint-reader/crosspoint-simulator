@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BatteryMonitor.h>
+#include <BoardConfig.h>
 #include <InputManager.h>
 
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)

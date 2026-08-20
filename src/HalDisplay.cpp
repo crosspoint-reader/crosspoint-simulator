@@ -1,5 +1,6 @@
 #include "HalDisplay.h"
 
+#include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <SDL.h>
 
@@ -276,7 +277,10 @@ HalDisplay::~HalDisplay() {}
 #define SIMULATOR_CONTROLLER_TITLE "SSD1677"
 #endif
 
-#if defined(SIMULATOR_DEVICE_STICKY)
+#if defined(SIMULATOR_DEVICE_PAPERMONO)
+static constexpr const char *WINDOW_TITLE =
+    "Simulator - M5Stack PaperMono (SSD1677)";
+#elif defined(SIMULATOR_DEVICE_STICKY)
 static constexpr const char *WINDOW_TITLE =
     "Simulator - Seeed Sticky (SSD1677)";
 #elif defined(SIMULATOR_DEVICE_X4_PRO)
@@ -511,6 +515,10 @@ void HalDisplay::copyGrayscaleBuffers(const uint8_t *lsbBuffer,
 }
 void HalDisplay::displayGrayscaleBase(RefreshMode fallback,
                                       bool turnOffScreen) {
+  if (combinesGrayscaleBase()) {
+    snapshotBwBase(getFrameBuffer());
+    return;
+  }
   displayBuffer(fallback, turnOffScreen);
 }
 void HalDisplay::preconditionGrayscale() {}
@@ -558,6 +566,9 @@ void HalDisplay::writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t *rows,
   }
 }
 bool HalDisplay::supportsStripGrayscale() const { return true; }
+bool HalDisplay::combinesGrayscaleBase() const {
+  return BoardConfig::isPaperMono();
+}
 
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }
 uint16_t HalDisplay::getDisplayHeight() const { return DISPLAY_HEIGHT; }

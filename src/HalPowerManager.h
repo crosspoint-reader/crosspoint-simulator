@@ -22,6 +22,7 @@ class HalPowerManager {
 
 public:
   static constexpr int LOW_POWER_FREQ = 10; // MHz
+  static constexpr unsigned long IDLE_POWER_SAVING_MS = 3000;
   static constexpr unsigned long IDLE_DOWNCLOCK_MS = 500;
   static constexpr unsigned long IDLE_LIGHT_SLEEP_MS = 1000;
   static constexpr unsigned long BATTERY_POLL_MS = 1500;

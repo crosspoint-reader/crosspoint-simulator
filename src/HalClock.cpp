@@ -7,7 +7,7 @@ HalClock halClock;
 
 void HalClock::begin() {
 #if defined(SIMULATOR_DEVICE_X3) || defined(SIMULATOR_DEVICE_X4_PRO) || \
-    defined(SIMULATOR_DEVICE_STICKY)
+    defined(SIMULATOR_DEVICE_STICKY) || defined(SIMULATOR_DEVICE_PAPERMONO)
   _available = true;
 #else
   _available = false;

@@ -10,9 +10,9 @@
 #define FREEINK_LOG_TRANSPORT_ROM_PRINTF 1
 #define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_HWCDC
 
-#if (defined(SIMULATOR_DEVICE_X3) && defined(SIMULATOR_DEVICE_X4_PRO)) || \
-    (defined(SIMULATOR_DEVICE_X3) && defined(SIMULATOR_DEVICE_STICKY)) ||  \
-    (defined(SIMULATOR_DEVICE_X4_PRO) && defined(SIMULATOR_DEVICE_STICKY))
+#if (defined(SIMULATOR_DEVICE_X3) + defined(SIMULATOR_DEVICE_X4_PRO) + \
+     defined(SIMULATOR_DEVICE_STICKY) +                               \
+     defined(SIMULATOR_DEVICE_PAPERMONO)) > 1
 #error "Select at most one simulated device"
 #endif
 
@@ -24,16 +24,32 @@
 #error "Xteink X3 revisions use UC8253 or UC8279d, not UC8179"
 #endif
 
-#if defined(SIMULATOR_DEVICE_STICKY) && \
+#if (defined(SIMULATOR_DEVICE_STICKY) ||                           \
+     defined(SIMULATOR_DEVICE_PAPERMONO)) &&                      \
     (defined(SIMULATOR_DISPLAY_UC8179) || defined(SIMULATOR_DISPLAY_UC8279))
-#error "Seeed Sticky uses SSD1677; do not select an Xteink controller override"
+#error "This device uses SSD1677; do not select an Xteink controller override"
 #endif
 
-#if defined(SIMULATOR_DEVICE_STICKY)
+#undef FREEINK_DEVICE_X4
+#undef FREEINK_DEVICE_X3
+#undef FREEINK_DEVICE_X4PRO
+#undef FREEINK_DEVICE_STICKY
+#undef FREEINK_DEVICE_PAPERMONO
+
+#if defined(SIMULATOR_DEVICE_PAPERMONO)
+#define FREEINK_DEVICE_X4 0
+#define FREEINK_DEVICE_X3 0
+#define FREEINK_DEVICE_X4PRO 0
+#define FREEINK_DEVICE_STICKY 0
+#define FREEINK_DEVICE_PAPERMONO 1
+#define FREEINK_CAP_TOUCH 1
+#define FREEINK_CAP_FRONTLIGHT 1
+#elif defined(SIMULATOR_DEVICE_STICKY)
 #define FREEINK_DEVICE_X4 0
 #define FREEINK_DEVICE_X3 0
 #define FREEINK_DEVICE_X4PRO 0
 #define FREEINK_DEVICE_STICKY 1
+#define FREEINK_DEVICE_PAPERMONO 0
 #define FREEINK_CAP_TOUCH 1
 #define FREEINK_CAP_FRONTLIGHT 0
 #elif defined(SIMULATOR_DEVICE_X4_PRO)
@@ -41,6 +57,7 @@
 #define FREEINK_DEVICE_X3 0
 #define FREEINK_DEVICE_X4PRO 1
 #define FREEINK_DEVICE_STICKY 0
+#define FREEINK_DEVICE_PAPERMONO 0
 #define FREEINK_CAP_TOUCH 1
 #define FREEINK_CAP_FRONTLIGHT 1
 #elif defined(SIMULATOR_DEVICE_X3)
@@ -48,6 +65,7 @@
 #define FREEINK_DEVICE_X3 1
 #define FREEINK_DEVICE_X4PRO 0
 #define FREEINK_DEVICE_STICKY 0
+#define FREEINK_DEVICE_PAPERMONO 0
 #define FREEINK_CAP_TOUCH 0
 #define FREEINK_CAP_FRONTLIGHT 0
 #else
@@ -55,6 +73,7 @@
 #define FREEINK_DEVICE_X3 0
 #define FREEINK_DEVICE_X4PRO 0
 #define FREEINK_DEVICE_STICKY 0
+#define FREEINK_DEVICE_PAPERMONO 0
 #define FREEINK_CAP_TOUCH 0
 #define FREEINK_CAP_FRONTLIGHT 0
 #endif
@@ -69,6 +88,7 @@ enum class Board {
   XteinkX3Uc8279,
   XteinkX4Pro,
   Sticky,
+  PaperMono,
 };
 
 enum class DisplayController {
@@ -127,8 +147,13 @@ inline constexpr BoardProfile XTEINK_X4_PRO = {
     X4_DISPLAY_CONTROLLER_VARIANT, {0, 7}};
 inline constexpr BoardProfile STICKY = {
     Board::Sticky, "sticky", DisplayController::SSD1677, 0, {5, 6}};
+inline constexpr BoardProfile PAPER_MONO = {
+    Board::PaperMono, "m5stack_paper_mono", DisplayController::SSD1677, 0,
+    {0, 7}, {9, 7, 3, 7}};
 
-#if defined(SIMULATOR_DEVICE_STICKY)
+#if defined(SIMULATOR_DEVICE_PAPERMONO)
+inline BoardProfile ACTIVE = PAPER_MONO;
+#elif defined(SIMULATOR_DEVICE_STICKY)
 inline BoardProfile ACTIVE = STICKY;
 #elif defined(SIMULATOR_DEVICE_X4_PRO)
 inline BoardProfile ACTIVE = XTEINK_X4_PRO;
@@ -159,15 +184,19 @@ inline bool selectDevice(Board board) {
   case Board::Sticky:
     ACTIVE = STICKY;
     return true;
+  case Board::PaperMono:
+    ACTIVE = PAPER_MONO;
+    return true;
   }
   return false;
 }
 
 inline bool isX4Pro() { return ACTIVE.board == Board::XteinkX4Pro; }
 inline bool isSticky() { return ACTIVE.board == Board::Sticky; }
-inline bool hasTouch() { return isX4Pro() || isSticky(); }
+inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
+inline bool hasTouch() { return isX4Pro() || isSticky() || isPaperMono(); }
 inline bool hasHomeKey() { return isX4Pro(); }
-inline bool hasPwmFrontlight() { return isX4Pro(); }
+inline bool hasPwmFrontlight() { return isX4Pro() || isPaperMono(); }
 
 inline void holdPowerRails() {}
 
