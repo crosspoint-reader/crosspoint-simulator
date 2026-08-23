@@ -198,10 +198,11 @@ everywhere. The remaining call sites in the firmware, and their cost at
 
 ## Standalone checks
 
-The gate cannot reach the binary semaphore: the firmware gates that code behind
-a BLE capability flag the simulator build does not set, so the file compiles to
-stubs. It was verified with a host program compiled straight against these
-headers instead. Verified by running, 2026-08-23:
+At the time these were written the gate could not reach the binary semaphore:
+the firmware gated that code behind a BLE capability flag the simulator build
+did not set, so the file compiled to stubs. It was verified with a host program
+compiled straight against these headers instead. Verified by running,
+2026-08-23:
 
 - an empty binary semaphore, `ticksToWait == 0`, returns `pdFALSE` in under
   20 ms
@@ -245,3 +246,48 @@ Note one pre-existing quirk that parity run confirms is unchanged: `xQueuePeek`
 on a mutex uses `try_lock`, and a `std::recursive_mutex` grants `try_lock` to
 its own holder. So peek from the holding thread reports the mutex as free. Only
 another thread sees it as taken.
+
+## Since exercised by real firmware, not only by a host program
+
+Later the same day the capability flag was turned on for the simulator build,
+so the confirm-timeout path ran inside real firmware over a fake BLE link.
+Verified by running, 2026-08-23:
+
+- **The 3000 ms wait is 3000 ms, 23 times in a row.** One multi-line reply at
+  the pessimistic MTU splits into 23 blocks, and against a peer that never
+  acknowledges anything each block cost one full timeout: 23 waits, gaps
+  measured at 2981.9 ms minimum and 3063.4 ms maximum, mean 3003.4 ms, 69.1 s
+  to drain. Timed on two independent clocks -- the peer's monotonic clock and
+  the firmware's own millisecond log -- and both agree. Under the old shim
+  every one of those waits returned success immediately, so the firmware's
+  whole give-up path was dead code that looked exercised.
+- **A give from another thread wakes it, inside firmware.** The token is given
+  from the fake radio's callback thread and taken on the activity thread, which
+  is the arrangement the standalone check simulated.
+- **`vTaskDelay` sleeping is what makes a retry budget mean anything.** A
+  40-attempt, 25 ms retry loop is 1 s of real time now and was 0 s before.
+
+## A firmware file can use these names without including them
+
+Worth stating because the failure reads like a shim gap and is not. A firmware
+translation unit compiled fine on device while using `portMUX_TYPE`, sixteen
+`portENTER_CRITICAL`/`portEXIT_CRITICAL` sites, `vTaskDelay`, `pdMS_TO_TICKS`
+and the whole semaphore API **without naming a single FreeRTOS header**. It
+built because a different library it did include -- a Bluetooth stack -- pulls
+`Arduino.h` in, and that drags FreeRTOS along with it. Replace that library
+with a header-compatible fake that does not, and the file stops compiling.
+
+The symptom is unmistakable once you know it: every error is a
+`was not declared in this scope` on a FreeRTOS name, and none is on a name
+belonging to the library that was replaced. The fix is in the firmware, not
+here -- name the three headers it actually uses:
+
+```cpp
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
+```
+
+Those are the paths ESP-IDF owns, so the change is correct on both targets and
+needs no conditional. Expect one of these per firmware file that has been
+free-riding on some other library's include graph.
