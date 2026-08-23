@@ -30,7 +30,7 @@ Write this down first, because it is the part that gets forgotten.
 - **A busy indication slot.** `indicate()` returns false only for a refusal --
   nothing connected, nobody subscribed, wrong properties, empty payload. It
   never returns false for "the slot is full", because a full slot is clobbered
-  and the call still succeeds (`src/SimBleGatt.cpp:319`). So the firmware's
+  and the call still succeeds (`src/SimBleGatt.cpp:342`). So the firmware's
   park-and-flush path for transfer status, which exists because the command
   channel can be holding the connection's one slot
   (`BlePositionServer.cpp:956-958`), is reachable here only through the
@@ -94,24 +94,55 @@ dance exists. A timeout test turns it off.
 
 - `write` or `subscribe` with no central connected: `error`, no callback.
   `[verified]` for `write` -- "write with no connection fires no callback" and
-  "write with no connection emits error" (`src/SimBleGatt.cpp:547`).
-  `subscribe` takes the same branch (`src/SimBleGatt.cpp:559`) and is
+  "write with no connection emits error" (`src/SimBleGatt.cpp:586`).
+  `subscribe` takes the same branch (`src/SimBleGatt.cpp:606`) and is
   `[contract]`.
 - `indicate()` with nobody subscribed to that characteristic: returns false.
   `[verified]` -- "indicate with nobody subscribed returns false" and the same
-  for a second characteristic (`src/SimBleGatt.cpp:304`).
+  for a second characteristic (`src/SimBleGatt.cpp:327`).
 - A subscription belongs to a connection. On `disconnect` the shim clears
   subscription state itself, because NimBLE fires no unsubscribe callback.
   `[verified]` -- "disconnect fires no unsubscribe callback, same as NimBLE"
   and "the subscription is gone after a disconnect"
-  (`src/SimBleGatt.cpp:726`).
+  (`src/SimBleGatt.cpp:756`).
 - Advertising stops on connect and is not restarted by the shim. `[verified]`
-  -- "advertising goes down on connect" (`src/SimBleGatt.cpp:536`). Only the
+  -- "advertising goes down on connect" (`src/SimBleGatt.cpp:562`). Only the
   firmware's own `onDisconnect` brings it back.
 - Two more the real stack makes, added while building it: a `write` to a
   characteristic without the WRITE property is an `error` (`[verified]`,
   "write to an indicate-only characteristic emits error"), and a client op
   arriving while the stack is down is an `error` with no callback.
+
+### State replay on attach `[verified]`
+
+**A client receives three events on connect without sending anything:** `stack`
+`up`, the `gatt` table if one is built, and the current `advertising` state, in
+that order.
+
+**This is not something a phone would see.** Same status as `clobber`: it exists
+because the simulator is not a radio. A real central learns the peripheral's
+state by scanning; a TCP client has no scan, and every event it missed is gone.
+And it missed all of them: `stack up` is emitted by `NimBLEDevice::init()`,
+which is also the call that starts the listener, so at that instant no client
+can possibly be attached and the line is dropped
+(`src/SimBleLink.cpp:445-446`). The event was never racy. It was structurally
+undeliverable. The `gatt` table and the first `advertising` line have the same
+problem whenever the firmware builds them before a client turns up, which is
+the normal case.
+
+Mechanism, for a client author who sees it in a packet trace: the accept path
+synthesizes an `attach` op into the sink (`src/SimBleLink.cpp:244-267`), the
+mirror of the synthetic `disconnect` a lost socket already produces, and the
+GATT model answers it by emitting current state
+(`src/SimBleGatt.cpp:272-286`). A client never sends `attach` and gets an
+`error` if it invents one that the model does not recognise. The replay fires
+for **every** client, including the second one to attach after the first left.
+
+What is **not** replayed: a live connection. A client that was not there for
+the `connect` op is not the central that made it, so it is told nothing about
+it. A client that attaches before the firmware ever calls
+`NimBLEDevice::init()` receives nothing at all -- there is no host thread to
+answer, so it must wait for `stack`/`up` to arrive the normal way.
 
 ## Transport specifics `[verified]`
 
@@ -134,30 +165,30 @@ sends every client op twice, once with explicit fields and once with all
 fields absent, and the harness prints the decoded `SimBleEvent` for each. All
 three runs come back clean. ThreadSanitizer dies on this kernel unless ASLR is
 off, so the driver wraps the binary in `setarch -R`
-(`tests/sim_ble_link_selftest.py:75-79`).
+(`tests/sim_ble_link_selftest.py:76-80`).
 
 ### Loopback only
 
-The listener binds `INADDR_LOOPBACK` (`src/SimBleLink.cpp:336`), never
+The listener binds `INADDR_LOOPBACK` (`src/SimBleLink.cpp:356`), never
 `INADDR_ANY`. This is a hazard decision, not a style one: the process on the
 other end of this socket runs firmware command handling, so a LAN-reachable
 port would hand the device model to anything on the network. The gate connects
 to the host's own routable address and requires a refusal.
 
-Backlog is 4 (`src/SimBleLink.cpp:339`). A second client has to complete its
+Backlog is 4 (`src/SimBleLink.cpp:359`). A second client has to complete its
 connect before it can be told to go away.
 
 ### stop() wakes a blocked reader with a self-pipe
 
 The reader thread never blocks in `accept()` or `recv()`. It sits in `poll()`
 over three fds: the listener, the connected client, and the read end of a
-self-pipe (`src/SimBleLink.cpp:250-299`). `accept()` and `recv()` run only on
+self-pipe (`src/SimBleLink.cpp:270-320`). `accept()` and `recv()` run only on
 a fd `poll()` already reported readable, and the `recv()` uses `MSG_DONTWAIT`
-(`src/SimBleLink.cpp:286`).
+(`src/SimBleLink.cpp:306`).
 
 `stop()` sets a stop flag, writes one byte into the self-pipe
 (`src/SimBleLink.cpp:89-95`), shuts a connected client down, then joins
-(`src/SimBleLink.cpp:368-378`). Measured: 0 to 2 ms with a client connected.
+(`src/SimBleLink.cpp:388-398`). Measured: 0 to 2 ms with a client connected.
 
 Why the self-pipe and not the alternatives:
 
@@ -170,38 +201,38 @@ Why the self-pipe and not the alternatives:
   to `stop()`. The pipe costs two fds and is exact.
 
 `stop()` is safe when the link was never started and safe twice in a row
-(`src/SimBleLink.cpp:360-366`). `start(0)` returns false and leaves the
+(`src/SimBleLink.cpp:380-386`). `start(0)` returns false and leaves the
 feature off.
 
 ### The reader owns the client fd
 
 Only the reader thread closes the client socket. `emit()` writes under the
 mutex and, on a write failure, calls `shutdown()` rather than `close()`
-(`src/SimBleLink.cpp:427-431`). That makes the reader's `poll()` return and
+(`src/SimBleLink.cpp:447-450`). That makes the reader's `poll()` return and
 keeps the teardown in one place.
 
 The client socket carries `SO_SNDTIMEO` of 5 s (`src/SimBleLink.cpp:47`,
-`src/SimBleLink.cpp:236-241`). A client that stops reading cannot hang a
+`src/SimBleLink.cpp:236-240`). A client that stops reading cannot hang a
 firmware thread inside `emit()` forever: the send fails, the link is dropped,
 the simulator carries on.
 
 ### emit() is one line, whole, under one mutex
 
 `emit()` frames and writes the whole line while holding the state mutex
-(`src/SimBleLink.cpp:410-433`), so two threads cannot interleave halves of two
+(`src/SimBleLink.cpp:430-451`), so two threads cannot interleave halves of two
 lines. Verified: two threads emitting 300 lines each, 600 lines received, every
 one intact, each thread's lines in its own order, the two threads interleaved
 at line granularity.
 
 An embedded `\n` or `\r` in the caller's JSON would inject a second frame, so
-`emit()` replaces both with a space (`src/SimBleLink.cpp:414-417`). Callers do
+`emit()` replaces both with a space (`src/SimBleLink.cpp:434-437`). Callers do
 not have to be careful.
 
 ### A lost socket synthesizes a disconnect
 
 A client that drops its socket is a link that went away. The reader delivers
 `op="disconnect"`, `a=0x13` to the sink so the GATT model does not keep
-believing a central is connected (`src/SimBleLink.cpp:131-159`). The teardown
+believing a central is connected (`src/SimBleLink.cpp:137-158`). The teardown
 inside `stop()` does **not** synthesize one: `stop()` is not a link event and
 the model is being destroyed anyway.
 
@@ -304,26 +335,44 @@ linked: seven event shapes are hand rolled (`src/SimBleGatt.cpp:11-59`).
 Everything in this section was demonstrated by
 
 ```
-g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/simble_selftest \
+g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/sim_ble_gatt_selftest \
     src/NimBLEDevice.cpp src/SimBleGatt.cpp src/SimBleProtocol.cpp \
-    src/SimBleGattSelfTestStub.cpp src/SimBleGattSelfTest.cpp
-/tmp/simble_selftest                       # 40 checks, 0 failures
+    tests/sim_ble_gatt_stub.cpp tests/sim_ble_gatt_selftest.cpp
+/tmp/sim_ble_gatt_selftest                 # 42 checks, 0 failures
 ```
 
-`src/SimBleGattSelfTest.cpp` builds the same table the firmware builds, in the
-same order, then drives it. `src/SimBleGattSelfTestStub.cpp` is a `SimBleLink`
+`tests/sim_ble_gatt_selftest.cpp` builds the same table the firmware builds, in
+the same order, then drives it. `tests/sim_ble_gatt_stub.cpp` is a `SimBleLink`
 that opens no socket: it hands decoded ops to the sink and captures the emitted
-lines, so the GATT half is provable without the transport. `SimBleProtocol.cpp`
-is linked for `portFromEnv()` alone. Rebuild with `-fsanitize=thread` and run
-under `setarch $(uname -m) -R` for the race check.
+lines, so the GATT half is provable without the transport, and the assertions
+are deterministic. `SimBleProtocol.cpp` is linked for `portFromEnv()` alone.
+Rebuild with `-fsanitize=thread` and run under `setarch $(uname -m) -R` for the
+race check.
 
-Both halves also link and run together, real transport and no stub:
+A second binary drives the GATT model over the **real** transport, so the one
+behaviour a stub cannot show -- the state replay on attach -- is proven on a
+socket:
 
 ```
-g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/simble_integration \
-    src/NimBLEDevice.cpp src/SimBleGatt.cpp src/SimBleLink.cpp \
-    src/SimBleProtocol.cpp <a main that builds a table and tears it down>
+g++ -std=c++17 -Wall -Wextra -pthread -Isrc \
+    -o /tmp/sim_ble_gatt_attach_selftest src/NimBLEDevice.cpp \
+    src/SimBleGatt.cpp src/SimBleLink.cpp src/SimBleProtocol.cpp \
+    tests/sim_ble_gatt_attach_selftest.cpp
+/tmp/sim_ble_gatt_attach_selftest          # 9 checks, 0 failures
 ```
+
+It builds the table with nobody connected, then connects to itself and reads
+what arrives. It also proves the two halves link together.
+
+**Both test binaries live in `tests/`, and that is enforcement, not tidiness.**
+The library has no `srcFilter`, so anything under `src/` is compiled into the
+library archive next to `simulator_main.o` -- and a test file that defines
+`main()` can win the link. It did: the simulator built fine, never ran, printed
+one line from a global constructor and aborted in a destructor of code it had
+never entered. A header comment saying "do not link this" is not enforcement. A
+directory that is not compiled cannot be forgotten. Both binaries also end with
+`fflush(stdout); _exit()` rather than returning, so a verdict is never lost to
+someone else's teardown.
 
 ### The firmware translation unit compiles against it
 
@@ -343,7 +392,7 @@ both are real:
 
 - **`NimBLEServer::start()`** (`BlePositionServer.cpp:314`). The firmware calls
   it, not the deprecated `NimBLEService::start()`, and builds the GATT table
-  with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:239-262`).
+  with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:249-270`).
   `NimBLEService::start()` exists anyway and returns true.
 - **`NimBLEServer::setCallbacks()` takes a second argument**
   (`BlePositionServer.cpp:275`, `deleteCallbacks=false`). The shim ignores it
@@ -355,36 +404,36 @@ Nothing else was missing.
 ### Decisions worth naming
 
 - **The indication slot is per connection, not per characteristic**
-  (`src/SimBleGatt.cpp:319`). That is what the firmware assumes: its transfer
+  (`src/SimBleGatt.cpp:342`). That is what the firmware assumes: its transfer
   status channel parks a line precisely because the command channel can be
   holding the one slot (`BlePositionServer.cpp:956-958`).
 - **A clobbered burst yields one confirm, not one per call.** The shim's
   auto-confirm carries the sequence number of the payload it was created for,
   and a confirm for a payload that has since been clobbered is dropped
-  silently (`src/SimBleGatt.cpp:599`). Two `indicate()` calls with one confirm
+  silently (`src/SimBleGatt.cpp:625`). Two `indicate()` calls with one confirm
   between them is the hardware behaviour: 18 calls, two payloads seen.
 - **A client `confirm` op confirms whatever is pending**, regardless of which
   payload the client thought it was confirming. It errors when nothing is
   pending, or when its `uuid` names a different characteristic than the
   pending one.
 - **`advertising` is also emitted with `up:false` when a central connects**
-  (`src/SimBleGatt.cpp:536`). The event table above lists start/stop; this is
+  (`src/SimBleGatt.cpp:562`). The event table above lists start/stop; this is
   the third case, and without it a client's view of advertising would be wrong
   for the whole connection.
 - **`start()` while already advertising is a no-op success and emits nothing**
-  (`src/SimBleGatt.cpp:369`). Real NimBLE behaves that way
+  (`src/SimBleGatt.cpp:392`). Real NimBLE behaves that way
   (`NimBLEAdvertising.cpp:194-197`), which is why the firmware's slow-interval
   switch calls `stop()` first. A shim that emitted a fresh event here would
   hide that.
 - **0/0 interval bounds are reported as the fast pair.** The firmware sets
   0/0 to mean "let the host pick" (`BlePositionServer.cpp:216-218`), and the
   host picks `BLE_GAP_ADV_FAST_INTERVAL1`. The `advertising` event reports what
-  the radio would use, not the sentinel (`src/SimBleGatt.cpp:743`).
+  the radio would use, not the sentinel (`src/SimBleGatt.cpp:773`).
 - **`deinit(clearAll)` deletes the table when `clearAll` is true**, same as the
   real API, which is why the firmware nulls its own characteristic pointers
   first (`BlePositionServer.cpp:381-385`). With `false` the objects survive.
 - **`deinit()` called from the host thread is refused with an `error`**
-  (`src/SimBleGatt.cpp:111`). It would be a self-join. Real NimBLE deinit from
+  (`src/SimBleGatt.cpp:112`). It would be a self-join. Real NimBLE deinit from
   the host task is equally broken; the firmware never does it, and a clear line
   beats an abort.
 - **The advertising name has no default in the shim.** The firmware passes it
@@ -394,7 +443,7 @@ Nothing else was missing.
 
 `SimBleGatt::waitIdle()` blocks until the host thread's queue is empty and it
 is not mid-dispatch, including events not yet due
-(`src/SimBleGatt.cpp:492`). It exists so a test can assert that a callback did
+(`src/SimBleGatt.cpp:518`). It exists so a test can assert that a callback did
 **not** fire without racing the host thread. The firmware never calls it, and a
 client cannot reach it.
 
@@ -402,11 +451,11 @@ client cannot reach it.
 
 - `NimBLEDevice::init()` starts **two** threads: a socket reader and a **host
   thread**. `deinit()` joins both. `[verified]` -- the host thread is started
-  in `init()` (`src/SimBleGatt.cpp:85`) and joined in `deinit()`
-  (`src/SimBleGatt.cpp:128`); the reader is `SimBleLink`'s.
+  in `init()` (`src/SimBleGatt.cpp:86`) and joined in `deinit()`
+  (`src/SimBleGatt.cpp:129`); the reader is `SimBleLink`'s.
 - The reader parses lines and pushes events onto the host thread's queue. It
   never calls firmware code. `[verified]` by reading
-  `SimBleGatt::onReaderEvent` (`src/SimBleGatt.cpp:395`): it maps an op name to
+  `SimBleGatt::onReaderEvent` (`src/SimBleGatt.cpp:418`): it maps an op name to
   a queue entry and returns. Even a state-only op (`rssi`, `auto_confirm`) is
   queued rather than applied there, so ordering is whatever the client sent.
 - The host thread dispatches every firmware callback. It is the simulator's
@@ -423,7 +472,7 @@ client cannot reach it.
   across these threads. `[verified]` by reading that file.
 - One mutex guards the whole GATT model, including the fields inside the
   `NimBLE*` wrapper objects, and it is **dropped before every firmware
-  callback** (`src/SimBleGatt.cpp:480`). It has to be: the firmware's
+  callback** (`src/SimBleGatt.cpp:506`). It has to be: the firmware's
   `onDisconnect` calls `advertising->start()`, which comes straight back in.
   `[verified]` -- the self-test runs clean under ThreadSanitizer
   (`-fsanitize=thread`, under `setarch -R` because TSan needs ASLR off on this
@@ -449,7 +498,7 @@ showed. All four are `[verified]`, each by the named self-test check.
    `indicate()` returned) and "a withheld confirm never fires onStatus" (with
    `auto_confirm` off, it never fires at all). Even the shim's own auto-confirm
    goes through the host thread's queue with a delay
-   (`src/SimBleGatt.cpp:356`), so it cannot short-circuit.
+   (`src/SimBleGatt.cpp:379`), so it cannot short-circuit.
 3. **A second `indicate()` before a confirm clobbers the first.** Real and
    measured on hardware: back-to-back calls all returned true, the peer saw the
    first and the last. The shim must reproduce the clobber, not queue politely.
