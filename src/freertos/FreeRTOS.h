@@ -1,5 +1,6 @@
 #pragma once
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 
@@ -8,6 +9,18 @@
 #define portMAX_DELAY 0xFFFFFFFF
 #define eIncrement 1
 #define portTICK_PERIOD_MS 1
+
+// Real FreeRTOS defines this in projdefs.h, reached through FreeRTOS.h, as
+//   ( ( TickType_t ) ( xTimeInMs ) * configTICK_RATE_HZ ) / 1000
+// with integer division, so it rounds down and a sub-tick delay becomes 0
+// ticks. There is no configTICK_RATE_HZ here, and portTICK_PERIOD_MS above is
+// the shim's one tick-rate definition. The port defines
+// portTICK_PERIOD_MS == 1000 / configTICK_RATE_HZ, so substituting it reduces
+// that expression exactly to a divide by it -- same rounding, and no
+// multiply to overflow. At portTICK_PERIOD_MS == 1 it is the identity:
+// pdMS_TO_TICKS(n) == n.
+#define pdMS_TO_TICKS(xTimeInMs)                                               \
+  ((uint32_t)((uint32_t)(xTimeInMs) / (uint32_t)portTICK_PERIOD_MS))
 
 using BaseType_t = int;
 
