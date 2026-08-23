@@ -33,8 +33,50 @@ Write this down first, because it is the part that gets forgotten.
   firmware's
   park-and-flush path for transfer status, which exists because the command
   channel can be holding the connection's one slot
-  (`BlePositionServer.cpp:956-958`), is reachable here only through the
+  (`BlePositionServer.cpp:958-966`), is reachable here only through the
   unsubscribed refusal. No retry-on-false loop is exercised by this shim.
+- **Throughput, of anything.** A `write` op returns when TCP took the bytes.
+  There is no ATT write response, no connection interval and no radio in
+  between, so a transfer rate measured here is a measurement of loopback.
+  Numbers, so nobody quotes one: a 52 KB file pushed through this shim clocked
+  **3377 KB/s** and, in a second run, **4196 KB/s**; the same laptop tool
+  measured **2.6 KB/s** over a real radio at MTU 256. Three orders of
+  magnitude. `[verified]` by running both.
+- **MTU negotiation, and the ATT bearer's own size check.** The client declares
+  the MTU with the `connect` or `mtu` op; nothing negotiates and nothing
+  refuses an oversized write. A 485-byte frame was accepted on a link the
+  firmware believed had a 15-byte payload budget, and the firmware processed it
+  whole. That is deliberate on the client side -- BlueZ turns an over-MTU write
+  into a long write, so a client cannot honestly reject one locally -- but the
+  consequence is that firmware which never compares an arriving frame against
+  its own payload arithmetic looks correct here and is bounded only by the real
+  bearer. `[verified]` by running.
+- **A link that dies without notice.** `disconnect` is a polite op the client
+  sends. A supervision timeout has no equivalent here, so a run exercises the
+  device-side disconnect cleanup and never the radio-loss path. `[verified]` --
+  a transfer dropped mid-stream reached the firmware's `onDisconnect` hook and
+  its cleanup ran; the loss path did not.
+- **A hole in the delivered bytes from a withheld confirm.** The `indicate`
+  event goes out when the payload enters the pending slot, and `clobber` only
+  when a later payload takes that slot (captured at `src/SimBleGatt.cpp:343`, both
+  lines emitted at `:358-368`). So a
+  client is handed the clobbered payload and *then* told it was dropped. On
+  hardware a clobbered indication is genuinely gone -- 18 back-to-back calls,
+  the peer saw the first and the last. Withholding one confirm therefore cannot
+  reproduce a missing byte range here; it reproduces the stall and the
+  `clobber` event only. A gap can still be produced the other way, by making
+  the firmware itself stop sending: a confirm withheld on the first chunk of a
+  multi-chunk reply aborts the rest of that reply at the source, and those
+  bytes are really lost. `[verified]` -- both cases run.
+- **Storage failures behind a transfer.** The simulated card is a host
+  directory. `HalStorage::mkdir` returns true on `EEXIST`
+  (`src/HalStorage.cpp:326`) and `HalStorage::open` opens a directory *as a
+  directory* and reports it open (`src/HalStorage.cpp:306-309`), so a firmware
+  "could not create the directory" branch is unreachable here and a plain file
+  standing where a directory component belongs surfaces as an open failure
+  instead. A full card needs a size-limited loop filesystem; a shared host
+  filesystem cannot produce one. `[verified]` by reading, and by a transfer that
+  answered ready on a directory.
 
 ## Turning it on
 
@@ -72,6 +114,18 @@ firmware uses.
 `auto_confirm` defaults on so a simple client does not have to know the confirm
 dance exists. A timeout test turns it off.
 
+**`auto_confirm` is not connection state, and it is not reset when a client
+leaves.** It is set at `src/SimBleGatt.cpp:674` and cleared only by
+`init()` (`src/SimBleGatt.cpp:82`); `clearConnectionLocked`
+(`src/SimBleGatt.cpp:744`) resets the MTU at `:747` and does not touch it.
+A reconnecting client therefore inherits the previous client's setting. Real
+hardware has no such notion, so this is a test-isolation trap rather than a
+fidelity gap -- but a test that reconnects must set `auto_confirm` explicitly
+instead of trusting the documented default. It cost one confused pass: a
+control run with confirms nominally on hit 3000 ms timeouts, because an earlier
+run had turned them off on a simulator process that was still alive.
+`[verified]` -- reproduced, then traced to those lines.
+
 ### Simulator to client
 
 | ev | fields | when |
@@ -83,6 +137,21 @@ dance exists. A timeout test turns it off.
 | `clobber` | `uuid`, `dropped_hex` | a new `indicate()` overwrote an unconfirmed one. **Not a real BLE event**: it exists to make the clobber observable instead of silent |
 | `connparams_request` | `min`, `max`, `latency`, `timeout` | firmware called `updateConnParams` |
 | `error` | `msg` | a client op the real stack would refuse |
+
+**`props` is an integer, and that is part of the contract.** The `gatt` event
+carries each characteristic's NimBLE property bitmask as a JSON number, not a
+list and not a string: `{"uuid":"...0002","props":8}`
+(`src/SimBleGatt.cpp:264`, `line += std::to_string(characteristic->m_properties)`).
+Observed values and their meaning, so a client can decode without guessing:
+`1` read, `8` write, `16` notify, `32` indicate, and `56` (`0x38`) the
+write|notify|indicate combination the command characteristic carries
+(`src/NimBLECharacteristic.h:26-31`). This is written down because it was the
+one field whose type nobody pinned: a laptop client built against the same
+prose assumed a list, called `list()` on the number, and every tool using it
+died inside `connect()` with `TypeError: 'int' object is not iterable` -- before
+a single byte of traffic. The two halves had each picked something reasonable
+and had never been connected to each other. `[verified]` by reading the socket
+raw.
 
 ### Rules the shim enforces, because the real stack does
 
@@ -391,23 +460,45 @@ FreeRTOS name, not a NimBLE one, so it does not touch what this run is for.
 Two NimBLE calls the seed contract did not list turned up building it, and both
 are real:
 
-- **`NimBLEServer::start()`** (`BlePositionServer.cpp:314`). The firmware calls
+- **`NimBLEServer::start()`** (`BlePositionServer.cpp:322`). The firmware calls
   it, not the deprecated `NimBLEService::start()`, and builds the GATT table
   with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:249-270`).
   `NimBLEService::start()` exists anyway and returns true.
 - **`NimBLEServer::setCallbacks()` takes a second argument**
-  (`BlePositionServer.cpp:275`, `deleteCallbacks=false`). The shim ignores it
+  (`BlePositionServer.cpp:283`, `deleteCallbacks=false`). The shim ignores it
   and never owns the pointer; the firmware registers a static object, so
   nothing leaks either way (`src/NimBLEDevice.cpp:37`).
 
 Nothing else was missing.
+
+**Neither was findable by grep, and that is the lesson.** The API list this
+shim was built against was produced by grepping the firmware file for
+`NimBLE[A-Za-z]*::[a-zA-Z_]*` and `->[a-zA-Z_]*(`. That output is not silent
+about these two calls -- it contains `->start(` and `->setCallbacks(` -- it is
+*ambiguous* about them, in exactly the two ways that matter. `->start(` does
+not say which class the pointer had, and the only class-qualified `start` the
+grep found, `NimBLEService::start`, came from a **comment** saying that call is
+deprecated and not used. `->setCallbacks(` does not say how many arguments were
+passed. A grep over call syntax cannot answer a question about types or arity,
+so it cannot detect a stale API contract; only a compiler can. Freeze the list
+if you like, but verify it by building, not by re-running the grep that wrote
+it.
+
+**The whole surface has since been driven by real firmware, not only compiled
+against.** Four independent sessions in one day pushed a position feed, a
+line-oriented command channel with multi-line replies at MTU 23 and MTU 517, a
+52 KB file transfer with twenty-odd refusal cases, and a device-initiated
+fetch loop through this shim, and every finding they produced was in the
+firmware rather than here. That is the strongest statement available about the
+surface being complete: a plausible-looking fake fails on the second
+unusual thing a real caller does.
 
 ### Decisions worth naming
 
 - **The indication slot is per connection, not per characteristic**
   (`src/SimBleGatt.cpp:342`). That is what the firmware assumes: its transfer
   status channel parks a line precisely because the command channel can be
-  holding the one slot (`BlePositionServer.cpp:956-958`).
+  holding the one slot (`BlePositionServer.cpp:958-966`).
 - **A clobbered burst yields one confirm, not one per call.** The shim's
   auto-confirm carries the sequence number of the payload it was created for,
   and a confirm for a payload that has since been clobbered is dropped
@@ -427,12 +518,12 @@ Nothing else was missing.
   switch calls `stop()` first. A shim that emitted a fresh event here would
   hide that.
 - **0/0 interval bounds are reported as the fast pair.** The firmware sets
-  0/0 to mean "let the host pick" (`BlePositionServer.cpp:216-218`), and the
+  0/0 to mean "let the host pick" (`BlePositionServer.cpp:225-226`), and the
   host picks `BLE_GAP_ADV_FAST_INTERVAL1`. The `advertising` event reports what
   the radio would use, not the sentinel (`src/SimBleGatt.cpp:773`).
 - **`deinit(clearAll)` deletes the table when `clearAll` is true**, same as the
   real API, which is why the firmware nulls its own characteristic pointers
-  first (`BlePositionServer.cpp:381-385`). With `false` the objects survive.
+  first (`BlePositionServer.cpp:388-393`). With `false` the objects survive.
 - **`deinit()` called from the host thread is refused with an `error`**
   (`src/SimBleGatt.cpp:112`). It would be a self-join. Real NimBLE deinit from
   the host task is equally broken; the firmware never does it, and a clear line
@@ -511,16 +602,60 @@ showed. All four are `[verified]`, each by the named self-test check.
    device runs. 23 is the pessimistic default; 517 is the fast path.
    `[verified]` -- "MTU defaults to 23 when the client says nothing".
 
+A fifth one is not a "must be right" but a "must be remembered", because it
+falsifies results in both directions:
+
+5. **The shim is orders of magnitude faster than a radio, and that changes
+   which races are reachable.** Two consequences seen in one session. A race
+   the firmware's own comment prices as theoretical -- two file arrivals
+   collapsing into one because the activity loop polls a single-slot handoff --
+   fired on the first attempt, because a whole file transfer finished in
+   milliseconds where a radio needs seconds. That is evidence the race exists
+   and that its price is higher than the comment says; it is **not** evidence
+   it can happen on hardware. In the other direction, the shim's own 10 ms
+   auto-confirm delay is longer than a whole transfer, so two indications that
+   a radio would separate by seconds land inside one confirm window and produce
+   a `clobber` a device would never see. A `clobber` in a fast run is a
+   simulator artefact until a slow run reproduces it. `[verified]` -- both
+   observed, the second chased with verbose logging and dismissed.
+
 ## Fault injection
 
-The point of a shim over hardware.
+The point of a shim over hardware. The last four needed firmware attached and
+were `[contract]` until a firmware with a file-transfer receiver was driven
+through them.
 
 - Withhold a confirm (`auto_confirm` false, then never send `confirm`).
   `[verified]` -- "a withheld confirm never fires onStatus".
+- **Withhold a confirm and leave it withheld, to time a firmware's own retry
+  budget.** `[verified]` -- a firmware waiting 3000 ms per indication took
+  3000.x ms per line, 23 times over 69 s, on two independent clocks (the
+  client's monotonic clock and the firmware's own millisecond log). This is the
+  path a synchronous confirm can never execute.
+- **Withhold the confirm for one chunk in the middle of a multi-chunk reply**,
+  rather than for a whole line. `[verified]`, and it is the sharper tool: the
+  firmware abandoned the rest of that reply, so the peer held an unterminated
+  prefix and the next reply block was appended straight onto it. One corrupt
+  line, no error, and the reply's own terminator still arrived.
 - Send a malformed frame (trailing bytes, bad path, oversized length).
   `[verified]` -- twenty malformed inputs in the transport gate, each answered
   with `error` and no crash.
 - Drop the link mid-transfer (`disconnect` while a transfer is running).
-  `[contract]`: needs a transfer, so it needs the firmware.
+  `[verified]` -- the firmware's disconnect hook ran, its partial file was
+  deleted and its transfer state was cleared, shown by a later transfer being
+  accepted rather than refused as busy. Note what this is *not*: a polite
+  `disconnect` op, never a radio dropout.
 - Send a transfer `begin` without subscribing to the status characteristic.
-  `[contract]`, same reason.
+  `[verified]` -- refused, and the refusal was parked and delivered the moment
+  the client subscribed, so a client can receive a verdict for a frame it has
+  already given up on.
+- **Write a field value the wire format forbids.** `[verified]` -- a client can
+  put any byte string on a characteristic, including one whose length or field
+  domain the format does not allow, which is how a coordinate outside the
+  planet reached a renderer. Nothing between the client and the firmware
+  validates anything.
+- **Corrupt the card underneath a transfer while it streams.** The simulated SD
+  is a host directory, so a `.part` file can be damaged from outside while
+  every byte on the wire stays correct. `[verified]` -- it separates "the
+  firmware checksummed the bytes it received" from "the firmware checksummed
+  the file it wrote", and here it was the latter.
