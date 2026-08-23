@@ -18,8 +18,8 @@ Read off the code, before this change:
   unused). It always blocked until it got the mutex, then returned `true`.
 
 So firmware that creates a confirm semaphore and waits on it with a deadline
-could not time out. The concrete case in the firmware this simulator builds:
-`lib/BlePositionServer/src/BlePositionServer.cpp:261` creates it with
+could not time out. The concrete case, in the firmware this simulator was
+developed against: its BLE server creates the semaphore with
 `xSemaphoreCreateBinary()`, `:621` polls it with `ticksToWait == 0` to drain a
 stale give, `:629` waits 3000 ms and treats anything but `pdTRUE` as a dropped
 reply, and `:75` gives it from the BLE callback thread. Under the old shim
@@ -34,10 +34,9 @@ time. A firmware retry loop of 40 iterations x 25 ms ran instantly, and every
 
 ## Gap 3: no `pdMS_TO_TICKS`
 
-Also absent, and not merely unused: the firmware passes every one of its
-millisecond timeouts through it. Four call sites, all in
-`lib/BlePositionServer/src/BlePositionServer.cpp` -- `:249`
-`vTaskDelay(pdMS_TO_TICKS(20))`, `:404` `vTaskDelay(pdMS_TO_TICKS(50))`, `:629`
+Also absent, and not merely unused: that firmware passes every one of its
+millisecond timeouts through it. Four call sites, all in its BLE server --
+`vTaskDelay(pdMS_TO_TICKS(20))`, `vTaskDelay(pdMS_TO_TICKS(50))`,
 `xSemaphoreTake(sem, pdMS_TO_TICKS(kConfirmTimeoutMs))` with
 `kConfirmTimeoutMs = 3000` (`:612`), and `:653`
 `vTaskDelay(pdMS_TO_TICKS(kRetryDelayMs))` with `kRetryDelayMs = 25` (`:608`).
@@ -216,6 +215,9 @@ compiled straight against these headers instead. Verified by running,
 sites verbatim. All 13 assertions passed, and the two `static_assert`s compiled,
 which is what proves the macro is usable in a constant expression like the real
 one:
+
+Captured verbatim. The `BlePositionServer.cpp:NNN` tags name call sites in
+the downstream firmware this was checked against, not files in this repo.
 
 ```
 pdMS_TO_TICKS(0)                  = 0            want 0            ok
