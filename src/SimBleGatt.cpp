@@ -326,8 +326,8 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
     // (NimBLECharacteristic.cpp:296), so with the stack down or a null
     // characteristic it dereferences a null pointer rather than returning
     // anything. A fake must not crash where the real thing crashes, so these
-    // two return false. Neither is reachable from the firmware, which checks
-    // `begun_` and its own pointers first (BlePositionServer.cpp:547).
+    // two return false. Neither is reachable from a firmware that checks its own
+    // initialised flag and its own pointers first.
     if (!m_initialized || characteristic == nullptr) return false;
 
     // **Real NimBLE refuses nothing here.** The firmware calls the
@@ -343,8 +343,8 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
     // is untouched. Filling it would let a later connect-then-confirm confirm
     // a payload from before the link existed.
     //
-    // The firmware states the same fact in its own words
-    // (BlePositionServer.cpp:79-81): "indicate() succeeds into an empty room".
+    // A firmware built against real NimBLE puts the same fact in one line:
+    // "indicate() succeeds into an empty room".
     if (!m_connected) return true;
 
     // Connected: from here real NimBLE transmits regardless of subscription
@@ -353,8 +353,8 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
     // the pending handle (ble_gattc.c:4922-4936). Its only refusals are out of
     // memory and, under BLE_GATT_CACHING, an unaware peer. So an unsubscribed
     // peer gets a real indication PDU it will drop, and the slot is genuinely
-    // taken -- which is exactly why the firmware then waits out its 3000 ms
-    // confirm (BlePositionServer.cpp:629).
+    // taken -- which is exactly why a firmware waiting on a confirm waits out its
+    // whole timeout instead of failing fast.
     //
     // Whether anybody subscribed decides one thing only: whether a confirm can
     // ever come back. `auto_confirm` is the client saying "I confirm what I
@@ -366,13 +366,12 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
     // (NimBLECharacteristic.cpp:317-319), which pushes the characteristic's
     // stored value to whoever subscribed, and still returns true. The shim
     // does not model the stored-value push, so it returns true and emits
-    // nothing. Unreachable from the firmware, which never indicates zero bytes
-    // (BlePositionServer.cpp:547, :566-570).
+    // nothing. Unreachable from a firmware that never indicates zero bytes.
     if (data == nullptr || len == 0) return true;
 
-    // One slot per connection, not per characteristic: the firmware's transfer
-    // status channel parks a line precisely because the command channel can be
-    // holding it (BlePositionServer.cpp:956-958).
+    // One slot per connection, not per characteristic. That is what the real
+    // host does, and a firmware with two indicating characteristics feels it:
+    // one channel has to park a line while the other holds the slot.
     //
     // An overwrite is what real hardware does. 18 back-to-back indicate()
     // calls all returned true and the peer saw the first and the last, so a
@@ -791,9 +790,8 @@ void SimBleGatt::clearConnectionLocked() {
   m_latency = 0;
   m_timeout = 0;
   // A subscription belongs to a connection, and NimBLE fires no unsubscribe
-  // callback when the link drops. The shim clears it here, silently, because
-  // the firmware relies on there being no callback
-  // (BlePositionServer.cpp:713-716).
+  // callback when the link drops. The shim clears it here, silently, because a
+  // firmware written against real NimBLE relies on there being no callback.
   for (NimBLECharacteristic *characteristic : m_characteristics) {
     characteristic->m_subValue = 0;
   }

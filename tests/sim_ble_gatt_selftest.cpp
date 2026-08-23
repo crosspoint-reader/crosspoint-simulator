@@ -1,6 +1,6 @@
 // Self-test for the NimBLE shim. No socket, no device, no firmware: it drives
-// the shim's API the way BlePositionServer does and asserts the behaviour the
-// contract calls for.
+// the shim's API the way a firmware BLE server does and asserts the behaviour
+// the contract calls for.
 //
 // Build and run (one line, no continuations):
 //   g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/sim_ble_gatt_selftest

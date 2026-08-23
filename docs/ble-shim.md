@@ -173,9 +173,9 @@ raw.
   (`NimBLECharacteristic.cpp:272-328`): `rc` starts at 0, the peer loop is the
   only thing that can move it, and there is no CCCD or property test anywhere.
   With no peers the loop body never runs and it returns true; with an
-  unsubscribed peer it transmits anyway. The firmware says the same thing in
-  its own words -- "indicate() succeeds into an empty room"
-  (`BlePositionServer.cpp:79-81`). `[verified]` -- "indicate with nobody
+  unsubscribed peer it transmits anyway. A firmware built against real NimBLE
+  puts the same thing in one line: "indicate() succeeds into an empty room".
+  `[verified]` -- "indicate with nobody
   subscribed returns true", "indicate with nothing connected returns true"
   (`src/SimBleGatt.cpp:348`).
 - A subscription belongs to a connection. On `disconnect` the shim clears
@@ -462,11 +462,11 @@ The same thing on one translation unit, for a quick check while editing the
 headers:
 
 ```
-g++ -std=c++17 -fsyntax-only -DFREEINK_CAP_BLE_PERIPHERAL=1 -Isrc \
-    -I<firmware>/lib/BlePositionServer/include -I<firmware>/lib/Logging \
+g++ -std=c++17 -fsyntax-only -Isrc \
+    -I<firmware>/<its BLE server's include dir> -I<firmware>/<its logging lib> \
     -include Arduino.h -include freertos/FreeRTOS.h \
     -include freertos/task.h -include freertos/semphr.h \
-    <firmware>/lib/BlePositionServer/src/BlePositionServer.cpp
+    <firmware>/<its BLE server>.cpp
 ```
 
 The `-include` flags stand in for what the firmware's own build has already
@@ -476,14 +476,12 @@ FreeRTOS name, not a NimBLE one, so it does not touch what this run is for.
 Two NimBLE calls the seed contract did not list turned up building it, and both
 are real:
 
-- **`NimBLEServer::start()`** (`BlePositionServer.cpp:322`). The firmware calls
-  it, not the deprecated `NimBLEService::start()`, and builds the GATT table
-  with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:249-270`).
+- **`NimBLEServer::start()`**. A firmware may call it, rather than the
+  deprecated `NimBLEService::start()`, and build the GATT table with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:249-270`).
   `NimBLEService::start()` exists anyway and returns true.
-- **`NimBLEServer::setCallbacks()` takes a second argument**
-  (`BlePositionServer.cpp:283`, `deleteCallbacks=false`). The shim ignores it
-  and never owns the pointer; the firmware registers a static object, so
-  nothing leaks either way (`src/NimBLEDevice.cpp:37`).
+- **`NimBLEServer::setCallbacks()` takes a second `deleteCallbacks` argument.**
+  The shim ignores it and never owns the pointer, so a caller registering a
+  static object leaks nothing either way (`src/NimBLEDevice.cpp:37`).
 
 Nothing else was missing.
 
@@ -512,9 +510,9 @@ unusual thing a real caller does.
 ### Decisions worth naming
 
 - **The indication slot is per connection, not per characteristic**
-  (`src/SimBleGatt.cpp:382`). That is what the firmware assumes: its transfer
-  status channel parks a line precisely because the command channel can be
-  holding the one slot (`BlePositionServer.cpp:958-966`).
+  (`src/SimBleGatt.cpp:382`). That is what a firmware with two indicating
+  characteristics has to assume: one channel parks a line precisely because the
+  other can be holding the single slot.
 - **A clobbered burst yields one confirm, not one per call.** The shim's
   auto-confirm carries the sequence number of the payload it was created for,
   and a confirm for a payload that has since been clobbered is dropped
@@ -533,19 +531,17 @@ unusual thing a real caller does.
   (`NimBLEAdvertising.cpp:194-197`), which is why the firmware's slow-interval
   switch calls `stop()` first. A shim that emitted a fresh event here would
   hide that.
-- **0/0 interval bounds are reported as the fast pair.** The firmware sets
-  0/0 to mean "let the host pick" (`BlePositionServer.cpp:225-226`), and the
-  host picks `BLE_GAP_ADV_FAST_INTERVAL1`. The `advertising` event reports what
+- **0/0 interval bounds are reported as the fast pair.** A caller sets 0/0 to
+  mean "let the host pick", and the host picks `BLE_GAP_ADV_FAST_INTERVAL1`. The `advertising` event reports what
   the radio would use, not the sentinel (`src/SimBleGatt.cpp:815`).
 - **`deinit(clearAll)` deletes the table when `clearAll` is true**, same as the
-  real API, which is why the firmware nulls its own characteristic pointers
-  first (`BlePositionServer.cpp:388-393`). With `false` the objects survive.
+  real API, which is why a caller should null its own characteristic pointers
+  first. With `false` the objects survive.
 - **`deinit()` called from the host thread is refused with an `error`**
   (`src/SimBleGatt.cpp:112`). It would be a self-join. Real NimBLE deinit from
-  the host task is equally broken; the firmware never does it, and a clear line
-  beats an abort.
-- **The advertising name has no default in the shim.** The firmware passes it
-  in, and the shim never invents one, so no device name is baked in here.
+  the host task is equally broken, and a clear line beats an abort.
+- **The advertising name has no default in the shim.** The caller passes it in
+  and the shim never invents one, so no device name is baked in here.
 
 ### `waitIdle()` is the one addition that is not NimBLE
 
@@ -626,12 +622,12 @@ it.
 The shim's `indicate()` used to return **false** when nobody was subscribed,
 when nothing was connected, and when the characteristic lacked NOTIFY/INDICATE,
 under a comment reading "refusals the real stack makes". Real NimBLE makes none
-of those three checks. The value came from a firmware comment that is itself
-wrong -- `BlePositionServer.cpp:294-296` claims "a busy/still-pending
+of those three checks. The value came from a comment in the firmware this shim
+was developed against, which is itself wrong -- it claims "a busy/still-pending
 `indicate()` actually returns false for the retry loop to catch" -- rather than
 from `sendValue`, which was on disk the whole time.
 
-The cost, measured against the real firmware with a connected-but-unsubscribed
+The cost, measured against that firmware with a connected-but-unsubscribed
 peer:
 
 ```
@@ -640,9 +636,9 @@ true:  [ERR] reply unconfirmed after 3000 ms, 11 bytes dropped       (3000 ms)
 ```
 
 Different duration, different branch, different log line, and different
-persistent state: only the second path sets `lastConfirmTimedOut_`
-(`BlePositionServer.cpp:639`), which is the flag that suppresses `FETCH_CANCEL`
-downstream. A developer reproducing the unsubscribed case in the simulator was
+persistent state: only the second path sets the firmware's
+confirm-timed-out flag, which suppresses a downstream cancel. A developer
+reproducing the unsubscribed case in the simulator was
 exercising code the device never reaches.
 
 **No test could have caught it.** Two self-test checks asserted the inversion as

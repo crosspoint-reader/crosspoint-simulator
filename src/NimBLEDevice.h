@@ -80,9 +80,8 @@ class NimBLEServer {
                     bool deleteCallbacks = true);
 
   // Builds the GATT table and emits the `gatt` event. False when the stack is
-  // down. Not in the shim's original contract list -- the firmware calls it
-  // (BlePositionServer.cpp:314) in place of the deprecated
-  // NimBLEService::start().
+  // down. A downstream firmware calls this in place of the deprecated
+  // NimBLEService::start(), which is why it exists here.
   bool start();
 
   // Asks the central for new connection parameters. A request, not a command:

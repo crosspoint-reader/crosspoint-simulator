@@ -2,10 +2,10 @@
 
 // Shim for NimBLE's host/ble_gap.h.
 //
-// The firmware includes this header directly for one function:
+// A firmware may include this header directly for one function:
 // ble_gap_conn_rssi(). No GAP wrapper exists on NimBLEServer or
-// NimBLEConnInfo, so the firmware reaches past the C++ API to the C host
-// (see the include comment in the firmware's BlePositionServer.cpp).
+// NimBLEConnInfo, so reading RSSI means reaching past the C++ API to the C
+// host.
 //
 // The host error codes and the advertising interval defaults live here too.
 // Real NimBLE spreads them over host/ble_hs.h and host/ble_gap.h; the shim
