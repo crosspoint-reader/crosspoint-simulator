@@ -215,13 +215,41 @@ int main() {
   check(sawEvent("\"ev\":\"advertising\",\"up\":false"),
         "advertising goes down on connect");
 
-  // --- indicate with nobody subscribed returns false ---------------------
+  // --- indicate with nobody subscribed returns TRUE ----------------------
+  // Real NimBLE has no CCCD check: sendValue transmits and returns true
+  // (NimBLECharacteristic.cpp:272-328). A shim returning false here sends the
+  // firmware down its 40 x 25 ms retry loop instead of its 3000 ms confirm
+  // wait -- different duration, different log line, different persistent
+  // state. These two assertions used to claim the opposite; they are inverted
+  // so a regression to it fails.
   const uint8_t payloadA[] = {'l', 'i', 'n', 'e', '-', 'A', '\n'};
   const uint8_t payloadB[] = {'l', 'i', 'n', 'e', '-', 'B', '\n'};
-  check(!cmdChar->indicate(payloadA, sizeof(payloadA)),
-        "indicate with nobody subscribed returns false");
-  check(!statusChar->indicate(payloadA, sizeof(payloadA)),
-        "indicate on an unsubscribed second characteristic returns false");
+  simble_selftest::clearEmitted();
+  g_counters.onStatus = 0;
+  check(cmdChar->indicate(payloadA, sizeof(payloadA)),
+        "indicate with nobody subscribed returns true");
+  check(sawEvent("\"ev\":\"indicate\""),
+        "an unsubscribed indication still goes out on the wire");
+  SimBleGatt::get().waitIdle();
+  check(g_counters.onStatus == 0,
+        "nothing confirms an unsubscribed indication, even with auto_confirm on");
+  check(statusChar->indicate(payloadA, sizeof(payloadA)),
+        "indicate on an unsubscribed second characteristic returns true");
+  check(sawEvent("\"ev\":\"clobber\""),
+        "the second unsubscribed indication clobbered the first, slot and all");
+
+  // Nothing connected is the other true: the peer loop never runs, so nothing
+  // is built, nothing is sent, and the slot is left alone.
+  SimBleEvent dropForNoConn = op("disconnect");
+  dropForNoConn.a = 0x13;
+  feedAndSettle(dropForNoConn);
+  simble_selftest::clearEmitted();
+  check(cmdChar->indicate(payloadA, sizeof(payloadA)),
+        "indicate with nothing connected returns true");
+  check(simble_selftest::emitted().empty(),
+        "indicate with nothing connected emits nothing at all");
+  feedAndSettle(connect);
+  simble_selftest::clearEmitted();
 
   SimBleEvent subscribe = op("subscribe");
   subscribe.uuid = kCmdUuid;
@@ -308,6 +336,7 @@ int main() {
   // --- 5: disconnect clears the subscription, with no callback -----------
   simble_selftest::clearEmitted();
   g_counters.onSubscribe = 0;
+  g_counters.onDisconnect = 0;
   SimBleEvent disconnect = op("disconnect");
   disconnect.a = 0x13;
   feedAndSettle(disconnect);
@@ -316,8 +345,36 @@ int main() {
         "disconnect fires onDisconnect with the reason");
   check(g_counters.onSubscribe == 0,
         "disconnect fires no unsubscribe callback, same as NimBLE");
-  check(!cmdChar->indicate(payloadA, sizeof(payloadA)),
-        "the subscription is gone after a disconnect");
+  // The old assertion here was `!indicate(...)`, which only passed because of
+  // the inversion above. Proving the subscription cleared now takes the
+  // consequence rather than the return value: reconnect, indicate, and see
+  // that no confirm comes back until a fresh subscribe.
+  feedAndSettle(connect);
+  g_counters.onStatus = 0;
+  check(cmdChar->indicate(payloadA, sizeof(payloadA)),
+        "indicate is accepted again on the new link");
+  SimBleGatt::get().waitIdle();
+  check(g_counters.onStatus == 0,
+        "the subscription is gone after a disconnect: no confirm on the new link");
+  SimBleEvent resub = op("subscribe");
+  resub.uuid = kCmdUuid;
+  resub.a = 2;
+  feedAndSettle(resub);
+  // auto_confirm was switched off earlier to test a withheld confirm. Back on,
+  // so the positive half of this pair can actually confirm.
+  SimBleEvent autoConfirmOn = op("auto_confirm");
+  autoConfirmOn.flag = true;
+  autoConfirmOn.a = 10;
+  feedAndSettle(autoConfirmOn);
+  g_counters.onStatus = 0;
+  check(cmdChar->indicate(payloadB, sizeof(payloadB)),
+        "indicate accepted after re-subscribing");
+  SimBleGatt::get().waitIdle();
+  check(g_counters.onStatus == 1,
+        "a fresh subscribe restores the confirm, so the clear was real");
+  SimBleEvent dropAgain = op("disconnect");
+  dropAgain.a = 0x13;
+  feedAndSettle(dropAgain);
   check(ble_gap_conn_rssi(g_counters.lastHandle, &rssiOut) != 0,
         "ble_gap_conn_rssi fails with no connection");
   check(posChar != nullptr, "the position characteristic outlives the link");

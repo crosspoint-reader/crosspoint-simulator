@@ -317,18 +317,58 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
   uint32_t autoConfirmDelayMs = 0;
   uint32_t seq = 0;
 
+  bool subscribed = false;
+
   {
     std::lock_guard<std::mutex> lock(m_mutex);
+    // **Shim guards, not NimBLE behaviour.** Real NimBLE reaches
+    // `NimBLEDevice::getServer()->getPeerDevices()` with no null check
+    // (NimBLECharacteristic.cpp:296), so with the stack down or a null
+    // characteristic it dereferences a null pointer rather than returning
+    // anything. A fake must not crash where the real thing crashes, so these
+    // two return false. Neither is reachable from the firmware, which checks
+    // `begun_` and its own pointers first (BlePositionServer.cpp:547).
     if (!m_initialized || characteristic == nullptr) return false;
-    if (data == nullptr || len == 0) return false;
-    // Refusals the real stack makes. Each one is a false return with no event
-    // and no callback.
-    if (!m_connected) return false;
-    if (characteristic->m_subValue == 0) return false;
-    if ((characteristic->m_properties &
-         (NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::NOTIFY)) == 0) {
-      return false;
-    }
+
+    // **Real NimBLE refuses nothing here.** The firmware calls the
+    // two-argument indicate(), so `connHandle` defaults to
+    // BLE_HS_CONN_HANDLE_NONE (NimBLECharacteristic.h:60) and the call lands
+    // in sendValue (NimBLECharacteristic.cpp:272-328). That function has no
+    // connection check, no CCCD check and no property check. It loops over
+    // `getPeerDevices()`; `rc` starts at 0 and only a real transmit error
+    // moves it, so **it returns true**.
+    //
+    // Nothing connected: the loop body never runs, nothing is built and
+    // nothing is sent, and `rc` is still 0 at `done:`. So: true, and the slot
+    // is untouched. Filling it would let a later connect-then-confirm confirm
+    // a payload from before the link existed.
+    //
+    // The firmware states the same fact in its own words
+    // (BlePositionServer.cpp:79-81): "indicate() succeeds into an empty room".
+    if (!m_connected) return true;
+
+    // Connected: from here real NimBLE transmits regardless of subscription
+    // and regardless of properties. ble_gatts_indicate_custom does no CCCD
+    // lookup -- it calls ble_att_clt_tx_indicate unconditionally and records
+    // the pending handle (ble_gattc.c:4922-4936). Its only refusals are out of
+    // memory and, under BLE_GATT_CACHING, an unaware peer. So an unsubscribed
+    // peer gets a real indication PDU it will drop, and the slot is genuinely
+    // taken -- which is exactly why the firmware then waits out its 3000 ms
+    // confirm (BlePositionServer.cpp:629).
+    //
+    // Whether anybody subscribed decides one thing only: whether a confirm can
+    // ever come back. `auto_confirm` is the client saying "I confirm what I
+    // receive", and a client with the CCCD off receives nothing to confirm.
+    subscribed = characteristic->m_subValue != 0;
+
+    // Empty payload is a different operation in real NimBLE, not a refusal:
+    // sendValue falls through to ble_gatts_chr_updated
+    // (NimBLECharacteristic.cpp:317-319), which pushes the characteristic's
+    // stored value to whoever subscribed, and still returns true. The shim
+    // does not model the stored-value push, so it returns true and emits
+    // nothing. Unreachable from the firmware, which never indicates zero bytes
+    // (BlePositionServer.cpp:547, :566-570).
+    if (data == nullptr || len == 0) return true;
 
     // One slot per connection, not per characteristic: the firmware's transfer
     // status channel parks a line precisely because the command channel can be
@@ -352,7 +392,9 @@ bool SimBleGatt::indicate(NimBLECharacteristic *characteristic,
     uuid = m_pendingUuid;
     payload = m_pendingPayload;
     seq = m_pendingSeq;
-    autoConfirm = m_autoConfirm;
+    // No subscriber, no confirm -- ever. See the reasoning above: this is what
+    // reproduces the firmware's confirm timeout instead of its retry loop.
+    autoConfirm = m_autoConfirm && subscribed;
     autoConfirmDelayMs = m_autoConfirmDelayMs;
   }
 
