@@ -8,8 +8,7 @@ plays the part of the central (the phone).
 the real NimBLE library and implements it differently. No NimBLE source is
 compiled.
 
-Status: **seed**. This file was created before the implementation, so it states
-the frozen contract, not measured behaviour. Every claim below is marked
+Status: **built**. Both halves exist and run. Every claim below is marked
 `[contract]` (what the shim must do) or `[verified]` (observed running, with
 the command that showed it). The transport half is `[verified]`: see
 "Transport specifics" below. The GATT half is `[verified]` too: see "GATT model
@@ -28,19 +27,14 @@ Write this down first, because it is the part that gets forgotten.
 - **The peer's real GATT stack.** A python client agreeing with the firmware
   proves the firmware self-consistent, not interoperable with a phone's stack.
 - **A busy indication slot.** `indicate()` returns false only for a refusal --
-  nothing connected, nobody subscribed, wrong properties, empty payload. It
-  never returns false for "the slot is full", because a full slot is clobbered
-  and the call still succeeds (`src/SimBleGatt.cpp:342`). So the firmware's
+  the stack down, nothing connected, nobody subscribed, wrong properties, empty
+  payload. It never returns false for "the slot is full", because a full slot is
+  clobbered and the call still succeeds (`src/SimBleGatt.cpp:342`). So the
+  firmware's
   park-and-flush path for transfer status, which exists because the command
   channel can be holding the connection's one slot
   (`BlePositionServer.cpp:956-958`), is reachable here only through the
   unsubscribed refusal. No retry-on-false loop is exercised by this shim.
-- **Two FreeRTOS symbols the simulator still lacks.**
-  `BlePositionServer.cpp` uses `pdMS_TO_TICKS` and `xSemaphoreCreateBinary`,
-  and `src/freertos/` defines neither, so the firmware BLE file does not build
-  in-tree yet even though every NimBLE symbol it wants now exists. Outside this
-  shim's own files. `[verified]` by the firmware syntax check below, which had
-  to supply both.
 
 ## Turning it on
 
@@ -376,19 +370,26 @@ someone else's teardown.
 
 ### The firmware translation unit compiles against it
 
-This is what proves the surface complete rather than plausible:
+The whole firmware builds against this shim with no NimBLE symbol missing. That
+is what proves the surface complete rather than plausible.
+
+The same thing on one translation unit, for a quick check while editing the
+headers:
 
 ```
 g++ -std=c++17 -fsyntax-only -DFREEINK_CAP_BLE_PERIPHERAL=1 -Isrc \
     -I<firmware>/lib/BlePositionServer/include -I<firmware>/lib/Logging \
     -include Arduino.h -include freertos/FreeRTOS.h \
     -include freertos/task.h -include freertos/semphr.h \
-    -include <a header defining pdMS_TO_TICKS and xSemaphoreCreateBinary> \
     <firmware>/lib/BlePositionServer/src/BlePositionServer.cpp
 ```
 
-Clean. Two NimBLE calls the seed contract did not list turned up doing it, and
-both are real:
+The `-include` flags stand in for what the firmware's own build has already
+pulled in by the time it reaches this file. Anything they miss surfaces as a
+FreeRTOS name, not a NimBLE one, so it does not touch what this run is for.
+
+Two NimBLE calls the seed contract did not list turned up building it, and both
+are real:
 
 - **`NimBLEServer::start()`** (`BlePositionServer.cpp:314`). The firmware calls
   it, not the deprecated `NimBLEService::start()`, and builds the GATT table
@@ -512,9 +513,14 @@ showed. All four are `[verified]`, each by the named self-test check.
 
 ## Fault injection
 
-The point of a shim over hardware. All `[contract]`:
+The point of a shim over hardware.
 
 - Withhold a confirm (`auto_confirm` false, then never send `confirm`).
-- Drop the link mid-transfer (`disconnect` while a transfer is running).
+  `[verified]` -- "a withheld confirm never fires onStatus".
 - Send a malformed frame (trailing bytes, bad path, oversized length).
+  `[verified]` -- twenty malformed inputs in the transport gate, each answered
+  with `error` and no crash.
+- Drop the link mid-transfer (`disconnect` while a transfer is running).
+  `[contract]`: needs a transfer, so it needs the firmware.
 - Send a transfer `begin` without subscribing to the status characteristic.
+  `[contract]`, same reason.
