@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <cstdint>
 
 #include "FreeRTOS.h"
@@ -84,4 +85,16 @@ inline void vTaskDelete(TaskHandle_t h) {
 }
 inline unsigned int uxTaskGetStackHighWaterMark(TaskHandle_t) { return 2048; }
 inline void vTaskList(char *) {}
-inline void vTaskDelay(int) {}
+// vTaskDelay's argument is in FreeRTOS ticks, and portTICK_PERIOD_MS
+// (FreeRTOS.h) is this shim's one tick-rate definition. Convert through it, do
+// not assume one tick is one millisecond. A no-op here made every firmware
+// retry loop and every yield-every-N-rows call run in zero time.
+inline void vTaskDelay(int ticks) {
+  if (ticks <= 0) {
+    // FreeRTOS treats a zero delay as a yield, not a sleep.
+    std::this_thread::yield();
+    return;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(
+      static_cast<int64_t>(ticks) * portTICK_PERIOD_MS));
+}
