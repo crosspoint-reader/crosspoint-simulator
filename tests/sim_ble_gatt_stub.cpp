@@ -1,9 +1,11 @@
-// A SimBleLink that keeps no socket. See SimBleGattSelfTest.h.
+// A SimBleLink that keeps no socket. See sim_ble_gatt_selftest.h for why this
+// lives in tests/ and must stay there.
 //
-// This file is the self-test's stand-in for A3's transport. It is not part of
-// the shim and must not be linked into the simulator.
+// It is the GATT self-test's stand-in for the real transport, so the model can
+// be driven without a socket. The real transport is exercised separately by
+// tests/sim_ble_gatt_attach_selftest.cpp.
 
-#include "SimBleGattSelfTest.h"
+#include "sim_ble_gatt_selftest.h"
 
 #include <mutex>
 

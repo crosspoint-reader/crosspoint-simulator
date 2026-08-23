@@ -3,16 +3,17 @@
 // contract calls for.
 //
 // Build and run (one line, no continuations):
-//   g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/simble_selftest
+//   g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/sim_ble_gatt_selftest
 //   src/NimBLEDevice.cpp src/SimBleGatt.cpp src/SimBleProtocol.cpp
-//   src/SimBleGattSelfTestStub.cpp src/SimBleGattSelfTest.cpp
-//   /tmp/simble_selftest
+//   tests/sim_ble_gatt_stub.cpp tests/sim_ble_gatt_selftest.cpp
+//   /tmp/sim_ble_gatt_selftest
 //
 // SimBleProtocol.cpp is linked for portFromEnv() only. The transport itself is
-// the stub: no socket is opened.
+// the stub in tests/sim_ble_gatt_stub.cpp: no socket is opened.
 //
-// Not part of the simulator build. It links the stub in
-// SimBleGattSelfTestStub.cpp instead of the real transport.
+// **Never under src/.** See sim_ble_gatt_selftest.h.
+
+#include <unistd.h>
 
 #include <chrono>
 #include <cstdio>
@@ -23,7 +24,7 @@
 
 #include "NimBLEDevice.h"
 #include "SimBleGatt.h"
-#include "SimBleGattSelfTest.h"
+#include "sim_ble_gatt_selftest.h"
 #include "host/ble_gap.h"
 
 namespace {
@@ -162,6 +163,28 @@ int main() {
   check(sawEvent("\"ev\":\"advertising\",\"up\":true"),
         "advertising up event emitted");
   check(advertising->start(), "advertising->start again is a no-op success");
+
+  // --- attach replays the current state to a late client -----------------
+  // The transport synthesizes this op when a client connects. `stack up` was
+  // emitted by init(), before any listener existed, so a client can never have
+  // received it: the replay is the only way it learns.
+  simble_selftest::clearEmitted();
+  feedAndSettle(op("attach"));
+  {
+    const std::vector<std::string> replay = simble_selftest::emitted();
+    const bool order =
+        replay.size() == 3 &&
+        replay[0].find("\"ev\":\"stack\",\"state\":\"up\"") != std::string::npos &&
+        replay[1].find("\"ev\":\"gatt\"") != std::string::npos &&
+        replay[2].find("\"ev\":\"advertising\",\"up\":true") !=
+            std::string::npos;
+    check(order, "attach replays stack up, then gatt, then advertising");
+    if (!order) {
+      for (const std::string &line : replay) printf("      got: %s\n", line.c_str());
+    }
+    check(g_counters.onConnect == 0,
+          "attach fires no firmware callback of its own");
+  }
 
   // --- 5: a write with no connection is refused, no callback -------------
   simble_selftest::clearEmitted();
@@ -307,5 +330,10 @@ int main() {
         "deinit emits stack down");
 
   printf("\n%d checks, %d failures\n", g_checks, g_failures);
-  return g_failures == 0 ? 0 : 1;
+  // Flush, then leave without running global destructors. A test binary must
+  // report its verdict even when something else in the link is unhappy at
+  // teardown; a hijacked main() that returned into a foreign destructor is what
+  // taught that (see the header of this file).
+  fflush(stdout);
+  _exit(g_failures == 0 ? 0 : 1);
 }
