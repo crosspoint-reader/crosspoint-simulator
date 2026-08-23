@@ -11,7 +11,8 @@ compiled.
 Status: **seed**. This file was created before the implementation, so it states
 the frozen contract, not measured behaviour. Every claim below is marked
 `[contract]` (what the shim must do) or `[verified]` (observed running, with
-the command that showed it). Nothing is `[verified]` yet.
+the command that showed it). The transport half is `[verified]`: see
+"Transport specifics" below. The GATT half is still `[contract]`.
 
 ## What it cannot answer
 
@@ -81,6 +82,184 @@ dance exists. A timeout test turns it off.
 - A subscription belongs to a connection. On `disconnect` the shim clears
   subscription state itself, because NimBLE fires no unsubscribe callback.
 - Advertising stops on connect and is not restarted by the shim.
+
+## Transport specifics `[verified]`
+
+The socket, the reader thread and the line framing live in
+`src/SimBleLink.cpp`. The codec lives in `src/SimBleProtocol.h` and
+`src/SimBleProtocol.cpp`. Neither touches GATT or firmware code.
+
+Everything in this section was demonstrated by
+
+```
+python3 tests/sim_ble_link_selftest.py        # 65 checks, all pass
+SELFTEST_SANITIZE=1 python3 tests/sim_ble_link_selftest.py       # ASan + UBSan
+SELFTEST_SANITIZE=thread python3 tests/sim_ble_link_selftest.py  # TSan
+```
+
+The gate builds `tests/sim_ble_link_selftest.cpp` against `SimBleLink.cpp` and
+`SimBleProtocol.cpp` and nothing else: no simulator, no firmware, no GATT
+model. So the transport is provable before the GATT half exists. The driver
+sends every client op twice, once with explicit fields and once with all
+fields absent, and the harness prints the decoded `SimBleEvent` for each. All
+three runs come back clean. ThreadSanitizer dies on this kernel unless ASLR is
+off, so the driver wraps the binary in `setarch -R`
+(`tests/sim_ble_link_selftest.py:75-79`).
+
+### Loopback only
+
+The listener binds `INADDR_LOOPBACK` (`src/SimBleLink.cpp:336`), never
+`INADDR_ANY`. This is a hazard decision, not a style one: the process on the
+other end of this socket runs firmware command handling, so a LAN-reachable
+port would hand the device model to anything on the network. The gate connects
+to the host's own routable address and requires a refusal.
+
+Backlog is 4 (`src/SimBleLink.cpp:339`). A second client has to complete its
+connect before it can be told to go away.
+
+### stop() wakes a blocked reader with a self-pipe
+
+The reader thread never blocks in `accept()` or `recv()`. It sits in `poll()`
+over three fds: the listener, the connected client, and the read end of a
+self-pipe (`src/SimBleLink.cpp:250-299`). `accept()` and `recv()` run only on
+a fd `poll()` already reported readable, and the `recv()` uses `MSG_DONTWAIT`
+(`src/SimBleLink.cpp:286`).
+
+`stop()` sets a stop flag, writes one byte into the self-pipe
+(`src/SimBleLink.cpp:89-95`), shuts a connected client down, then joins
+(`src/SimBleLink.cpp:368-378`). Measured: 0 to 2 ms with a client connected.
+
+Why the self-pipe and not the alternatives:
+
+- `shutdown()` on a **listening** socket is not portable. On Linux it does not
+  reliably wake an `accept()`.
+- Closing a fd another thread is polling is a use after free waiting to
+  happen: the number can be handed to a new socket between the close and the
+  wake.
+- A poll timeout loop would work but would either burn wakeups or add latency
+  to `stop()`. The pipe costs two fds and is exact.
+
+`stop()` is safe when the link was never started and safe twice in a row
+(`src/SimBleLink.cpp:360-366`). `start(0)` returns false and leaves the
+feature off.
+
+### The reader owns the client fd
+
+Only the reader thread closes the client socket. `emit()` writes under the
+mutex and, on a write failure, calls `shutdown()` rather than `close()`
+(`src/SimBleLink.cpp:427-431`). That makes the reader's `poll()` return and
+keeps the teardown in one place.
+
+The client socket carries `SO_SNDTIMEO` of 5 s (`src/SimBleLink.cpp:47`,
+`src/SimBleLink.cpp:236-241`). A client that stops reading cannot hang a
+firmware thread inside `emit()` forever: the send fails, the link is dropped,
+the simulator carries on.
+
+### emit() is one line, whole, under one mutex
+
+`emit()` frames and writes the whole line while holding the state mutex
+(`src/SimBleLink.cpp:410-433`), so two threads cannot interleave halves of two
+lines. Verified: two threads emitting 300 lines each, 600 lines received, every
+one intact, each thread's lines in its own order, the two threads interleaved
+at line granularity.
+
+An embedded `\n` or `\r` in the caller's JSON would inject a second frame, so
+`emit()` replaces both with a space (`src/SimBleLink.cpp:414-417`). Callers do
+not have to be careful.
+
+### A lost socket synthesizes a disconnect
+
+A client that drops its socket is a link that went away. The reader delivers
+`op="disconnect"`, `a=0x13` to the sink so the GATT model does not keep
+believing a central is connected (`src/SimBleLink.cpp:131-159`). The teardown
+inside `stop()` does **not** synthesize one: `stop()` is not a link event and
+the model is being destroyed anyway.
+
+### Line framing and the 65536 byte cap
+
+Bytes are buffered, split on `\n`, and a trailing `\r` is stripped, so
+`\r\n` works (`src/SimBleLink.cpp:186-214`). A blank line is neither an op
+nor an error. A line split across `recv` boundaries is reassembled. Several
+lines in one `recv` are all handled.
+
+One line is capped at **65536 bytes**, newline excluded
+(`src/SimBleProtocol.h:29`). The cap is inclusive: a line of exactly 65536
+bytes is accepted. Past it the buffer is thrown away, one `error` event goes
+out, and every byte up to the next newline is discarded. Framing then
+recovers: the next line parses normally. The cap is what bounds how much a
+hostile or wedged client can make the reader buffer.
+
+Three smaller caps stop nonsense earlier: 32 keys per object
+(`src/SimBleProtocol.h:36`), 64 characters per UUID
+(`src/SimBleProtocol.h:33`), and 8 levels of nesting when skipping a value
+that a client op should not have had (`src/SimBleProtocol.h:40`).
+
+### A malformed line answers with `error` and is dropped
+
+The parse is hand rolled: no JSON library is added for ten flat shapes. On any
+failure the line produces one `error` event with a short reason and no sink
+call (`src/SimBleLink.cpp:161-181`, `src/SimBleProtocol.cpp:584`). The link
+stays up and the next line parses normally.
+
+Twenty malformed inputs are in the gate and each one answers with `error`, not
+a crash: not JSON at all, a truncated object, an unterminated string, no `op`
+field, `op` not a string, an unknown op, a wrong field type, a value out of
+range, `1e300`, odd-length hex, non-hex hex, a missing `uuid`, a raw NUL inside
+a string, an escaped `\u0000`, twenty levels of nesting, trailing bytes after
+the object, `{}`, a bare `[`, a bare `}`, and forty keys.
+
+Two decisions worth naming:
+
+- **A raw control byte inside a string is rejected**
+  (`src/SimBleProtocol.cpp:185-189`). That is strict JSON, and it is what keeps
+  a binary blob arriving on the socket from being parsed as half an op.
+- **A NUL is rejected even when escaped** (`src/SimBleProtocol.cpp:128-132`),
+  so every parsed string stays usable as a C string by the consumer.
+
+A wrong type is an error, never a silent fall back to the default: a client
+sending `"mtu": "517"` has a bug worth seeing.
+
+### Defaults and accepted ranges
+
+The op table above names the fields. These are the values the parser applies
+when a field is absent or `null`, and the ranges it accepts
+(`src/SimBleProtocol.cpp:615-667`, ranges at `src/SimBleProtocol.cpp:477-480`).
+
+| field | default | accepted range |
+|---|---|---|
+| `mtu` | 23 | 23 to 517 |
+| `interval` | 24 | 6 to 3200 |
+| `latency` | 0 | 0 to 499 |
+| `timeout` | 400 | 10 to 3200 |
+| `reason` (disconnect) | 0x13 | 0 to 255 |
+| `hex` (write) | empty | even run of hex digits, either case |
+| `response` (write) | true | `true`/`false`, or 0/1 |
+| `value` (subscribe) | 1 (notify) | 0 to 3 |
+| `value` (rssi) | -60 | -128 to 127 |
+| `enabled` (auto_confirm) | true | `true`/`false`, or 0/1 |
+| `delay_ms` (auto_confirm) | 10 | 0 to 60000 |
+
+Out of range is an `error`, not a clamp, because the real stack refuses these
+too. `rssi` is stored as the low byte of the `int8_t`
+(`src/SimBleProtocol.cpp:657`), which is what the header's `a=value (cast to
+int8_t by the consumer)` mapping expects: -60 arrives as `a=196`.
+
+Hex output is always lowercase; hex input accepts either case.
+
+### The second client is refused, then closed
+
+While a client is connected, the next one that connects is accepted, sent one
+`error` line, and closed (`src/SimBleLink.cpp:224-234`). The first client is
+untouched and keeps working. When the first client goes away the slot frees and
+the next connect is served.
+
+### The port
+
+`crosspoint_simulator::ble::portFromEnv()` reads
+`CROSSPOINT_SIM_BLE_PORT` and returns 0 when the variable is absent, empty,
+zero or unparseable (`src/SimBleProtocol.cpp:674-685`). `start(0)` returns
+false, so a bad value is the same as the feature being off, never a crash and
+never a default port nobody asked for.
 
 ## Threading model `[contract]`
 
