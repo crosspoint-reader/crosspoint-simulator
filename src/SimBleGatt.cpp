@@ -76,6 +76,7 @@ bool SimBleGatt::init(const char *deviceName) {
     m_deviceName = deviceName != nullptr ? deviceName : "";
     m_initialized = true;
     m_advertisingUp = false;
+    m_tableBuilt = false;
     clearConnectionLocked();
     m_rssi = 0;
     m_autoConfirm = true;
@@ -132,6 +133,7 @@ void SimBleGatt::deinit(bool clearAll) {
   clearConnectionLocked();
   m_serverCallbacks = nullptr;
   m_initialized = false;
+  m_tableBuilt = false;
   if (!clearAll) return;
 
   // clearAll deletes the table, same as the real API -- which is why the
@@ -239,6 +241,12 @@ SimBleGatt::characteristicValue(NimBLECharacteristic *characteristic) {
 bool SimBleGatt::startServer() {
   std::lock_guard<std::mutex> lock(m_mutex);
   if (!m_initialized) return false;
+  m_tableBuilt = true;
+  emitGattTableLocked();
+  return true;
+}
+
+void SimBleGatt::emitGattTableLocked() const {
   // One `gatt` line per service. The firmware builds one; a second would get
   // its own line rather than being folded into the first.
   for (const NimBLEService *service : m_services) {
@@ -259,7 +267,22 @@ bool SimBleGatt::startServer() {
     line += "]}";
     emitLine(line);
   }
-  return true;
+}
+
+// Answers the transport's synthetic `attach` op. `stack up` is emitted by
+// init(), which is also what starts the listener, so no client can ever be
+// connected in time to receive it -- the event is not racy, it is structurally
+// undeliverable. Same for a `gatt` table built before the client showed up. A
+// real central has no such problem: it scans and sees advertising.
+//
+// So a newly attached client is told what is true right now, in the order it
+// would have heard it: the stack, then the table, then advertising. Nothing is
+// replayed about a live connection, because a client that was not there for the
+// connect is not the central that made it.
+void SimBleGatt::replayStateLocked() const {
+  emitLine("{\"ev\":\"stack\",\"state\":\"up\"}");
+  if (m_tableBuilt) emitGattTableLocked();
+  emitAdvertisingLocked();
 }
 
 // --- a live link ------------------------------------------------------------
@@ -425,6 +448,9 @@ void SimBleGatt::onReaderEvent(const SimBleEvent &event) {
     out.kind = HostEvent::Kind::Rssi;
   } else if (event.op == "auto_confirm") {
     out.kind = HostEvent::Kind::AutoConfirm;
+  } else if (event.op == "attach") {
+    // Synthesized by the transport on accept, never sent by a client.
+    out.kind = HostEvent::Kind::Attach;
   } else {
     out.kind = HostEvent::Kind::Unknown;
   }
@@ -649,6 +675,9 @@ void SimBleGatt::dispatch(HostEvent &event) {
       m_autoConfirmDelayMs =
           event.a != 0 ? event.a : kDefaultAutoConfirmDelayMs;
       return;
+    case HostEvent::Kind::Attach:
+      replayStateLocked();
+      return;
     case HostEvent::Kind::Unknown:
       emitErrorLocked("unknown op " + event.op);
       return;
@@ -692,6 +721,7 @@ void SimBleGatt::dispatch(HostEvent &event) {
     break;
   case HostEvent::Kind::Rssi:
   case HostEvent::Kind::AutoConfirm:
+  case HostEvent::Kind::Attach:
   case HostEvent::Kind::Unknown:
     break;
   }

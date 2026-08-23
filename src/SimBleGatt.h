@@ -112,6 +112,7 @@ class SimBleGatt {
       ConnParams,
       Rssi,
       AutoConfirm,
+      Attach,
       Unknown
     };
     Kind kind = Kind::Unknown;
@@ -142,6 +143,8 @@ class SimBleGatt {
   NimBLEConnInfo connInfoLocked() const;
   void clearConnectionLocked();
   void emitAdvertisingLocked() const;
+  void emitGattTableLocked() const;
+  void replayStateLocked() const;
   void emitErrorLocked(const std::string &message) const;
 
   mutable std::mutex m_mutex;
@@ -162,6 +165,9 @@ class SimBleGatt {
   std::vector<NimBLECharacteristic *> m_characteristics;
   NimBLEServerCallbacks *m_serverCallbacks = nullptr;
   bool m_advertisingUp = false;
+  // True once the firmware called NimBLEServer::start(). A client that attaches
+  // later gets the table replayed; before that there is no table to describe.
+  bool m_tableBuilt = false;
 
   // Connection state. Owned by the client: it sets the MTU and the timing.
   bool m_connected = false;

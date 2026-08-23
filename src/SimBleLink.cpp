@@ -241,9 +241,29 @@ void acceptClient(LinkState &s) {
 
   s.rx.clear();
   s.skippingLongLine = false;
+  void (*sink)(void *, const SimBleEvent &) = nullptr;
+  void *ctx = nullptr;
   {
     std::lock_guard<std::mutex> lock(s.mtx);
     s.clientFd = fd;
+    sink = s.sink;
+    ctx = s.sinkCtx;
+  }
+
+  // Synthesize an `attach` op, the mirror of dropClient's synthetic
+  // `disconnect`. A client that connects after the firmware built its GATT
+  // table has no other way to learn the current state: `stack up` was emitted
+  // before any listener existed, so it went nowhere, and a real central would
+  // have learned all this by scanning. The GATT model answers this op by
+  // replaying what is currently true. **Not a real BLE event.**
+  //
+  // Delivered outside the lock and after clientFd is set: the model's reply
+  // goes back through emit(), which takes the same mutex and needs a connected
+  // client to write to.
+  if (sink != nullptr) {
+    SimBleEvent ev;
+    ev.op = "attach";
+    sink(ctx, ev);
   }
 }
 

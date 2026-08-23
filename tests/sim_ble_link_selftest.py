@@ -121,6 +121,25 @@ def connect():
     return sock
 
 
+def attach_baseline(harness, before):
+    """Waits out the synthetic `attach` op the accept path delivers, and returns
+    the sink-line count to measure the next op against.
+
+    Not a race in the transport: the op is delivered on accept, which happens
+    after connect() has already returned. Snapshotting the baseline without
+    waiting for it makes the next op's expected SINK line land one slot late.
+    Fails loudly if the op never arrives, so this stays an assertion rather than
+    a sleep."""
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        lines = harness.sink_lines()
+        if len(lines) > before and parse_sink(lines[before]).get("op") == "attach":
+            return len(lines)
+        time.sleep(0.005)
+    check(False, "accept delivers a synthetic attach op")
+    return len(harness.sink_lines())
+
+
 class LineReader:
     def __init__(self, sock):
         self.sock = sock
@@ -277,8 +296,10 @@ def main():
         else:
             print("  skip no routable address on this host")
 
+        base = len(harness.sink_lines())
         sock = connect()
         reader = LineReader(sock)
+        attach_baseline(harness, base)
 
         print("\n== every op, explicit and defaulted ==")
         for label, payload, expected in OPS:
@@ -392,9 +413,10 @@ def main():
             time.sleep(0.01)
         check(got is not None and got.get("op") == "disconnect" and got.get("a") == "19",
               f"a lost socket synthesizes disconnect reason 0x13 -> {got}", str(got))
+        base = len(harness.sink_lines())
         sock = connect()
         reader = LineReader(sock)
-        before = len(harness.sink_lines())
+        before = attach_baseline(harness, base)
         sock.sendall(b'{"op":"mtu","mtu":300}\n')
         time.sleep(0.3)
         after = harness.sink_lines()
