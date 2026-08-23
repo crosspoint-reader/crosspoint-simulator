@@ -23,11 +23,18 @@
 // expression like `WRITE | NOTIFY | INDICATE` is an integer. Values are
 // NimBLE's own, so a props number in an emitted `gatt` event means the same
 // thing here as in a NimBLE header.
+//
+// Read off the pinned NimBLE host, not from memory -- `BLE_GATT_CHR_F_*` in
+// nimble/host/include/host/ble_gatt.h:130-145. Only the four the firmware uses
+// are declared. In particular 0x0001 is **broadcast**, not read: read is
+// 0x0002 (ble_gatt.h:133), and standard GATT agrees, so this is not a NimBLE
+// quirk. A shim carrying broadcast's bit under the name READ would tell a
+// client "broadcast" wherever the device meant "read".
 namespace NIMBLE_PROPERTY {
-static constexpr uint32_t READ = 0x0001;
-static constexpr uint32_t WRITE = 0x0008;
-static constexpr uint32_t NOTIFY = 0x0010;
-static constexpr uint32_t INDICATE = 0x0020;
+static constexpr uint32_t READ = 0x0002;      // ble_gatt.h:133
+static constexpr uint32_t WRITE = 0x0008;     // ble_gatt.h:139
+static constexpr uint32_t NOTIFY = 0x0010;    // ble_gatt.h:142
+static constexpr uint32_t INDICATE = 0x0020;  // ble_gatt.h:145
 }  // namespace NIMBLE_PROPERTY
 
 class NimBLECharacteristic;

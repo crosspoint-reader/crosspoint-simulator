@@ -143,9 +143,16 @@ carries each characteristic's NimBLE property bitmask as a JSON number, not a
 list and not a string: `{"uuid":"...0002","props":8}`
 (`src/SimBleGatt.cpp:264`, `line += std::to_string(characteristic->m_properties)`).
 Observed values and their meaning, so a client can decode without guessing:
-`1` read, `8` write, `16` notify, `32` indicate, and `56` (`0x38`) the
+`2` read, `8` write, `16` notify, `32` indicate, and `56` (`0x38`) the
 write|notify|indicate combination the command characteristic carries
-(`src/NimBLECharacteristic.h:26-31`). This is written down because it was the
+(`src/NimBLECharacteristic.h:32-37`). Those are NimBLE's own
+`BLE_GATT_CHR_F_*` values, read off the pinned host header at
+`nimble/host/include/host/ble_gatt.h:130-145` -- check them there rather than
+trusting this table. **`1` is broadcast, not read**, and it briefly appeared
+here as read: the shim had the wrong constant, no firmware characteristic sets
+READ so nothing observable rode on it, and no test could have caught it. It
+would have surfaced the first time a characteristic became readable and a
+client decoded the bitmask back into names. This is written down because it was the
 one field whose type nobody pinned: a laptop client built against the same
 prose assumed a list, called `list()` on the number, and every tool using it
 died inside `connect()` with `TypeError: 'int' object is not iterable` -- before
