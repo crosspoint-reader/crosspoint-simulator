@@ -12,7 +12,8 @@ Status: **seed**. This file was created before the implementation, so it states
 the frozen contract, not measured behaviour. Every claim below is marked
 `[contract]` (what the shim must do) or `[verified]` (observed running, with
 the command that showed it). The transport half is `[verified]`: see
-"Transport specifics" below. The GATT half is still `[contract]`.
+"Transport specifics" below. The GATT half is `[verified]` too: see "GATT model
+specifics" below.
 
 ## What it cannot answer
 
@@ -26,6 +27,20 @@ Write this down first, because it is the part that gets forgotten.
   whatever coexistence rules the target platform has.
 - **The peer's real GATT stack.** A python client agreeing with the firmware
   proves the firmware self-consistent, not interoperable with a phone's stack.
+- **A busy indication slot.** `indicate()` returns false only for a refusal --
+  nothing connected, nobody subscribed, wrong properties, empty payload. It
+  never returns false for "the slot is full", because a full slot is clobbered
+  and the call still succeeds (`src/SimBleGatt.cpp:319`). So the firmware's
+  park-and-flush path for transfer status, which exists because the command
+  channel can be holding the connection's one slot
+  (`BlePositionServer.cpp:956-958`), is reachable here only through the
+  unsubscribed refusal. No retry-on-false loop is exercised by this shim.
+- **Two FreeRTOS symbols the simulator still lacks.**
+  `BlePositionServer.cpp` uses `pdMS_TO_TICKS` and `xSemaphoreCreateBinary`,
+  and `src/freertos/` defines neither, so the firmware BLE file does not build
+  in-tree yet even though every NimBLE symbol it wants now exists. Outside this
+  shim's own files. `[verified]` by the firmware syntax check below, which had
+  to supply both.
 
 ## Turning it on
 
@@ -75,13 +90,28 @@ dance exists. A timeout test turns it off.
 | `connparams_request` | `min`, `max`, `latency`, `timeout` | firmware called `updateConnParams` |
 | `error` | `msg` | a client op the real stack would refuse |
 
-### Rules the shim enforces, because the real stack does `[contract]`
+### Rules the shim enforces, because the real stack does
 
 - `write` or `subscribe` with no central connected: `error`, no callback.
+  `[verified]` for `write` -- "write with no connection fires no callback" and
+  "write with no connection emits error" (`src/SimBleGatt.cpp:547`).
+  `subscribe` takes the same branch (`src/SimBleGatt.cpp:559`) and is
+  `[contract]`.
 - `indicate()` with nobody subscribed to that characteristic: returns false.
+  `[verified]` -- "indicate with nobody subscribed returns false" and the same
+  for a second characteristic (`src/SimBleGatt.cpp:304`).
 - A subscription belongs to a connection. On `disconnect` the shim clears
   subscription state itself, because NimBLE fires no unsubscribe callback.
-- Advertising stops on connect and is not restarted by the shim.
+  `[verified]` -- "disconnect fires no unsubscribe callback, same as NimBLE"
+  and "the subscription is gone after a disconnect"
+  (`src/SimBleGatt.cpp:726`).
+- Advertising stops on connect and is not restarted by the shim. `[verified]`
+  -- "advertising goes down on connect" (`src/SimBleGatt.cpp:536`). Only the
+  firmware's own `onDisconnect` brings it back.
+- Two more the real stack makes, added while building it: a `write` to a
+  characteristic without the WRITE property is an `error` (`[verified]`,
+  "write to an indicate-only characteristic emits error"), and a client op
+  arriving while the stack is down is an `error` with no callback.
 
 ## Transport specifics `[verified]`
 
@@ -261,20 +291,143 @@ zero or unparseable (`src/SimBleProtocol.cpp:674-685`). `start(0)` returns
 false, so a bad value is the same as the feature being off, never a crash and
 never a default port nobody asked for.
 
-## Threading model `[contract]`
+## GATT model specifics `[verified]`
+
+The API the firmware compiles against lives in `src/NimBLEDevice.h`,
+`src/NimBLECharacteristic.h`, `src/NimBLEConnInfo.h`, `src/NimBLEAttValue.h`
+and `src/host/ble_gap.h`. Every method in them is a forwarder
+(`src/NimBLEDevice.cpp`). The model, the host thread, the single indication
+slot and the outgoing JSON are all in `src/SimBleGatt.h` and
+`src/SimBleGatt.cpp`. No NimBLE source is compiled and no JSON library is
+linked: seven event shapes are hand rolled (`src/SimBleGatt.cpp:11-59`).
+
+Everything in this section was demonstrated by
+
+```
+g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/simble_selftest \
+    src/NimBLEDevice.cpp src/SimBleGatt.cpp src/SimBleProtocol.cpp \
+    src/SimBleGattSelfTestStub.cpp src/SimBleGattSelfTest.cpp
+/tmp/simble_selftest                       # 40 checks, 0 failures
+```
+
+`src/SimBleGattSelfTest.cpp` builds the same table the firmware builds, in the
+same order, then drives it. `src/SimBleGattSelfTestStub.cpp` is a `SimBleLink`
+that opens no socket: it hands decoded ops to the sink and captures the emitted
+lines, so the GATT half is provable without the transport. `SimBleProtocol.cpp`
+is linked for `portFromEnv()` alone. Rebuild with `-fsanitize=thread` and run
+under `setarch $(uname -m) -R` for the race check.
+
+Both halves also link and run together, real transport and no stub:
+
+```
+g++ -std=c++17 -Wall -Wextra -pthread -Isrc -o /tmp/simble_integration \
+    src/NimBLEDevice.cpp src/SimBleGatt.cpp src/SimBleLink.cpp \
+    src/SimBleProtocol.cpp <a main that builds a table and tears it down>
+```
+
+### The firmware translation unit compiles against it
+
+This is what proves the surface complete rather than plausible:
+
+```
+g++ -std=c++17 -fsyntax-only -DFREEINK_CAP_BLE_PERIPHERAL=1 -Isrc \
+    -I<firmware>/lib/BlePositionServer/include -I<firmware>/lib/Logging \
+    -include Arduino.h -include freertos/FreeRTOS.h \
+    -include freertos/task.h -include freertos/semphr.h \
+    -include <a header defining pdMS_TO_TICKS and xSemaphoreCreateBinary> \
+    <firmware>/lib/BlePositionServer/src/BlePositionServer.cpp
+```
+
+Clean. Two NimBLE calls the seed contract did not list turned up doing it, and
+both are real:
+
+- **`NimBLEServer::start()`** (`BlePositionServer.cpp:314`). The firmware calls
+  it, not the deprecated `NimBLEService::start()`, and builds the GATT table
+  with it. It is what emits the `gatt` event (`src/SimBleGatt.cpp:239-262`).
+  `NimBLEService::start()` exists anyway and returns true.
+- **`NimBLEServer::setCallbacks()` takes a second argument**
+  (`BlePositionServer.cpp:275`, `deleteCallbacks=false`). The shim ignores it
+  and never owns the pointer; the firmware registers a static object, so
+  nothing leaks either way (`src/NimBLEDevice.cpp:37`).
+
+Nothing else was missing.
+
+### Decisions worth naming
+
+- **The indication slot is per connection, not per characteristic**
+  (`src/SimBleGatt.cpp:319`). That is what the firmware assumes: its transfer
+  status channel parks a line precisely because the command channel can be
+  holding the one slot (`BlePositionServer.cpp:956-958`).
+- **A clobbered burst yields one confirm, not one per call.** The shim's
+  auto-confirm carries the sequence number of the payload it was created for,
+  and a confirm for a payload that has since been clobbered is dropped
+  silently (`src/SimBleGatt.cpp:599`). Two `indicate()` calls with one confirm
+  between them is the hardware behaviour: 18 calls, two payloads seen.
+- **A client `confirm` op confirms whatever is pending**, regardless of which
+  payload the client thought it was confirming. It errors when nothing is
+  pending, or when its `uuid` names a different characteristic than the
+  pending one.
+- **`advertising` is also emitted with `up:false` when a central connects**
+  (`src/SimBleGatt.cpp:536`). The event table above lists start/stop; this is
+  the third case, and without it a client's view of advertising would be wrong
+  for the whole connection.
+- **`start()` while already advertising is a no-op success and emits nothing**
+  (`src/SimBleGatt.cpp:369`). Real NimBLE behaves that way
+  (`NimBLEAdvertising.cpp:194-197`), which is why the firmware's slow-interval
+  switch calls `stop()` first. A shim that emitted a fresh event here would
+  hide that.
+- **0/0 interval bounds are reported as the fast pair.** The firmware sets
+  0/0 to mean "let the host pick" (`BlePositionServer.cpp:216-218`), and the
+  host picks `BLE_GAP_ADV_FAST_INTERVAL1`. The `advertising` event reports what
+  the radio would use, not the sentinel (`src/SimBleGatt.cpp:743`).
+- **`deinit(clearAll)` deletes the table when `clearAll` is true**, same as the
+  real API, which is why the firmware nulls its own characteristic pointers
+  first (`BlePositionServer.cpp:381-385`). With `false` the objects survive.
+- **`deinit()` called from the host thread is refused with an `error`**
+  (`src/SimBleGatt.cpp:111`). It would be a self-join. Real NimBLE deinit from
+  the host task is equally broken; the firmware never does it, and a clear line
+  beats an abort.
+- **The advertising name has no default in the shim.** The firmware passes it
+  in, and the shim never invents one, so no device name is baked in here.
+
+### `waitIdle()` is the one addition that is not NimBLE
+
+`SimBleGatt::waitIdle()` blocks until the host thread's queue is empty and it
+is not mid-dispatch, including events not yet due
+(`src/SimBleGatt.cpp:492`). It exists so a test can assert that a callback did
+**not** fire without racing the host thread. The firmware never calls it, and a
+client cannot reach it.
+
+## Threading model
 
 - `NimBLEDevice::init()` starts **two** threads: a socket reader and a **host
-  thread**. `deinit()` joins both.
+  thread**. `deinit()` joins both. `[verified]` -- the host thread is started
+  in `init()` (`src/SimBleGatt.cpp:85`) and joined in `deinit()`
+  (`src/SimBleGatt.cpp:128`); the reader is `SimBleLink`'s.
 - The reader parses lines and pushes events onto the host thread's queue. It
-  never calls firmware code.
+  never calls firmware code. `[verified]` by reading
+  `SimBleGatt::onReaderEvent` (`src/SimBleGatt.cpp:395`): it maps an op name to
+  a queue entry and returns. Even a state-only op (`rssi`, `auto_confirm`) is
+  queued rather than applied there, so ordering is whatever the client sent.
 - The host thread dispatches every firmware callback. It is the simulator's
-  stand-in for the NimBLE host task.
+  stand-in for the NimBLE host task. `[verified]` -- "callback ran on a
+  different thread than the caller" compares `std::this_thread::get_id()`
+  inside the callback against the thread that fed the event.
 - `indicate()` is called from the activity thread. It fills a single pending
   slot, emits `indicate` (plus `clobber` if it overwrote one), and returns. The
   confirm arrives later as an event and is dispatched on the host thread.
+  `[verified]` -- "indicate returned before any confirm arrived" and "the
+  delayed confirm arrived later".
 - The `portENTER_CRITICAL` shim is a real `std::mutex`
   (`src/freertos/FreeRTOS.h:27-29`), so existing critical sections keep working
   across these threads. `[verified]` by reading that file.
+- One mutex guards the whole GATT model, including the fields inside the
+  `NimBLE*` wrapper objects, and it is **dropped before every firmware
+  callback** (`src/SimBleGatt.cpp:480`). It has to be: the firmware's
+  `onDisconnect` calls `advertising->start()`, which comes straight back in.
+  `[verified]` -- the self-test runs clean under ThreadSanitizer
+  (`-fsanitize=thread`, under `setarch -R` because TSan needs ASLR off on this
+  kernel).
 
 `SimBleLink.h` is the frozen seam between the transport and the GATT model, and
 its header comment restates this split.
@@ -282,21 +435,31 @@ its header comment restates this split.
 ## Fidelity: four things that must be right, or the simulator lies
 
 A shim that gets these wrong hides exactly the bugs a real device already
-showed. All four are `[contract]` until a run demonstrates them.
+showed. All four are `[verified]`, each by the named self-test check.
 
 1. **Callbacks run on the host thread**, never inline on the caller's thread.
    Inline dispatch makes a whole class of deadlock impossible to reproduce.
+   `[verified]` -- "callback ran on a different thread than the caller".
 2. **Indication confirm is out of band, and withholdable.** `indicate()`
    returns true when the single pending slot accepted the payload, not when the
    peer got it. The confirm arrives later through `onStatus`. A shim that
    confirms synchronously never executes the firmware's timeout path.
+   `[verified]` twice: "indicate returned before any confirm arrived" (with
+   `auto_confirm` on and a 150 ms delay, `onStatus` had not fired when
+   `indicate()` returned) and "a withheld confirm never fires onStatus" (with
+   `auto_confirm` off, it never fires at all). Even the shim's own auto-confirm
+   goes through the host thread's queue with a delay
+   (`src/SimBleGatt.cpp:356`), so it cannot short-circuit.
 3. **A second `indicate()` before a confirm clobbers the first.** Real and
    measured on hardware: back-to-back calls all returned true, the peer saw the
    first and the last. The shim must reproduce the clobber, not queue politely.
-   The `clobber` event is how that stays visible.
+   The `clobber` event is how that stays visible. `[verified]` -- "a second
+   indicate before a confirm still returns true", "the second indicate emitted
+   clobber" and "clobber names the dropped payload (line-A)".
 4. **The client sets the MTU.** MTU drives the firmware's payload arithmetic
    and chunk counts, so a wrong default tests different arithmetic than a
    device runs. 23 is the pessimistic default; 517 is the fast path.
+   `[verified]` -- "MTU defaults to 23 when the client says nothing".
 
 ## Fault injection
 
