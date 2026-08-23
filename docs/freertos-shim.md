@@ -4,7 +4,7 @@ The simulator replaces the FreeRTOS API with host shims: `src/freertos/FreeRTOS.
 `src/freertos/task.h`, `src/freertos/semphr.h`. A task is a `std::thread`
 (`src/freertos/task.h:26`), a mutex is a `std::recursive_mutex`
 (`src/freertos/semphr.h:21`), a task notification is a condvar
-(`src/freertos/FreeRTOS.h:34`).
+(`src/freertos/FreeRTOS.h:47`).
 
 Two primitives were missing rather than simplified. This doc says what they
 were, what replaced them, and what the change cost the existing timing.
@@ -31,6 +31,18 @@ never have returned `pdFALSE`.
 `inline void vTaskDelay(int) {}` -- an empty body, so every delay took zero
 time. A firmware retry loop of 40 iterations x 25 ms ran instantly, and every
 `yield every N rows` helper yielded nothing.
+
+## Gap 3: no `pdMS_TO_TICKS`
+
+Also absent, and not merely unused: the firmware passes every one of its
+millisecond timeouts through it. Four call sites, all in
+`lib/BlePositionServer/src/BlePositionServer.cpp` -- `:249`
+`vTaskDelay(pdMS_TO_TICKS(20))`, `:404` `vTaskDelay(pdMS_TO_TICKS(50))`, `:629`
+`xSemaphoreTake(sem, pdMS_TO_TICKS(kConfirmTimeoutMs))` with
+`kConfirmTimeoutMs = 3000` (`:612`), and `:653`
+`vTaskDelay(pdMS_TO_TICKS(kRetryDelayMs))` with `kRetryDelayMs = 25` (`:608`).
+Without the macro that file does not compile against the shim at all, whatever
+the semaphore does.
 
 ## What was added
 
@@ -79,14 +91,56 @@ destructor (`src/freertos/semphr.h:44-46`).
 becomes a `std::this_thread::sleep_for`. Zero or negative yields instead of
 sleeping, which is what FreeRTOS does with a zero delay.
 
+**`pdMS_TO_TICKS`** (`src/freertos/FreeRTOS.h:13-23`) lives in `FreeRTOS.h`
+because that is where real FreeRTOS reaches it from -- it is defined in
+`projdefs.h`, which `FreeRTOS.h` includes. The shim's expression is
+
+```
+#define pdMS_TO_TICKS(xTimeInMs) \
+  ((uint32_t)((uint32_t)(xTimeInMs) / (uint32_t)portTICK_PERIOD_MS))
+```
+
+which is FreeRTOS's own expression rewritten through the one macro this shim
+has, not an invented one. In the pinned ESP-IDF (5.5.2.260206, on disk):
+
+- `components/freertos/FreeRTOS-Kernel/include/freertos/projdefs.h:46` defines
+  it as `((TickType_t)(xTimeInMs) * configTICK_RATE_HZ) / 1000U`, integer
+  division, so it rounds **down** and a sub-tick delay yields 0 ticks.
+- `components/freertos/FreeRTOS-Kernel/portable/riscv/include/freertos/portmacro.h:126`
+  defines `portTICK_PERIOD_MS` as `1000 / configTICK_RATE_HZ`.
+
+Substituting the second into the first gives `xTimeInMs / portTICK_PERIOD_MS`.
+Same rounding, and strictly safer: FreeRTOS multiplies before dividing and can
+overflow a 32-bit tick type, a divide cannot. At `portTICK_PERIOD_MS == 1` it is
+the identity, so `pdMS_TO_TICKS(n) == n`.
+
+The reduction is exact whenever `configTICK_RATE_HZ` divides 1000 evenly, which
+every rate that yields a whole-millisecond `portTICK_PERIOD_MS` does. Checked by
+running both expressions against each other over 10 tick rates x 14 millisecond
+values: 140 pairs, 0 mismatches. A rate that does not divide 1000 evenly does
+differ (at 333 Hz, `pdMS_TO_TICKS(3)` is 0 in FreeRTOS and 1 here), but such a
+rate cannot be expressed by `portTICK_PERIOD_MS` in the first place, so the shim
+cannot reach that case.
+
+**Nothing else was added.** Sweeping every FreeRTOS symbol the firmware
+references against the shim turned up four more absentees, and none of them is a
+gap the build has:
+
+- `xSemaphoreCreateRecursiveMutex`, `xSemaphoreTakeRecursive`,
+  `xSemaphoreGiveRecursive` -- used only in the firmware's `lib/hal/HalStorage.cpp`,
+  and `hal` is in the simulator env's `lib_ignore`. The simulator ships its own
+  `src/HalStorage.cpp`, which uses none of them.
+- `vPortEnterCritical`, `xTaskPriorityDisinherit` -- appear in firmware comments
+  only, never called.
+
 ## Tick rate
 
 One tick is one millisecond. Basis: `portTICK_PERIOD_MS` is defined as `1` and
-is the only tick-rate definition in the shim (`src/freertos/FreeRTOS.h:10`).
-There is no `configTICK_RATE_HZ` and no `pdMS_TO_TICKS` here. Both new
-conversions multiply by `portTICK_PERIOD_MS` rather than hardcoding 1
-(`src/freertos/semphr.h:58-59`, `src/freertos/task.h:98-99`), so redefining
-that macro moves both.
+is the only tick-rate definition in the shim (`src/freertos/FreeRTOS.h:11`).
+There is no `configTICK_RATE_HZ` here. All three conversions go through
+`portTICK_PERIOD_MS` rather than hardcoding 1 (`src/freertos/FreeRTOS.h:22-23`,
+`src/freertos/semphr.h:58-59`, `src/freertos/task.h:98-99`), so redefining that
+macro moves all three.
 
 This matches the firmware's own target config, which sets
 `CONFIG_FREERTOS_HZ=1000`, so a tick is 1 ms on device too.
@@ -156,6 +210,30 @@ headers instead. Verified by running, 2026-08-23:
 - the token is consumed: the next zero-tick take fails again
 - a second give on a full semaphore returns `pdFALSE`
 - `vTaskDelay(200)` sleeps 200 ms, `vTaskDelay(0)` returns immediately
+
+`pdMS_TO_TICKS` was checked the same way, including the firmware's four call
+sites verbatim. All 13 assertions passed, and the two `static_assert`s compiled,
+which is what proves the macro is usable in a constant expression like the real
+one:
+
+```
+pdMS_TO_TICKS(0)                  = 0            want 0            ok
+pdMS_TO_TICKS(1)                  = 1            want 1            ok
+pdMS_TO_TICKS(25)                 = 25           want 25           ok
+pdMS_TO_TICKS(3000)               = 3000         want 3000         ok
+pdMS_TO_TICKS(4294967295u)        = 4294967295   want 4294967295   ok   (no overflow)
+pdMS_TO_TICKS(10 + 15)            = 25           want 25           ok   (argument parenthesised)
+pdMS_TO_TICKS(3000) / 2           = 1500         want 1500         ok   (result parenthesised)
+pdMS_TO_TICKS(20)                 = 20           want 20           ok   (BlePositionServer.cpp:249)
+pdMS_TO_TICKS(50)                 = 50           want 50           ok   (BlePositionServer.cpp:404)
+pdMS_TO_TICKS(kConfirmTimeoutMs)  = 3000         want 3000         ok   (BlePositionServer.cpp:629)
+pdMS_TO_TICKS(kRetryDelayMs)      = 25           want 25           ok   (BlePositionServer.cpp:653)
+xSemaphoreTake(sem, pdMS_TO_TICKS(3000)) != pdTRUE -> 1 after 3000 ms   ok
+vTaskDelay(pdMS_TO_TICKS(25)) slept 25 ms                              ok
+```
+
+The last two run the call sites' whole statements, not just the macro, so the
+3000 ms confirm timeout that could never expire before now expires in 3000 ms.
 
 Mutex parity was checked the same way: one program exercising only the mutex API
 (create, peek free, take, holder, recursive re-take, peek from another thread
