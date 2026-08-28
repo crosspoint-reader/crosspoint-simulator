@@ -87,8 +87,11 @@ nothing ever deletes through the base pointer and the base needs no virtual
 destructor (`src/freertos/semphr.h:44-46`).
 
 **`vTaskDelay` now sleeps** (`src/freertos/task.h:92`). A positive tick count
-becomes a `std::this_thread::sleep_for`. Zero or negative yields instead of
-sleeping, which is what FreeRTOS does with a zero delay.
+becomes a `std::this_thread::sleep_for`. Zero yields instead of sleeping,
+which is what FreeRTOS does with a zero delay. The parameter is `uint32_t`,
+matching `pdMS_TO_TICKS`'s return type -- an `int` parameter would turn a
+large tick count negative and misroute it into the yield path instead of
+sleeping.
 
 **`pdMS_TO_TICKS`** (`src/freertos/FreeRTOS.h:13-23`) lives in `FreeRTOS.h`
 because that is where real FreeRTOS reaches it from -- it is defined in

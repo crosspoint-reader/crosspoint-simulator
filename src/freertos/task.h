@@ -89,8 +89,8 @@ inline void vTaskList(char *) {}
 // (FreeRTOS.h) is this shim's one tick-rate definition. Convert through it, do
 // not assume one tick is one millisecond. A no-op here made every firmware
 // retry loop and every yield-every-N-rows call run in zero time.
-inline void vTaskDelay(int ticks) {
-  if (ticks <= 0) {
+inline void vTaskDelay(uint32_t ticks) {
+  if (ticks == 0) {
     // FreeRTOS treats a zero delay as a yield, not a sleep.
     std::this_thread::yield();
     return;
