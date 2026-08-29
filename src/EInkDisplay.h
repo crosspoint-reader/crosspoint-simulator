@@ -22,7 +22,7 @@
 class EInkDisplay {
 public:
   // X3: 3.7" panel, 3:2 aspect ratio, ~257 ppi (792×528 landscape buffer)
-  // X4 / X4 Pro: 4.3" panel, 5:3 aspect ratio, ~217 ppi
+  // X4 family: 4.3" panel, 5:3 aspect ratio, ~217 ppi
   // (800×480 landscape buffer)
 #if defined(SIMULATOR_DEVICE_X3)
   static constexpr uint16_t DISPLAY_WIDTH = 792;

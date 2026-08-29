@@ -55,6 +55,7 @@ The simulator is a collection of host-side reimplementations of the firmware's h
 
 [src/BoardConfig.h](src/BoardConfig.h) selects X4 by default,
 `SIMULATOR_DEVICE_X3` for X3, `SIMULATOR_DEVICE_X4_PRO` for X4 Pro, and
+`SIMULATOR_DEVICE_X4_CLASSIC` for X4 Classic,
 `SIMULATOR_DEVICE_STICKY` for Seeed Sticky, or
 `SIMULATOR_DEVICE_PAPERMONO` for M5Stack PaperMono.
 `SIMULATOR_DISPLAY_UC8179` and `SIMULATOR_DISPLAY_UC8279` select per-batch
@@ -63,6 +64,8 @@ Keep the reported board and controller aligned with the firmware SDK. X4 Pro
 uses the same 800x480 display geometry as X4 but adds touch, a capacitive Home
 key, frontlight state, inversion, and an RTC. Sticky also uses 800x480 and adds
 touch, RTC, and tilt without a Home key or frontlight.
+X4 Classic uses the X4 family's 800x480 controller variants and adds RTC, tilt,
+side buttons, and front buttons without touch, a Home key, or frontlight.
 PaperMono uses an 800x480 SSD1677 panel with FT6336-compatible touch, RTC, and
 single-channel frontlight state, without a Home key or tilt.
 

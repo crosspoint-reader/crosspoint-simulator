@@ -27,7 +27,8 @@ private:
 
 public:
   void begin() {
-#if defined(SIMULATOR_DEVICE_X3) || defined(SIMULATOR_DEVICE_STICKY)
+#if defined(SIMULATOR_DEVICE_X3) || defined(SIMULATOR_DEVICE_X4_CLASSIC) || \
+    defined(SIMULATOR_DEVICE_STICKY)
     _available = true;
 #else
     _available = false;

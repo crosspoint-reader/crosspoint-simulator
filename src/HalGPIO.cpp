@@ -462,6 +462,9 @@ void HalGPIO::begin() {
 #elif defined(SIMULATOR_DEVICE_X4_PRO)
   _deviceType = DeviceType::X4;
   BoardConfig::selectDevice(BoardConfig::Board::XteinkX4Pro);
+#elif defined(SIMULATOR_DEVICE_X4_CLASSIC)
+  _deviceType = DeviceType::X4;
+  BoardConfig::selectDevice(BoardConfig::Board::XteinkX4Classic);
 #elif defined(SIMULATOR_DEVICE_X3)
   _deviceType = DeviceType::X3;
 #if defined(SIMULATOR_DISPLAY_UC8279)
@@ -477,7 +480,7 @@ void HalGPIO::begin() {
 
 bool HalGPIO::isXteinkDevice() const {
   // Match the firmware helper's narrower meaning: the runtime-detected C3
-  // X3/X4 pair. X4 Pro is an Xteink product but uses its own S3 board profile.
+  // X3/X4 pair. X4 Pro and X4 Classic use their own S3 board profiles.
   return BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
          BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279 ||
          BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX4;
@@ -486,7 +489,8 @@ bool HalGPIO::isXteinkDevice() const {
 bool HalGPIO::hasEdgeSideButtons() const {
   return BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3 ||
          BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX3Uc8279 ||
-         BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX4Pro;
+         BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX4Pro ||
+         BoardConfig::ACTIVE.board == BoardConfig::Board::XteinkX4Classic;
 }
 
 void HalGPIO::beginFrame() {

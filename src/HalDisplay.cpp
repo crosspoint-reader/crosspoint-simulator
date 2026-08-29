@@ -286,6 +286,9 @@ static constexpr const char *WINDOW_TITLE =
 #elif defined(SIMULATOR_DEVICE_X4_PRO)
 static constexpr const char *WINDOW_TITLE =
     "Simulator - XTEINK X4 Pro (" SIMULATOR_CONTROLLER_TITLE ")";
+#elif defined(SIMULATOR_DEVICE_X4_CLASSIC)
+static constexpr const char *WINDOW_TITLE =
+    "Simulator - XTEINK X4 Classic (" SIMULATOR_CONTROLLER_TITLE ")";
 #elif defined(SIMULATOR_DEVICE_X3)
 #if defined(SIMULATOR_DISPLAY_UC8279)
 static constexpr const char *WINDOW_TITLE = "Simulator - XTEINK X3 (UC8279d)";

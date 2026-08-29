@@ -53,6 +53,9 @@ these flags:
 - `-DSIMULATOR_DEVICE_X4_PRO` keeps the X4 family's 800x480 framebuffer and
   selects the X4 Pro board profile. It exposes touch and swipe input, the
   capacitive Home key, the RTC, display inversion, and frontlight state.
+- `-DSIMULATOR_DEVICE_X4_CLASSIC` selects the X4 Classic's 800x480
+  buttons-only profile. It exposes the RTC, tilt sensor, side page-turn
+  buttons, and four front buttons without touch, a Home key, or frontlight.
 - `-DSIMULATOR_DEVICE_STICKY` selects the Seeed Sticky's 800x480 SSD1677
   profile. It exposes touch and swipe input, the RTC, and the tilt sensor
   without exposing the X4 Pro-only Home key or frontlight.
@@ -68,9 +71,10 @@ these flags:
 The sample PlatformIO files include ready-to-use environments for the original
 profiles plus `simulator_sticky`, `simulator_x3_uc8279`, `simulator_x4_uc8179`,
 `simulator_x4_uc8279`, `simulator_x4_pro_uc8179`, and
-`simulator_x4_pro_uc8279`, plus `simulator_papermono`. The UC8279 X4 Pro path
-mirrors current FreeInk SDK support but remains pending validation on physical
-UC8279 X4 Pro hardware.
+`simulator_x4_pro_uc8279`, the three `simulator_x4_classic` controller
+variants, plus `simulator_papermono`. The UC8279 X4 Pro path mirrors current
+FreeInk SDK support but remains pending validation on physical UC8279 X4 Pro
+hardware.
 
 Controller profiles expose the same framebuffer geometry and device
 capabilities as their original production run. The simulator records the
