@@ -88,6 +88,12 @@ bool HalStorage::begin() {
   return ::mkdir(root.c_str(), 0777) == 0 || errno == EEXIST;
 }
 bool HalStorage::ready() const { return true; }
+bool HalStorage::beginUsbDrive() { return false; }
+bool HalStorage::disconnectUsbDriveHost() { return false; }
+void HalStorage::endUsbDrive() {}
+UsbDriveState HalStorage::usbDriveState() const {
+  return UsbDriveState::Unsupported;
+}
 
 class HalFile::Impl {
 public:
