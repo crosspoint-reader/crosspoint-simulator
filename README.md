@@ -175,12 +175,23 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
-- `CROSSPOINT_SIM_FREE_HEAP` and `CROSSPOINT_SIM_MAX_ALLOC_HEAP` override the
-  ESP heap metrics reported to firmware. They are useful for repeatable
-  low-memory paths without exhausting the host process. Values are byte counts;
-  invalid or out-of-range values use the 1 MiB default. The free-heap override
-  also controls the reported minimum free heap, and maximum allocation is
-  bounded by free heap.
+- The optional `simulator_heap` sample profile enables a bounded TLSF heap arena
+  for runtime firmware allocations. `ESP.getFreeHeap()`, `ESP.getMinFreeHeap()`, and
+  `ESP.getMaxAllocHeap()` then report live arena state, including fragmentation.
+  `CROSSPOINT_SIM_HEAP_BYTES` sets the post-setup budget in bytes; the default is
+  a sample 153371-byte budget. To approximate a specific scenario, copy the free
+  heap reported by the physical device at the same point in the workflow.
+- `CROSSPOINT_SIM_HEAP_TRACE=1` records live allocation call stacks and prints
+  the largest sites on OOM. `CROSSPOINT_SIM_HEAP_VIZ=<directory>` writes SVG
+  snapshots of arena occupancy and free-block fragmentation. Both diagnostics
+  allocate from the host heap so they do not consume the budget being measured.
+- On macOS, C allocations are counted only when their immediate caller belongs
+  to the firmware/simulator executable; allocations made directly by AppKit,
+  SDL, and other shared frameworks remain on the host heap.
+- Regular simulator builds, which do not define `CROSSPOINT_SIM_HEAP_ARENA`, retain the older
+  `CROSSPOINT_SIM_FREE_HEAP` and `CROSSPOINT_SIM_MAX_ALLOC_HEAP` reported-value
+  overrides. Those overrides do not make allocations fail and are ignored once
+  the arena is active.
 - A sleep/wake test starts a fresh simulator process, matching the existing
   deep-sleep model. Set `CROSSPOINT_SIM_INPUT_SCRIPT_AFTER_WAKE` and
   `CROSSPOINT_SIM_SCREENSHOTS_AFTER_WAKE` for that second process. The
@@ -224,6 +235,32 @@ CROSSPOINT_SIM_SCREENSHOTS_AFTER_WAKE='1600:./qa-artifacts/wake.bmp' \
 The screenshot contains the SDL renderer output at the host's actual drawable
 resolution, including Retina/HiDPI scaling. BMP is used because it is supported
 directly by SDL2 and adds no image-encoding dependency to the simulator.
+
+## Memory diagnostics and their limits
+
+The arena work is adapted from reader PR
+[#2455](https://github.com/crosspoint-reader/crosspoint-reader/pull/2455). It
+routes `malloc`, `calloc`, `realloc`, `free`, and C++ `new`/`delete` through the
+same Espressif TLSF implementation used to model a bounded, fragmentable heap.
+It activates after firmware `setup()` so SDL initialization and simulator
+scaffolding do not consume the device budget. A failed `new (std::nothrow)`
+returns null; a failed throwing `new` aborts in the sample profile, matching the
+firmware's `-fno-exceptions` failure behavior.
+
+This is useful for automatic OOM-path and fragmentation regression testing, but
+it is not a cycle- or byte-exact ESP32 profiler. Allocations made before arena
+activation are excluded, 64-bit host object sizes differ from 32-bit ESP32
+sizes, host decoder/shim implementations can allocate differently, and the
+simulator does not reproduce task stacks, IRAM/DRAM capabilities, e-ink
+waveforms, DMA constraints, or radio/SDK heap use. Calibrated physical-device
+logs remain the release gate for memory-sensitive firmware.
+
+On Linux/WSL, use the separate `simulator_asan` sample environment for AddressSanitizer
+and UndefinedBehaviorSanitizer checks. That profile disables the bounded arena:
+ASan needs each allocation to remain a distinct host allocation so its redzones
+can detect overflows and use-after-free. Run both profiles there; they answer
+different questions. The current macOS `sdl2-compat` library stops an ASan build
+in its load-time error dialog, so the macOS sample does not advertise that target.
 
 ## Notes
 

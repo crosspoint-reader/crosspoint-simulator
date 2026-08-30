@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-heap:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Configure
+        run: cmake -S test -B build/test -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/test --parallel
+      - name: Test
+        run: ctest --test-dir build/test --output-on-failure --parallel

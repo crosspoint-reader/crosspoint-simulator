@@ -10,6 +10,10 @@
 #include <string>
 #include <thread>
 
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+#include "SimulatorHeap.h"
+#endif
+
 #define PROGMEM
 #define ICACHE_RODATA_ATTR
 #define IRAM_ATTR
@@ -59,11 +63,33 @@ struct ESPMock {
     return static_cast<uint32_t>(parsed);
   }
 
-  uint32_t getFreeHeap() { return heapValue("CROSSPOINT_SIM_FREE_HEAP"); }
+  uint32_t getFreeHeap() {
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+    if (SimulatorHeap::isActive())
+      return static_cast<uint32_t>(SimulatorHeap::freeBytes());
+#endif
+    return heapValue("CROSSPOINT_SIM_FREE_HEAP");
+  }
   void restart() {}
-  uint32_t getHeapSize() { return HEAP_SIZE; }
-  uint32_t getMinFreeHeap() { return getFreeHeap(); }
+  uint32_t getHeapSize() {
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+    if (SimulatorHeap::isActive())
+      return static_cast<uint32_t>(SimulatorHeap::totalBytes());
+#endif
+    return HEAP_SIZE;
+  }
+  uint32_t getMinFreeHeap() {
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+    if (SimulatorHeap::isActive())
+      return static_cast<uint32_t>(SimulatorHeap::minFreeBytes());
+#endif
+    return getFreeHeap();
+  }
   uint32_t getMaxAllocHeap() {
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+    if (SimulatorHeap::isActive())
+      return static_cast<uint32_t>(SimulatorHeap::largestFreeBlockBytes());
+#endif
     return std::min(heapValue("CROSSPOINT_SIM_MAX_ALLOC_HEAP"), getFreeHeap());
   }
 };

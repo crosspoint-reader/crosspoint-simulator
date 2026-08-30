@@ -6,6 +6,9 @@
 #include "HalDisplay.h"
 #include "HalGPIO.h"
 #include "SimulatorLifecycle.h"
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+#include "SimulatorHeap.h"
+#endif
 
 extern void setup();
 extern void loop();
@@ -14,6 +17,11 @@ extern HalDisplay display; // defined in main.cpp
 int main(int argc, char **argv) {
   SimulatorLifecycle::initProcessArgs(argv);
   setup();
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+  // Start with the configured post-setup budget so SDL and host scaffolding do
+  // not consume the emulated firmware heap.
+  SimulatorHeap::activateFromEnv();
+#endif
   while (!display.shouldQuit()) {
     // Clear input edge latches once per frame. update() may be called many
     // times within loop(); edges must survive across those calls and only
@@ -23,7 +31,14 @@ int main(int argc, char **argv) {
     // SDL must be driven from the main thread on macOS.
     // The render task writes pixels and sets pendingPresent; we flush them
     // here.
+#if defined(CROSSPOINT_SIM_HEAP_ARENA)
+    {
+      SimulatorHeap::HostHeapScope hostHeapScope;
+      display.presentIfNeeded();
+    }
+#else
     display.presentIfNeeded();
+#endif
     // Yield to the OS so macOS delivers pending keyboard/window events to SDL.
     // Without this, the tight spin-loop starves the Cocoa event system and key
     // presses are only picked up sporadically. 1 ms also caps the loop at ~1
