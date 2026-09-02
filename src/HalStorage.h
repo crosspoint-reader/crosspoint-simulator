@@ -28,6 +28,7 @@ public:
   HalStorage();
   bool begin();
   bool ready() const;
+  void prepareForDeepSleep() {};
   bool beginUsbDrive();
   bool disconnectUsbDriveHost();
   void endUsbDrive();
