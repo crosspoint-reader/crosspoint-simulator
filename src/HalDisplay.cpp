@@ -217,7 +217,20 @@ void composeGrayscalePreview() {
       uint8_t level = kGrayWhite;
       if (grayscalePreviewState.absolute) {
         const uint8_t value = (lsbActive ? 1 : 0) | (msbActive ? 2 : 0);
-        level = value == 0 ? kGrayBlack : value == 1 ? kGrayLight : value == 2 ? kGrayDark : kGrayWhite;
+        switch (value) {
+          case 0:
+            level = kGrayBlack;
+            break;
+          case 1:
+            level = kGrayDark;
+            break;
+          case 2:
+            level = kGrayLight;
+            break;
+          default:
+            level = kGrayWhite;
+            break;
+        }
       } else if (!baseWhite) {
         if (msbActive) {
           level = lsbActive ? kGrayDark : kGrayLight;
