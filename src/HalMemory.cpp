@@ -14,3 +14,7 @@ HalMemory::HeapStats HalMemory::getDefaultHeap() { return readMockHeap(); }
 HalMemory::HeapStats HalMemory::getInternalHeap() { return readMockHeap(); }
 
 HalMemory::HeapStats HalMemory::getPsramHeap() { return {0, 0, 0, 0}; }
+
+void HalMemory::PsramDeleter::operator()(uint8_t*) const {}
+
+HalMemory::PsramBuffer HalMemory::allocatePsram(size_t) { return PsramBuffer(nullptr, PsramDeleter{}); }
