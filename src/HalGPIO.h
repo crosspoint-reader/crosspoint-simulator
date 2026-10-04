@@ -70,6 +70,8 @@ public:
   unsigned long getHeldTime() const;
   unsigned long getPowerButtonHeldTime() const;
   bool rawInputActive();
+  bool wasCapacitivePagePressed() const;
+  bool isCapacitivePagePressed(uint8_t buttonIndex) const;
   bool hasTouch() const;
   bool hasHomeKey() const;
   bool wasHomeKeyPressed() const;

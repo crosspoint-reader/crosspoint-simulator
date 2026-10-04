@@ -294,7 +294,10 @@ HalDisplay::~HalDisplay() {}
 #define SIMULATOR_CONTROLLER_TITLE "SSD1677"
 #endif
 
-#if defined(SIMULATOR_DEVICE_PAPERMONO)
+#if defined(SIMULATOR_DEVICE_METALIO_EINK4)
+static constexpr const char *WINDOW_TITLE =
+    "Simulator - Metalio E-Ink 4 (SSD1677)";
+#elif defined(SIMULATOR_DEVICE_PAPERMONO)
 static constexpr const char *WINDOW_TITLE =
     "Simulator - M5Stack PaperMono (SSD1677)";
 #elif defined(SIMULATOR_DEVICE_STICKY)

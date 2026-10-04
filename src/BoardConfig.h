@@ -10,10 +10,10 @@
 #define FREEINK_LOG_TRANSPORT_ROM_PRINTF 1
 #define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_HWCDC
 
-#if (defined(SIMULATOR_DEVICE_X3) + defined(SIMULATOR_DEVICE_X4_PRO) + \
-     defined(SIMULATOR_DEVICE_X4_CLASSIC) +                               \
-     defined(SIMULATOR_DEVICE_STICKY) +                                   \
-     defined(SIMULATOR_DEVICE_PAPERMONO)) > 1
+#if (defined(SIMULATOR_DEVICE_X3) + defined(SIMULATOR_DEVICE_X4_PRO) +         \
+     defined(SIMULATOR_DEVICE_X4_CLASSIC) + defined(SIMULATOR_DEVICE_STICKY) + \
+     defined(SIMULATOR_DEVICE_PAPERMONO) +                                     \
+     defined(SIMULATOR_DEVICE_METALIO_EINK4)) > 1
 #error "Select at most one simulated device"
 #endif
 
@@ -25,8 +25,9 @@
 #error "Xteink X3 revisions use UC8253 or UC8279d, not UC8179"
 #endif
 
-#if (defined(SIMULATOR_DEVICE_STICKY) ||                           \
-     defined(SIMULATOR_DEVICE_PAPERMONO)) &&                      \
+#if (defined(SIMULATOR_DEVICE_STICKY) ||                                       \
+     defined(SIMULATOR_DEVICE_PAPERMONO) ||                                    \
+     defined(SIMULATOR_DEVICE_METALIO_EINK4)) &&                               \
     (defined(SIMULATOR_DISPLAY_UC8179) || defined(SIMULATOR_DISPLAY_UC8279))
 #error "This device uses SSD1677; do not select an Xteink controller override"
 #endif
@@ -37,8 +38,26 @@
 #undef FREEINK_DEVICE_X4CLASSIC
 #undef FREEINK_DEVICE_STICKY
 #undef FREEINK_DEVICE_PAPERMONO
+#undef FREEINK_DEVICE_METALIO_EINK4
 
-#if defined(SIMULATOR_DEVICE_PAPERMONO)
+#if defined(SIMULATOR_DEVICE_METALIO_EINK4)
+#define FREEINK_DEVICE_METALIO_EINK4 1
+#define FREEINK_CAP_HAPTIC 1
+#else
+#define FREEINK_DEVICE_METALIO_EINK4 0
+#define FREEINK_CAP_HAPTIC 0
+#endif
+
+#if defined(SIMULATOR_DEVICE_METALIO_EINK4)
+#define FREEINK_DEVICE_X4 0
+#define FREEINK_DEVICE_X3 0
+#define FREEINK_DEVICE_X4PRO 0
+#define FREEINK_DEVICE_X4CLASSIC 0
+#define FREEINK_DEVICE_STICKY 0
+#define FREEINK_DEVICE_PAPERMONO 0
+#define FREEINK_CAP_TOUCH 1
+#define FREEINK_CAP_FRONTLIGHT 0
+#elif defined(SIMULATOR_DEVICE_PAPERMONO)
 #define FREEINK_DEVICE_X4 0
 #define FREEINK_DEVICE_X3 0
 #define FREEINK_DEVICE_X4PRO 0
@@ -106,6 +125,7 @@ enum class Board {
   XteinkX4Classic,
   Sticky,
   PaperMono,
+  MetalioEInk4,
 };
 
 enum class DisplayController {
@@ -119,7 +139,15 @@ enum class DisplayController {
   UC8279C = 8,
 };
 
-enum class TouchController : uint8_t { None, Chsc6x, Gt911, Ft5x06, Ft6336u, Gslx680 };
+enum class TouchController : uint8_t {
+  None,
+  Chsc6x,
+  Gt911,
+  Ft5x06,
+  Ft6336u,
+  Gslx680,
+  Cst816s
+};
 
 struct TouchConfig {
   TouchController controller = TouchController::None;
@@ -186,7 +214,19 @@ inline constexpr BoardProfile PAPER_MONO = {
     Board::PaperMono, "m5stack_paper_mono", DisplayController::SSD1677, 0,
     {0, 7}, {9, 7, 3, 7}, 800, 480, {TouchController::Ft6336u}};
 
-#if defined(SIMULATOR_DEVICE_PAPERMONO)
+inline constexpr BoardProfile METALIO_EINK4 = {Board::MetalioEInk4,
+                                               "metalio_eink4",
+                                               DisplayController::SSD1677,
+                                               0,
+                                               {-1, -1},
+                                               {},
+                                               800,
+                                               480,
+                                               {TouchController::Cst816s}};
+
+#if defined(SIMULATOR_DEVICE_METALIO_EINK4)
+inline BoardProfile ACTIVE = METALIO_EINK4;
+#elif defined(SIMULATOR_DEVICE_PAPERMONO)
 inline BoardProfile ACTIVE = PAPER_MONO;
 #elif defined(SIMULATOR_DEVICE_STICKY)
 inline BoardProfile ACTIVE = STICKY;
@@ -224,6 +264,9 @@ inline bool selectDevice(Board board) {
   case Board::Sticky:
     ACTIVE = STICKY;
     return true;
+  case Board::MetalioEInk4:
+    ACTIVE = METALIO_EINK4;
+    return true;
   case Board::PaperMono:
     ACTIVE = PAPER_MONO;
     return true;
@@ -235,8 +278,11 @@ inline bool isX4Pro() { return ACTIVE.board == Board::XteinkX4Pro; }
 inline bool isX4Classic() { return ACTIVE.board == Board::XteinkX4Classic; }
 inline bool isSticky() { return ACTIVE.board == Board::Sticky; }
 inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
-inline bool hasTouch() { return isX4Pro() || isSticky() || isPaperMono(); }
-inline bool hasHomeKey() { return isX4Pro(); }
+inline bool isMetalioEInk4() { return ACTIVE.board == Board::MetalioEInk4; }
+inline bool hasTouch() {
+  return isX4Pro() || isSticky() || isPaperMono() || isMetalioEInk4();
+}
+inline bool hasHomeKey() { return isX4Pro() || isMetalioEInk4(); }
 inline bool hasPwmFrontlight() { return isX4Pro() || isPaperMono(); }
 
 inline void holdPowerRails() {}
