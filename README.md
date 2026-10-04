@@ -63,6 +63,12 @@ these flags:
   SSD1677 profile. It exposes FT6336-compatible touch and swipe input, the RTC,
   and single-channel frontlight state without a Home key or color-temperature
   control.
+- `-DSIMULATOR_DEVICE_METALIO_EINK4` selects the Metalio E-Ink 4's 800x480
+  SSD1677 profile with CST816S-compatible touch, cover Home-key input, RTC,
+  tilt availability, and haptic settings. It has no frontlight. Return maps to
+  BOOT/confirm, P to power, and Up/Down to volume; Page Up/Page Down model
+  cover Prev/Next. Escape and Left/Right are disabled because this board has no corresponding buttons.
+  See [the profile contract and verification](docs/metalio-eink4.md).
 - `-DSIMULATOR_DISPLAY_UC8179` selects the newer UC8179 controller used by
   some X4 and X4 Pro production batches.
 - `-DSIMULATOR_DISPLAY_UC8279` selects UC8279d on X3, or the 800x480 UC8279
@@ -72,8 +78,8 @@ The sample PlatformIO files include ready-to-use environments for the original
 profiles plus `simulator_sticky`, `simulator_x3_uc8279`, `simulator_x4_uc8179`,
 `simulator_x4_uc8279`, `simulator_x4_pro_uc8179`, and
 `simulator_x4_pro_uc8279`, the three `simulator_x4_classic` controller
-variants, plus `simulator_papermono`. The UC8279 X4 Pro path mirrors current
-FreeInk SDK support but remains pending validation on physical UC8279 X4 Pro
+variants, plus `simulator_papermono` and `simulator_metalio_eink4`. The UC8279
+X4 Pro path mirrors current FreeInk SDK support but remains pending validation on physical UC8279 X4 Pro
 hardware.
 
 Controller profiles expose the same framebuffer geometry and device
@@ -156,7 +162,7 @@ pio run -e simulator -t run_simulator
 | Escape | Back                               |
 | P      | Power                              |
 | S      | Simulate sleep                     |
-| H      | X4 Pro capacitive Home key         |
+| H      | X4 Pro / Metalio cover Home key    |
 | Mouse  | Touch-device tap and swipe         |
 
 When the simulator is on the sleep screen, pressing any mapped simulator key wakes it. Under the hood the simulator relaunches itself and reports a synthetic power-button wake, because the native build has no real ESP deep-sleep resume path.
@@ -170,7 +176,9 @@ tests possible without desktop-control permissions:
   `<milliseconds>:<action>`, separated by semicolons. Button actions use
   `<key>[:<hold-milliseconds>]`; keys are `BACK`, `ENTER`, `LEFT`, `RIGHT`,
   `UP`, `DOWN`, `POWER`, `SLEEP`, `HOME`, and `QUIT`. A normal key press is
-  held for 80 ms unless a duration is provided.
+  held for 80 ms unless a duration is provided. Metalio also accepts `PREV`
+  and `NEXT` for its capacitive cover page keys; `UP`/`DOWN` remain physical
+  volume keys.
 - Touch-device actions use `TAP:<x>,<y>[,<hold-milliseconds>]` or
   `SWIPE:<x1>,<y1>,<x2>,<y2>[,<duration-milliseconds>]`. Coordinates are in
   displayed logical pixels, so they match UI layouts and screenshots after the
