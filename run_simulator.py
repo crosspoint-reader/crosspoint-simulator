@@ -24,7 +24,7 @@ Use a process-wide sentinel so the custom target is registered only once even
 when multiple registration paths exist.
 """
 
-Import("env")
+Import("env", "projenv")
 import os
 import builtins
 import re
@@ -32,6 +32,16 @@ import re
 RUN_SIMULATOR_TARGET_KEY = "_crosspoint_run_simulator_target_registered"
 RUN_SIMULATOR_TARGET_OWNER_OPTION = "custom_run_simulator_target_owner"
 SIMULATOR_HTTP_PORT_OPTION = "custom_simulator_http_port"
+env.AppendUnique(CPPDEFINES=[("ARDUINOJSON_ENABLE_ARDUINO_STRING", 1)])
+projenv.AppendUnique(CPPDEFINES=[("ARDUINOJSON_ENABLE_ARDUINO_STRING", 1)])
+
+# The web manager uses the SDK's header-only crypto interface and base64 helpers.
+content_headers = os.path.join(
+    env.subst("$PROJECT_DIR"), "freeink-sdk", "libs", "book",
+    "ContentProtection", "include"
+)
+if os.path.isdir(content_headers):
+    env.AppendUnique(CPPPATH=[content_headers])
 
 
 # --- run_simulator custom target ---

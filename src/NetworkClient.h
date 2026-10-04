@@ -5,10 +5,11 @@
 #include <memory>
 
 #include "WString.h"
+#include "Print.h"
 
 class Stream;
 
-class NetworkClient {
+class NetworkClient : public Print {
 public:
   NetworkClient() {}
   explicit NetworkClient(int fd);

@@ -9,6 +9,7 @@
 #endif
 
 #include <cstdint>
+#include <cctype>
 #include <cstring>
 #include <string>
 
@@ -19,6 +20,12 @@ public:
   String(const char *str) : s(str ? str : "") {}
   explicit String(const std::string &str) : s(str) {}
   String(uint16_t num) : s(std::to_string(num)) {}
+  auto begin() const { return s.begin(); }
+  auto end() const { return s.end(); }
+  void toLowerCase() {
+    for (char &c : s)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
 
   String &operator=(const char *str) {
     s = str ? str : "";

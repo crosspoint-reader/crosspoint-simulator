@@ -299,22 +299,6 @@ struct WebServer::Impl {
   bool headersSent = false;
   HTTPUpload currentUpload{};
 
-  String argByName(const char *name) const {
-    for (const auto &arg : currentArgs) {
-      if (arg.first == name)
-        return arg.second;
-    }
-    return String("");
-  }
-
-  bool hasArgName(const char *name) const {
-    for (const auto &arg : currentArgs) {
-      if (arg.first == name)
-        return true;
-    }
-    return false;
-  }
-
   String headerByName(const char *name) const {
     const std::string wanted = lower(name ? name : "");
     for (const auto &header : currentHeaders) {
@@ -415,7 +399,40 @@ struct WebServer::Impl {
 
 WebServer::WebServer(int port) : impl_(std::make_unique<Impl>(port)) {}
 
-WebServer::~WebServer() { stop(); }
+WebServer::~WebServer() {
+  stop();
+  clearArguments();
+}
+
+void WebServer::clearArguments() {
+  delete[] _currentArgs;
+  _currentArgs = nullptr;
+  _currentArgCount = 0;
+  delete[] _postArgs;
+  _postArgs = nullptr;
+  _postArgsLen = 0;
+}
+
+void WebServer::publishArguments() {
+  if (impl_->currentArgs.empty()) return;
+  const int count = _currentArgCount + static_cast<int>(impl_->currentArgs.size());
+  // Host-only request storage mirrors Arduino's protected ownership contract.
+  auto* arguments = new (std::nothrow) RequestArgument[count];
+  if (!arguments) {
+    LOG_ERR("WEB", "[SIM] OOM: request arguments");
+    impl_->currentArgs.clear();
+    return;
+  }
+  for (int i = 0; i < _currentArgCount; ++i) arguments[i] = std::move(_currentArgs[i]);
+  int i = _currentArgCount;
+  for (auto& argument : impl_->currentArgs) {
+    arguments[i++] = {std::move(argument.first), std::move(argument.second)};
+  }
+  delete[] _currentArgs;
+  _currentArgs = arguments;
+  _currentArgCount = count;
+  impl_->currentArgs.clear();
+}
 
 void WebServer::begin() {
   if (impl_->active)
@@ -508,6 +525,7 @@ void WebServer::begin() {
       const size_t queryStart = target.find('?');
       const std::string path = urlDecodeStd(target.substr(0, queryStart));
 
+      clearArguments();
       impl_->resetRequest();
       impl_->currentClient = client;
       impl_->currentMethod = methodFromString(methodText);
@@ -762,18 +780,29 @@ void WebServer::setContentLength(size_t len) {
 
 int WebServer::method() { return impl_->currentMethod; }
 String WebServer::uri() { return impl_->currentUri; }
-bool WebServer::hasArg(const char *name) { return impl_->hasArgName(name); }
-String WebServer::arg(const char *name) { return impl_->argByName(name); }
-String WebServer::arg(int i) {
-  return i >= 0 && i < static_cast<int>(impl_->currentArgs.size())
-             ? impl_->currentArgs[i].second
-             : String("");
+bool WebServer::hasArg(const char* name) {
+  publishArguments();
+  for (int i = 0; i < _currentArgCount; ++i)
+    if (_currentArgs[i].key == name) return true;
+  return false;
 }
-int WebServer::args() { return static_cast<int>(impl_->currentArgs.size()); }
+String WebServer::arg(const char* name) {
+  publishArguments();
+  for (int i = 0; i < _currentArgCount; ++i)
+    if (_currentArgs[i].key == name) return _currentArgs[i].value;
+  return String("");
+}
+String WebServer::arg(int i) {
+  publishArguments();
+  return i >= 0 && i < _currentArgCount ? _currentArgs[i].value : String("");
+}
+int WebServer::args() {
+  publishArguments();
+  return _currentArgCount;
+}
 String WebServer::argName(int i) {
-  return i >= 0 && i < static_cast<int>(impl_->currentArgs.size())
-             ? impl_->currentArgs[i].first
-             : String("");
+  publishArguments();
+  return i >= 0 && i < _currentArgCount ? _currentArgs[i].key : String("");
 }
 String WebServer::header(const char *name) { return impl_->headerByName(name); }
 String WebServer::header(int i) {

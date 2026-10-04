@@ -287,6 +287,32 @@ custom_simulator_http_port = 18080
 
 Direct binary launches use the environment variable form.
 
+To open the web manager, select **File Transfer → Create Hotspot** in the
+simulator, then open `http://127.0.0.1:8080/` in your host browser. The simulated
+hotspot uses the host's loopback interface; no Wi-Fi connection is required.
+Keep the File Transfer screen open while using the browser.
+
+If `/settings` returns 404 or you see a reduced simulator file-transfer page,
+your environment still selects the legacy substitute. Update it to match the
+current sample: remove the `network/CrossPointWebServer.cpp` and
+`network/WebDAVHandler.cpp` exclusions from `build_src_filter`, add
+`-DCROSSPOINT_SIMULATOR_PROJECT_WEBSERVER` to `build_flags`, and rebuild.
+This compiles the firmware's actual web manager against the host network shims.
+
+From the firmware project, run the isolated HTTP smoke check after building:
+
+```bash
+python3 .pio/libdeps/simulator/simulator/test/web_manager_smoke.py \
+  .pio/build/simulator/program
+```
+
+The check navigates an empty simulated SD card to Create Hotspot and verifies
+the web pages, settings API, WebDAV, and WebSocket handshake. It uses a temporary
+directory and leaves your project's `fs_` untouched.
+
+The crypto endpoint supports host SHA-1/SHA-256 hashes and random bytes.
+Protected-book AES, RSA, and PKCS#12 operations return errors in the simulator.
+
 **Firmware updates**: OTA and SD-card firmware flashing are non-destructive in
 the simulator. The simulator stubs those update paths so the UI can be opened
 without flashing firmware or changing boot partitions.

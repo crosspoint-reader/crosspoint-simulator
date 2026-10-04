@@ -69,7 +69,7 @@ public:
 class WebServer {
 public:
   WebServer(int port);
-  ~WebServer();
+  virtual ~WebServer();
   void begin();
   void handleClient();
   void enableCORS(bool /*enabled*/) {
@@ -114,7 +114,16 @@ public:
   long clientContentLength();
   HTTPUpload &upload();
 
+protected:
+  struct RequestArgument { String key; String value; };
+  RequestArgument *_currentArgs = nullptr;
+  int _currentArgCount = 0;
+  RequestArgument *_postArgs = nullptr;
+  int _postArgsLen = 0;
+
 private:
+  void clearArguments();
+  void publishArguments();
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
