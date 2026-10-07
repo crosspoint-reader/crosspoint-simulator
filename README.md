@@ -69,6 +69,11 @@ these flags:
   BOOT/confirm, P to power, and Up/Down to volume; Page Up/Page Down model
   cover Prev/Next. Escape and Left/Right are disabled because this board has no corresponding buttons.
   See [the profile contract and verification](docs/metalio-eink4.md).
+- `-DSIMULATOR_DEVICE_EEGO_A4` selects the EEGO A4's 768x552 UC8279C
+  profile, GSLX680-compatible touch, RTC and optional warm/cool I2C frontlight.
+  Up/Down and P are its only physical buttons; H models the touch controller's
+  screen-key events. Add `-DSIMULATOR_EEGO_NO_FRONTLIGHT` for a lightless unit.
+  See [the profile contract, SDK Home-key caveat and verification](docs/eego-a4.md).
 - `-DSIMULATOR_DISPLAY_UC8179` selects the newer UC8179 controller used by
   some X4 and X4 Pro production batches.
 - `-DSIMULATOR_DISPLAY_UC8279` selects UC8279d on X3, or the 800x480 UC8279
@@ -78,7 +83,8 @@ The sample PlatformIO files include ready-to-use environments for the original
 profiles plus `simulator_sticky`, `simulator_x3_uc8279`, `simulator_x4_uc8179`,
 `simulator_x4_uc8279`, `simulator_x4_pro_uc8179`, and
 `simulator_x4_pro_uc8279`, the three `simulator_x4_classic` controller
-variants, plus `simulator_papermono` and `simulator_metalio_eink4`. The UC8279
+variants, plus `simulator_papermono`, `simulator_metalio_eink4`,
+`simulator_eego_a4` and `simulator_eego_a4_no_frontlight`. The UC8279
 X4 Pro path mirrors current FreeInk SDK support but remains pending validation on physical UC8279 X4 Pro
 hardware.
 

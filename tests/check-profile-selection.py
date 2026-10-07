@@ -12,6 +12,7 @@ profiles = [
     (["SIMULATOR_DEVICE_STICKY"], "sticky", 1, 0, 0),
     (["SIMULATOR_DEVICE_PAPERMONO"], "m5stack_paper_mono", 1, 0, 1),
     (["SIMULATOR_DEVICE_METALIO_EINK4"], "metalio_eink4", 1, 1, 0),
+    (["SIMULATOR_DEVICE_EEGO_A4"], "eego_a4", 1, 0, 1),
 ]
 with tempfile.TemporaryDirectory(prefix="simulator-profiles-") as directory:
     folder = Path(directory)
@@ -24,12 +25,12 @@ int main(int, char **argv) {
   assert(std::strcmp(BoardConfig::ACTIVE.name, argv[1]) == 0);
   assert(BoardConfig::hasTouch() == bool(std::atoi(argv[2])));
   assert(BoardConfig::hasHomeKey() == bool(std::atoi(argv[3])));
-  assert(BoardConfig::hasPwmFrontlight() == bool(std::atoi(argv[4])));
+  assert((BoardConfig::hasPwmFrontlight() || BoardConfig::hasI2cFrontlight()) == bool(std::atoi(argv[4])));
   assert(FREEINK_CAP_TOUCH == int(BoardConfig::hasTouch()));
-  assert(FREEINK_CAP_FRONTLIGHT == int(BoardConfig::hasPwmFrontlight()));
+  assert(FREEINK_CAP_FRONTLIGHT == int(BoardConfig::hasPwmFrontlight() || BoardConfig::hasI2cFrontlight()));
   assert(FREEINK_DEVICE_X4 + FREEINK_DEVICE_X3 + FREEINK_DEVICE_X4PRO +
          FREEINK_DEVICE_X4CLASSIC + FREEINK_DEVICE_STICKY +
-         FREEINK_DEVICE_PAPERMONO + FREEINK_DEVICE_METALIO_EINK4 == 1);
+         FREEINK_DEVICE_PAPERMONO + FREEINK_DEVICE_METALIO_EINK4 + FREEINK_DEVICE_EEGO_A4 == 1);
 }
 ''')
     command = ["c++", "-std=c++20", f"-I{root / 'src'}", "-DFREEINK_DEVICE_X4=1", str(source)]
@@ -43,7 +44,12 @@ int main(int, char **argv) {
     ]
     negatives += [(["SIMULATOR_DEVICE_METALIO_EINK4"] + flags, "at most one simulated device")
                   for flags, *_ in profiles if flags and "SIMULATOR_DEVICE_METALIO_EINK4" not in flags]
+    negatives += [(["SIMULATOR_DEVICE_EEGO_A4"] + flags, "at most one simulated device")
+                  for flags, *_ in profiles if flags and "SIMULATOR_DEVICE_EEGO_A4" not in flags]
+    negatives += [(["SIMULATOR_DEVICE_EEGO_A4", flag], "uses UC8279C")
+                  for flag in ["SIMULATOR_DISPLAY_UC8179", "SIMULATOR_DISPLAY_UC8279"]]
+    negatives += [(["SIMULATOR_EEGO_NO_FRONTLIGHT"], "requires EEGO A4")]
     for flags, diagnostic in negatives:
         result = subprocess.run(command + [f"-D{flag}" for flag in flags] + ["-fsyntax-only"], capture_output=True, text=True)
         assert result.returncode != 0 and diagnostic in result.stderr, (flags, result.stderr)
-print("Seven device contracts and seven invalid Metalio selections passed")
+print(f"{len(profiles)} device contracts and {len(negatives)} invalid selections passed")
