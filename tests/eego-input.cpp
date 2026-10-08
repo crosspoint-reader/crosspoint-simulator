@@ -1,3 +1,7 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
