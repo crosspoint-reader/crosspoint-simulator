@@ -58,7 +58,8 @@ The simulator is a collection of host-side reimplementations of the firmware's h
 `SIMULATOR_DEVICE_X4_CLASSIC` for X4 Classic,
 `SIMULATOR_DEVICE_STICKY` for Seeed Sticky, or
 `SIMULATOR_DEVICE_PAPERMONO` for M5Stack PaperMono, or
-`SIMULATOR_DEVICE_METALIO_EINK4` for Metalio E-Ink 4.
+`SIMULATOR_DEVICE_METALIO_EINK4` for Metalio E-Ink 4, or
+`SIMULATOR_DEVICE_EEGO_A4` for EEGO A4.
 `SIMULATOR_DISPLAY_UC8179` and `SIMULATOR_DISPLAY_UC8279` select per-batch
 controller revisions without changing a device's geometry or capabilities.
 Keep the reported board and controller aligned with the firmware SDK. X4 Pro
@@ -74,6 +75,11 @@ Metalio uses an 800x480 SSD1677 panel with CST816S touch, a cover Home key,
 RTC, tilt, and haptic settings, without a frontlight. Only Confirm, Power,
 Up, and Down button contacts are available; Back/Left/Right are disabled.
 Up/Down model volume and cover Prev/Next keys. Haptic calls are host no-ops.
+
+EEGO A4 uses a 768x552 UC8279C panel, GSLX680 touch, RTC, Up/Down/Power
+buttons and an optional warm/cool I2C frontlight. `SIMULATOR_EEGO_NO_FRONTLIGHT`
+models a lightless unit. Keep the SDK Home-key capability mismatch visible;
+see [docs/eego-a4.md](docs/eego-a4.md).
 
 `HalGPIO::update` owns the SDL event pump for the whole simulator, do not poll SDL events elsewhere. Scancodes map to button indices `BTN_BACK=0` through `BTN_POWER=6`. `SDL_QUIT` sets the `quitRequested` atomic that `HalDisplay::shouldQuit()` reads.
 

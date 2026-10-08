@@ -1,4 +1,5 @@
 #pragma once
+#include <EInkDisplay.h>
 
 // Geometry-only renderer for native HAL input tests. Firmware runtime tests
 // exercise the real renderer separately.
@@ -12,8 +13,14 @@ public:
   };
   void setOrientation(Orientation value) { orientation = value; }
   Orientation getOrientation() const { return orientation; }
-  int getScreenWidth() const { return portrait() ? 480 : 800; }
-  int getScreenHeight() const { return portrait() ? 800 : 480; }
+  int getScreenWidth() const {
+    return portrait() ? EInkDisplay::DISPLAY_HEIGHT
+                      : EInkDisplay::DISPLAY_WIDTH;
+  }
+  int getScreenHeight() const {
+    return portrait() ? EInkDisplay::DISPLAY_WIDTH
+                      : EInkDisplay::DISPLAY_HEIGHT;
+  }
 
 private:
   bool portrait() const {

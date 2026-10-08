@@ -283,6 +283,9 @@ void requestSimulatorSleep() {
 }
 
 bool buttonAvailable(int button) {
+  if (BoardConfig::isEegoA4())
+    return button == HalGPIO::BTN_POWER || button == HalGPIO::BTN_UP ||
+           button == HalGPIO::BTN_DOWN;
   if (!BoardConfig::isMetalioEInk4())
     return true;
   // BOOT/POWER and the expander/cover page keys are the only button inputs.
@@ -508,7 +511,10 @@ static int scancodeToButton(SDL_Scancode sc) {
 }
 
 void HalGPIO::begin() {
-#if defined(SIMULATOR_DEVICE_METALIO_EINK4)
+#if defined(SIMULATOR_DEVICE_EEGO_A4)
+  _deviceType = DeviceType::X4;
+  BoardConfig::selectDevice(BoardConfig::Board::EegoA4);
+#elif defined(SIMULATOR_DEVICE_METALIO_EINK4)
   _deviceType = DeviceType::X4;
   BoardConfig::selectDevice(BoardConfig::Board::MetalioEInk4);
 #elif defined(SIMULATOR_DEVICE_PAPERMONO)
