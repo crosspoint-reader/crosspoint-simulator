@@ -210,7 +210,7 @@ void updateTouchHold() {
 }
 
 void beginHomeKey() {
-  if ((!BoardConfig::hasHomeKey() && !BoardConfig::isEegoA4()) || homeKeyDown)
+  if (!BoardConfig::hasHomeKey() || homeKeyDown)
     return;
   homeKeyDown = true;
   homeKeyPressedThisFrame = true;

@@ -327,7 +327,7 @@ inline bool hasTouch() {
   return isX4Pro() || isSticky() || isPaperMono() || isMetalioEInk4() ||
          isEegoA4();
 }
-inline bool hasHomeKey() { return isX4Pro() || isMetalioEInk4(); }
+inline bool hasHomeKey() { return isX4Pro() || isMetalioEInk4() || isEegoA4(); }
 inline bool hasPwmFrontlight() { return isX4Pro() || isPaperMono(); }
 inline bool hasI2cFrontlight() { return isEegoA4(); }
 

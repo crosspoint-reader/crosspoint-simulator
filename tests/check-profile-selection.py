@@ -12,7 +12,7 @@ profiles = [
     (["SIMULATOR_DEVICE_STICKY"], "sticky", 1, 0, 0),
     (["SIMULATOR_DEVICE_PAPERMONO"], "m5stack_paper_mono", 1, 0, 1),
     (["SIMULATOR_DEVICE_METALIO_EINK4"], "metalio_eink4", 1, 1, 0),
-    (["SIMULATOR_DEVICE_EEGO_A4"], "eego_a4", 1, 0, 1),
+    (["SIMULATOR_DEVICE_EEGO_A4"], "eego_a4", 1, 1, 1),
 ]
 with tempfile.TemporaryDirectory(prefix="simulator-profiles-") as directory:
     folder = Path(directory)

@@ -2,11 +2,12 @@
 
 This profile follows CrossPoint's `eego_a4` environment added in
 [firmware PR 3887](https://github.com/crosspoint-reader/crosspoint-reader/pull/3887)
-and FreeInk SDK revision `9729236ce7b730b81b8fcceec4aa77051b6dfae3`.
+and FreeInk SDK revision `425d200a8ea447326b4b9696e4e47dc84ad9d7f6`,
+pinned by CrossPoint develop `43694c9018d26446ab30cce2fa65ee608355ae50`.
 
 The source of truth is the SDK's
-[board profile](https://github.com/Free-Ink/freeink-sdk/blob/9729236ce7b730b81b8fcceec4aa77051b6dfae3/libs/hardware/BoardConfig/include/BoardConfig.h#L1405)
-and [hardware notes](https://github.com/Free-Ink/freeink-sdk/blob/9729236ce7b730b81b8fcceec4aa77051b6dfae3/docs/eego-a4-support.md).
+[board profile](https://github.com/Free-Ink/freeink-sdk/blob/425d200a8ea447326b4b9696e4e47dc84ad9d7f6/libs/hardware/BoardConfig/include/BoardConfig.h#L1405)
+and [hardware notes](https://github.com/Free-Ink/freeink-sdk/blob/425d200a8ea447326b4b9696e4e47dc84ad9d7f6/docs/eego-a4-support.md).
 The SDK documents incomplete physical hardware validation. This host profile
 does not validate those provisional pin assignments or controller waveforms.
 
@@ -34,17 +35,14 @@ The SDK's nominal UI-scale metadata is 1.2. Current CrossPoint uses one fixed
 UI-font tier in `src/components/UIScale.h`; this profile does not force a
 different scale or change the firmware UI policy.
 
-## SDK Home-Key Caveat
+## Home-Key Contract
 
-At the referenced SDK revision, `EEGO_A4.touch.hasHomeKey` is false even though
-`InputManager::pollGslx680()` produces Home-key events for its special sentinel.
-CrossPoint's `HalGPIO::hasHomeKey()` forwards that false capability, and
-`MappedInputManager::update()` gates Home gesture handling on it.
-
-The simulator deliberately reproduces both sides: H generates the driver's
-events, but `gpio.hasHomeKey()` remains false. It does not silently fix the
-firmware/SDK contract or promise that H performs Back/Home in the application.
-A future SDK correction should be mirrored here and covered by the input test.
+The referenced SDK's `EEGO_A4.touch.hasHomeKey` is true at
+[BoardConfig.h:1427](https://github.com/Free-Ink/freeink-sdk/blob/425d200a8ea447326b4b9696e4e47dc84ad9d7f6/libs/hardware/BoardConfig/include/BoardConfig.h#L1427).
+The simulator reports that capability and delivers H press, short-release and
+hold events. CrossPoint's mapped-input layer can therefore handle them through
+the same capability gate as the device. The native tests cover the events;
+the application-build limitation below still applies.
 
 ## Verification
 

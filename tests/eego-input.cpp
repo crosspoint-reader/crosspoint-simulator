@@ -75,8 +75,7 @@ int main() {
          insets.left == 24);
   assert(BoardConfig::ACTIVE.input.up == 5 &&
          BoardConfig::ACTIVE.input.down == 7);
-  // The pinned SDK reports no Home key despite emitting GSL sentinel events.
-  assert(gpio.hasTouch() && !gpio.hasHomeKey());
+  assert(gpio.hasTouch() && gpio.hasHomeKey());
   assert(!gpio.isXteinkDevice() && !gpio.hasEdgeSideButtons());
   assert(BoardConfig::hasI2cFrontlight() && !BoardConfig::hasPwmFrontlight());
   auto &light = HalFrontlight::getInstance();

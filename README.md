@@ -73,7 +73,7 @@ these flags:
   profile, GSLX680-compatible touch, RTC and optional warm/cool I2C frontlight.
   Up/Down and P are its only physical buttons; H models the touch controller's
   screen-key events. Add `-DSIMULATOR_EEGO_NO_FRONTLIGHT` for a lightless unit.
-  See [the profile contract, SDK Home-key caveat and verification](docs/eego-a4.md).
+  See [the profile contract and verification](docs/eego-a4.md).
 - `-DSIMULATOR_DISPLAY_UC8179` selects the newer UC8179 controller used by
   some X4 and X4 Pro production batches.
 - `-DSIMULATOR_DISPLAY_UC8279` selects UC8279d on X3, or the 800x480 UC8279
