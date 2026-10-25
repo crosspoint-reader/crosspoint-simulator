@@ -37,8 +37,8 @@ def main():
         SDL_VIDEODRIVER="dummy",
         CROSSPOINT_SIM_HTTP_PORT=str(args.port),
         CROSSPOINT_SIM_INPUT_SCRIPT=(
-            "2500:DOWN;2800:DOWN;3100:ENTER;"
-            "4000:DOWN;4300:DOWN;4600:ENTER;20000:QUIT"
+            "2500:DOWN;2800:DOWN;3100:DOWN;3400:ENTER;"
+            "4300:DOWN;4600:DOWN;4900:ENTER;20000:QUIT"
         ),
     )
 
@@ -55,6 +55,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="crosspoint-web-") as directory:
         root = Path(directory)
         (root / "fs_" / "books").mkdir(parents=True)
+        # /api/crypto is a plugin API, and plugins are off by default.
+        # Turning them on adds Plugins before File Transfer on Home.
+        (root / "fs_" / ".crosspoint").mkdir()
+        (root / "fs_" / ".crosspoint" / "settings.json").write_text('{"pluginsEnabled":1}')
         with (root / "simulator.log").open("w+") as log:
             process = subprocess.Popen([str(binary)], cwd=root, env=env,
                                        stdout=log, stderr=log)
