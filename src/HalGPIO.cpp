@@ -572,6 +572,9 @@ void HalGPIO::begin() {
   const char *position = std::getenv("CROSSPOINT_SIM_SLIDE_SWITCH");
   toggleSwitchOn = false;
   setToggleSwitch(position && std::strcmp(position, "on") == 0);
+  // A key a script presses at 0 ms is held at power-on, so setup() sees it
+  // the way the device sees a held button (Back skips reopening the book).
+  processSyntheticEvents();
 }
 
 bool HalGPIO::isXteinkDevice() const {
