@@ -1,5 +1,7 @@
 #include "HalStorage.h"
 
+#include "SimulatorStorageRoot.h"
+
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -17,13 +19,7 @@ HalStorage HalStorage::instance;
 HalStorage::HalStorage() {}
 
 namespace {
-std::string configuredStorageRoot() {
-  const char *root = std::getenv("CROSSPOINT_SIM_SD");
-  if (!root || !*root) {
-    root = std::getenv("CROSSPOINT_EMU_SD");
-  }
-  return (root && *root) ? std::string(root) : std::string("./fs_");
-}
+using crosspoint_simulator::storageRoot;
 
 bool containsUnsafeSegment(const std::string &path) {
   std::stringstream stream(path);
@@ -50,7 +46,7 @@ std::string resolveStoragePath(const char *path) {
     logical.erase(logical.begin());
   }
 
-  std::string root = configuredStorageRoot();
+  std::string root = storageRoot();
   while (root.size() > 1 && root.back() == '/') {
     root.pop_back();
   }
@@ -79,7 +75,7 @@ bool ensureParentDirectories(const std::string &full) {
 } // namespace
 
 bool HalStorage::begin() {
-  const std::string root = configuredStorageRoot();
+  const std::string root = storageRoot();
   for (size_t i = 1; i < root.size(); ++i) {
     if (root[i] == '/') {
       ::mkdir(root.substr(0, i).c_str(), 0777);

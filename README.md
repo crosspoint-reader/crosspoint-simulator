@@ -153,6 +153,7 @@ The `post:` line above only exposes the task in the consuming project UI. The ac
 ## Setup
 
 Place EPUB books at `./fs_/books/` in the Crosspoint repo's root. This maps to the `/books/` path on the physical SD card.
+Values the firmware keeps in NVS flash, such as the secret behind plugin device IDs, are stored in `./fs_/.simulator-nvs/`. Delete that folder to simulate a new device.
 
 ## Build and run
 
