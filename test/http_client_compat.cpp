@@ -65,4 +65,16 @@ int main(int argc, char **argv) {
   HTTPClient legacy;
   legacy.begin(client, (base + "/redirect").c_str());
   assert(legacy.GET() == 200 && legacy.getString().s == "book");
+
+  // Timeouts limit each wait for data, not the whole transfer.
+  legacy.setTimeout(1000);
+  legacy.begin(client, (base + "/slow-start").c_str());
+  assert(legacy.GET() == HTTPC_ERROR_READ_TIMEOUT);
+  http.setTimeout(4000);
+  assert(http.begin(base + "/slow-start"));
+  assert(http.GET() == 200 && http.responseComplete());
+  http.setTimeout(2000);
+  assert(http.begin(base + "/trickle"));
+  assert(http.GET() == 200 && http.responseComplete());
+  assert(http.getString().s == "slowly");
 }

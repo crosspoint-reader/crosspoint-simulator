@@ -60,8 +60,10 @@ class HTTPClient {
   }
   void setFollowRedirects(int mode) { followRedirects_ = mode != HTTPC_DISABLE_FOLLOW_REDIRECTS; }
   void setReuse(bool reuse) { (void)reuse; }
-  void setConnectTimeout(int32_t timeout) { (void)timeout; }
-  void setTimeout(uint16_t timeout) { (void)timeout; }
+  void setConnectTimeout(int32_t timeout) {
+    if (timeout > 0) timeouts_.connectMs = static_cast<unsigned long>(timeout);
+  }
+  void setTimeout(uint16_t timeout) { timeouts_.readMs = timeout; }
   void addHeader(const char* name, const String& value) {
     if (name) headers_[name] = value.c_str();
   }
@@ -173,13 +175,14 @@ class HTTPClient {
   int statusCode_ = 0;
   bool responseComplete_ = false;
   bool followRedirects_ = true;
+  sim_http_fetch::Timeouts timeouts_;
   std::map<std::string, std::string> responseHeaders_;
 
   int perform(const char* method, const char* body) {
     if (url_.empty()) return 0;
 
     sim_http_fetch::Response response;
-    if (!sim_http_fetch::fetch(url_, method, headers_, basicAuth_, body, response, followRedirects_)) {
+    if (!sim_http_fetch::fetch(url_, method, headers_, basicAuth_, body, response, followRedirects_, timeouts_)) {
       responseBody_ = "";
       responseStream_.reset();
       statusCode_ = 0;
