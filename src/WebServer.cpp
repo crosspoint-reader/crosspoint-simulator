@@ -15,7 +15,9 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -264,6 +266,78 @@ std::vector<MultipartPart> parseMultipart(const std::string &contentType,
   }
   return parts;
 }
+
+// A request read off the socket, waiting for handleClient().
+struct PendingRequest {
+  int client = -1;
+  std::string method;
+  std::string target;
+  std::map<std::string, std::string> headers;
+  std::string body;
+  size_t contentLength = 0;
+  bool tooLarge = false;
+  bool incomplete = false;
+};
+
+// Reads the request line, headers and whole body. Returns false when no
+// header block arrives.
+bool readRequest(int client, PendingRequest &request) {
+  std::string raw;
+  char buffer[8192];
+  while (raw.find("\r\n\r\n") == std::string::npos) {
+    const ssize_t got = ::recv(client, buffer, sizeof(buffer), 0);
+    if (got <= 0)
+      break;
+    raw.append(buffer, static_cast<size_t>(got));
+    if (raw.size() > 1024 * 1024)
+      break;
+  }
+
+  const size_t headerEnd = raw.find("\r\n\r\n");
+  if (headerEnd == std::string::npos)
+    return false;
+
+  std::istringstream headerStream(raw.substr(0, headerEnd));
+  std::string requestLine;
+  std::getline(headerStream, requestLine);
+  if (!requestLine.empty() && requestLine.back() == '\r')
+    requestLine.pop_back();
+  std::istringstream requestLineStream(requestLine);
+  requestLineStream >> request.method >> request.target;
+
+  std::string line;
+  while (std::getline(headerStream, line)) {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    const size_t colon = line.find(':');
+    if (colon == std::string::npos)
+      continue;
+    request.headers[lower(line.substr(0, colon))] =
+        trim(line.substr(colon + 1));
+  }
+
+  auto lengthIt = request.headers.find("content-length");
+  if (lengthIt != request.headers.end())
+    request.contentLength = static_cast<size_t>(
+        std::strtoull(lengthIt->second.c_str(), nullptr, 10));
+  if (request.contentLength > MAX_BODY_SIZE) {
+    request.tooLarge = true;
+    return true;
+  }
+
+  request.body = raw.substr(headerEnd + 4);
+  if (request.body.size() > request.contentLength)
+    request.body.resize(request.contentLength);
+  while (request.body.size() < request.contentLength) {
+    const ssize_t got = ::recv(client, buffer, sizeof(buffer), 0);
+    if (got <= 0)
+      break;
+    const size_t wanted = request.contentLength - request.body.size();
+    request.body.append(buffer, std::min(static_cast<size_t>(got), wanted));
+  }
+  request.incomplete = request.body.size() < request.contentLength;
+  return true;
+}
 } // namespace
 
 struct WebServer::Impl {
@@ -281,6 +355,8 @@ struct WebServer::Impl {
   int fd = -1;
   std::atomic<bool> active{false};
   std::thread worker;
+  std::mutex queueMutex;
+  std::deque<PendingRequest> queue;
   std::vector<Route> routes;
   std::vector<std::unique_ptr<RequestHandler>> requestHandlers;
   std::function<void()> notFoundHandler;
@@ -477,217 +553,175 @@ void WebServer::begin() {
       }
       setSocketTimeouts(client);
 
-      std::string raw;
-      char buffer[8192];
-      while (raw.find("\r\n\r\n") == std::string::npos) {
-        const ssize_t got = ::recv(client, buffer, sizeof(buffer), 0);
-        if (got <= 0)
-          break;
-        raw.append(buffer, static_cast<size_t>(got));
-        if (raw.size() > 1024 * 1024)
-          break;
-      }
-
-      const size_t headerEnd = raw.find("\r\n\r\n");
-      if (headerEnd == std::string::npos) {
+      PendingRequest request;
+      request.client = client;
+      if (!readRequest(client, request)) {
         ::close(client);
         continue;
       }
-
-      std::string body = raw.substr(headerEnd + 4);
-      std::istringstream headerStream(raw.substr(0, headerEnd));
-      std::string requestLine;
-      std::getline(headerStream, requestLine);
-      if (!requestLine.empty() && requestLine.back() == '\r')
-        requestLine.pop_back();
-      std::istringstream requestLineStream(requestLine);
-      std::string methodText;
-      std::string target;
-      requestLineStream >> methodText >> target;
-
-      std::map<std::string, std::string> headers;
-      std::string line;
-      while (std::getline(headerStream, line)) {
-        if (!line.empty() && line.back() == '\r')
-          line.pop_back();
-        const size_t colon = line.find(':');
-        if (colon == std::string::npos)
-          continue;
-        headers[lower(line.substr(0, colon))] = trim(line.substr(colon + 1));
-      }
-
-      size_t bodyLength = 0;
-      auto lengthIt = headers.find("content-length");
-      if (lengthIt != headers.end())
-        bodyLength = static_cast<size_t>(
-            std::strtoull(lengthIt->second.c_str(), nullptr, 10));
-
-      const size_t queryStart = target.find('?');
-      const std::string path = urlDecodeStd(target.substr(0, queryStart));
-
-      clearArguments();
-      impl_->resetRequest();
-      impl_->currentClient = client;
-      impl_->currentMethod = methodFromString(methodText);
-      impl_->currentUri = path.empty() ? "/" : path.c_str();
-      impl_->requestContentLength = bodyLength;
-      for (const auto &header : headers) {
-        impl_->currentHeaders.emplace_back(String(header.first),
-                                           String(header.second));
-      }
-      if (queryStart != std::string::npos)
-        parseArgs(target.substr(queryStart + 1), impl_->currentArgs);
-
-      const auto rawHandlers = impl_->rawHandlers(*this);
-      const bool hasRawHandlers = !rawHandlers.empty();
-      if (bodyLength > MAX_BODY_SIZE) {
-        LOG_ERR("WEB", "[SIM] Request body too large: %zu bytes", bodyLength);
-        if (hasRawHandlers) {
-          impl_->emitRawEvent(*this, rawHandlers, RAW_START, nullptr, 0);
-          impl_->emitRawEvent(*this, rawHandlers, RAW_ABORTED, nullptr, 0);
-        }
-        sendSimpleResponse(client, 413, "Payload Too Large");
-        ::close(client);
-        continue;
-      }
-      if (body.size() > bodyLength)
-        body.resize(bodyLength);
-      if (hasRawHandlers) {
-        impl_->emitRawEvent(*this, rawHandlers, RAW_START, nullptr, 0);
-        for (size_t offset = 0; offset < body.size();
-             offset += UPLOAD_CHUNK_SIZE) {
-          const size_t currentSize =
-              std::min(UPLOAD_CHUNK_SIZE, body.size() - offset);
-          impl_->emitRawEvent(*this, rawHandlers, RAW_WRITE,
-                              reinterpret_cast<uint8_t *>(&body[offset]),
-                              currentSize);
-        }
-      }
-      while (body.size() < bodyLength) {
-        const ssize_t got = ::recv(client, buffer, sizeof(buffer), 0);
-        if (got <= 0)
-          break;
-        const size_t offset = body.size();
-        const size_t wanted = bodyLength - body.size();
-        const size_t count = std::min(static_cast<size_t>(got), wanted);
-        body.append(buffer, count);
-        if (hasRawHandlers) {
-          for (size_t rawOffset = offset; rawOffset < body.size();
-               rawOffset += UPLOAD_CHUNK_SIZE) {
-            const size_t currentSize =
-                std::min(UPLOAD_CHUNK_SIZE, body.size() - rawOffset);
-            impl_->emitRawEvent(*this, rawHandlers, RAW_WRITE,
-                                reinterpret_cast<uint8_t *>(&body[rawOffset]),
-                                currentSize);
-          }
-        }
-      }
-      if (body.size() < bodyLength) {
-        LOG_ERR("WEB", "[SIM] Incomplete request body: %zu/%zu bytes",
-                body.size(), bodyLength);
-        if (hasRawHandlers)
-          impl_->emitRawEvent(*this, rawHandlers, RAW_ABORTED, nullptr, 0);
-        auto contentTypeIt = headers.find("content-type");
-        const std::string contentType =
-            contentTypeIt == headers.end() ? "" : contentTypeIt->second;
-        if (contentType.find("multipart/form-data") != std::string::npos)
-          impl_->emitMultipartAbort();
-        sendSimpleResponse(client, 400, "Incomplete request body");
-        ::close(client);
-        continue;
-      }
-      if (hasRawHandlers)
-        impl_->emitRawEvent(*this, rawHandlers, RAW_END, nullptr, 0);
-
-      auto contentTypeIt = headers.find("content-type");
-      const std::string contentType =
-          contentTypeIt == headers.end() ? "" : contentTypeIt->second;
-      if (contentType.find("application/x-www-form-urlencoded") !=
-          std::string::npos) {
-        parseArgs(body, impl_->currentArgs);
-      } else if (!body.empty() &&
-                 contentType.find("multipart/form-data") == std::string::npos) {
-        impl_->currentArgs.emplace_back(String("plain"), String(body));
-      }
-
-      LOG_DBG("WEB", "[SIM] %s %s", methodText.c_str(), target.c_str());
-
-      bool handled = false;
-      for (const auto &route : impl_->routes) {
-        const bool headMatchesGet =
-            impl_->currentMethod == HTTP_HEAD && route.method == HTTP_GET;
-        if (route.uri == impl_->currentUri &&
-            (route.method == impl_->currentMethod || route.method == HTTP_ANY ||
-             headMatchesGet)) {
-          if (route.uploadHandler &&
-              contentType.find("multipart/form-data") != std::string::npos) {
-            const auto parts = parseMultipart(contentType, body);
-            for (const auto &part : parts) {
-              if (part.filename.empty()) {
-                impl_->currentArgs.emplace_back(String(part.name),
-                                                String(part.data));
-              }
-            }
-            for (const auto &part : parts) {
-              if (part.filename.empty())
-                continue;
-              impl_->currentUpload.name = part.name.c_str();
-              impl_->currentUpload.filename = part.filename.c_str();
-              impl_->currentUpload.totalSize = part.data.size();
-              impl_->currentUpload.status = UPLOAD_FILE_START;
-              impl_->currentUpload.currentSize = 0;
-              impl_->currentUpload.buf = nullptr;
-              route.uploadHandler();
-              for (size_t offset = 0; offset < part.data.size();
-                   offset += UPLOAD_CHUNK_SIZE) {
-                impl_->currentUpload.status = UPLOAD_FILE_WRITE;
-                impl_->currentUpload.currentSize =
-                    std::min(UPLOAD_CHUNK_SIZE, part.data.size() - offset);
-                impl_->currentUpload.buf = reinterpret_cast<uint8_t *>(
-                    const_cast<char *>(part.data.data() + offset));
-                route.uploadHandler();
-              }
-              impl_->currentUpload.status = UPLOAD_FILE_END;
-              impl_->currentUpload.currentSize = 0;
-              impl_->currentUpload.buf = nullptr;
-              route.uploadHandler();
-            }
-          }
-          route.handler();
-          handled = true;
-          break;
-        }
-      }
-
-      if (!handled) {
-        for (auto &requestHandler : impl_->requestHandlers) {
-          if (requestHandler->canHandle(*this, impl_->currentMethod,
-                                        impl_->currentUri) &&
-              requestHandler->handle(*this, impl_->currentMethod,
-                                     impl_->currentUri)) {
-            handled = true;
-            break;
-          }
-        }
-      }
-
-      if (!handled) {
-        if (impl_->notFoundHandler) {
-          impl_->notFoundHandler();
-        } else {
-          send(404, "text/plain", "Not Found");
-        }
-      }
-
-      ::close(client);
-      impl_->resetRequest();
+      std::lock_guard<std::mutex> lock(impl_->queueMutex);
+      impl_->queue.push_back(std::move(request));
     }
   });
   LOG_DBG("WEB", "[SIM] WebServer running at http://127.0.0.1:%d/",
           impl_->port);
 }
 
-void WebServer::handleClient() {}
+// Handlers run here, on the caller's thread, as on the device. The worker
+// thread only reads requests, so firmware code that runs after
+// handleClient() (such as freeing request arguments) cannot race a handler.
+void WebServer::handleClient() {
+  PendingRequest request;
+  {
+    std::lock_guard<std::mutex> lock(impl_->queueMutex);
+    if (impl_->queue.empty())
+      return;
+    request = std::move(impl_->queue.front());
+    impl_->queue.pop_front();
+  }
+
+  const int client = request.client;
+  const size_t bodyLength = request.contentLength;
+  std::string &body = request.body;
+  const size_t queryStart = request.target.find('?');
+  const std::string path = urlDecodeStd(request.target.substr(0, queryStart));
+
+  clearArguments();
+  impl_->resetRequest();
+  impl_->currentClient = client;
+  impl_->currentMethod = methodFromString(request.method);
+  impl_->currentUri = path.empty() ? "/" : path.c_str();
+  impl_->requestContentLength = bodyLength;
+  for (const auto &header : request.headers) {
+    impl_->currentHeaders.emplace_back(String(header.first),
+                                       String(header.second));
+  }
+  if (queryStart != std::string::npos)
+    parseArgs(request.target.substr(queryStart + 1), impl_->currentArgs);
+
+  auto contentTypeIt = request.headers.find("content-type");
+  const std::string contentType =
+      contentTypeIt == request.headers.end() ? "" : contentTypeIt->second;
+  const auto rawHandlers = impl_->rawHandlers(*this);
+  const bool hasRawHandlers = !rawHandlers.empty();
+  if (request.tooLarge) {
+    LOG_ERR("WEB", "[SIM] Request body too large: %zu bytes", bodyLength);
+    if (hasRawHandlers) {
+      impl_->emitRawEvent(*this, rawHandlers, RAW_START, nullptr, 0);
+      impl_->emitRawEvent(*this, rawHandlers, RAW_ABORTED, nullptr, 0);
+    }
+    sendSimpleResponse(client, 413, "Payload Too Large");
+    ::close(client);
+    impl_->resetRequest();
+    return;
+  }
+  if (hasRawHandlers) {
+    impl_->emitRawEvent(*this, rawHandlers, RAW_START, nullptr, 0);
+    for (size_t offset = 0; offset < body.size();
+         offset += UPLOAD_CHUNK_SIZE) {
+      const size_t currentSize =
+          std::min(UPLOAD_CHUNK_SIZE, body.size() - offset);
+      impl_->emitRawEvent(*this, rawHandlers, RAW_WRITE,
+                          reinterpret_cast<uint8_t *>(&body[offset]),
+                          currentSize);
+    }
+  }
+  if (request.incomplete) {
+    LOG_ERR("WEB", "[SIM] Incomplete request body: %zu/%zu bytes",
+            body.size(), bodyLength);
+    if (hasRawHandlers)
+      impl_->emitRawEvent(*this, rawHandlers, RAW_ABORTED, nullptr, 0);
+    if (contentType.find("multipart/form-data") != std::string::npos)
+      impl_->emitMultipartAbort();
+    sendSimpleResponse(client, 400, "Incomplete request body");
+    ::close(client);
+    impl_->resetRequest();
+    return;
+  }
+  if (hasRawHandlers)
+    impl_->emitRawEvent(*this, rawHandlers, RAW_END, nullptr, 0);
+
+  if (contentType.find("application/x-www-form-urlencoded") !=
+      std::string::npos) {
+    parseArgs(body, impl_->currentArgs);
+  } else if (!body.empty() &&
+             contentType.find("multipart/form-data") == std::string::npos) {
+    impl_->currentArgs.emplace_back(String("plain"), String(body));
+  }
+
+  LOG_DBG("WEB", "[SIM] %s %s", request.method.c_str(),
+          request.target.c_str());
+
+  bool handled = false;
+  for (const auto &route : impl_->routes) {
+    const bool headMatchesGet =
+        impl_->currentMethod == HTTP_HEAD && route.method == HTTP_GET;
+    if (route.uri == impl_->currentUri &&
+        (route.method == impl_->currentMethod || route.method == HTTP_ANY ||
+         headMatchesGet)) {
+      if (route.uploadHandler &&
+          contentType.find("multipart/form-data") != std::string::npos) {
+        const auto parts = parseMultipart(contentType, body);
+        for (const auto &part : parts) {
+          if (part.filename.empty()) {
+            impl_->currentArgs.emplace_back(String(part.name),
+                                            String(part.data));
+          }
+        }
+        for (const auto &part : parts) {
+          if (part.filename.empty())
+            continue;
+          impl_->currentUpload.name = part.name.c_str();
+          impl_->currentUpload.filename = part.filename.c_str();
+          impl_->currentUpload.totalSize = part.data.size();
+          impl_->currentUpload.status = UPLOAD_FILE_START;
+          impl_->currentUpload.currentSize = 0;
+          impl_->currentUpload.buf = nullptr;
+          route.uploadHandler();
+          for (size_t offset = 0; offset < part.data.size();
+               offset += UPLOAD_CHUNK_SIZE) {
+            impl_->currentUpload.status = UPLOAD_FILE_WRITE;
+            impl_->currentUpload.currentSize =
+                std::min(UPLOAD_CHUNK_SIZE, part.data.size() - offset);
+            impl_->currentUpload.buf = reinterpret_cast<uint8_t *>(
+                const_cast<char *>(part.data.data() + offset));
+            route.uploadHandler();
+          }
+          impl_->currentUpload.status = UPLOAD_FILE_END;
+          impl_->currentUpload.currentSize = 0;
+          impl_->currentUpload.buf = nullptr;
+          route.uploadHandler();
+        }
+      }
+      route.handler();
+      handled = true;
+      break;
+    }
+  }
+
+  if (!handled) {
+    for (auto &requestHandler : impl_->requestHandlers) {
+      if (requestHandler->canHandle(*this, impl_->currentMethod,
+                                    impl_->currentUri) &&
+          requestHandler->handle(*this, impl_->currentMethod,
+                                 impl_->currentUri)) {
+        handled = true;
+        break;
+      }
+    }
+  }
+
+  if (!handled) {
+    if (impl_->notFoundHandler) {
+      impl_->notFoundHandler();
+    } else {
+      send(404, "text/plain", "Not Found");
+    }
+  }
+
+  ::close(client);
+  impl_->resetRequest();
+}
 
 void WebServer::on(const char *uri, int method, std::function<void()> handler) {
   impl_->routes.push_back({String(uri), static_cast<HTTPMethod>(method),
@@ -721,6 +755,10 @@ void WebServer::stop() {
   }
   if (impl_->worker.joinable())
     impl_->worker.join();
+  std::lock_guard<std::mutex> lock(impl_->queueMutex);
+  for (const auto &request : impl_->queue)
+    ::close(request.client);
+  impl_->queue.clear();
 }
 
 void WebServer::addHandler(RequestHandler *handler) {
