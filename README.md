@@ -190,7 +190,8 @@ tests possible without desktop-control permissions:
   `UP`, `DOWN`, `POWER`, `SLEEP`, `HOME`, and `QUIT`. A normal key press is
   held for 80 ms unless a duration is provided. Metalio also accepts `PREV`
   and `NEXT` for its capacitive cover page keys; `UP`/`DOWN` remain physical
-  volume keys.
+  volume keys. A key pressed at 0 ms is already held when the firmware
+  starts, like a button held at power-on.
 - Picco accepts `SWITCH_ON` and `SWITCH_OFF` to set the slide-switch position.
   `CROSSPOINT_SIM_SLIDE_SWITCH=on` selects its initial position (default off).
 - Touch-device actions use `TAP:<x>,<y>[,<hold-milliseconds>]` or
@@ -198,6 +199,10 @@ tests possible without desktop-control permissions:
   displayed logical pixels, so they match UI layouts and screenshots after the
   firmware changes orientation. Normalized coordinates from 0.0 to 1.0 are
   also accepted for existing scripts.
+- `CROSSPOINT_SIM_SD` sets the folder used as the SD card (default `./fs_`).
+  The firmware reopens the last book at boot, so start each scripted run with
+  a fresh folder (or a known `.crosspoint/state.json`) when the script
+  expects Home.
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
