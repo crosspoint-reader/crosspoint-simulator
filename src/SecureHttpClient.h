@@ -23,13 +23,24 @@ class SecureHttpClient {
 
   void setCACert(const char*) {}
   void setInsecure() {}
-  void setUserAgent(const std::string& agent) { http_.addHeader("User-Agent", agent.c_str()); }
+  void setUserAgent(const std::string& agent) {
+    userAgent_ = agent;
+    http_.addHeader("User-Agent", agent.c_str());
+  }
   void setBasicAuth(const std::string& user, const std::string& pass) {
+    authUser_ = user;
+    authPass_ = pass;
     http_.setAuthorization(user.c_str(), pass.c_str());
   }
+  void clearBasicAuth() { setBasicAuth("", ""); }
 
+  // Like the SDK, begin() drops the previous request's headers; the user agent
+  // and basic auth are client settings and stay.
   bool begin(const String& url) {
+    http_.end();
     http_.begin(client_, url.c_str());
+    http_.addHeader("User-Agent", userAgent_.c_str());
+    if (!authUser_.empty()) http_.setAuthorization(authUser_.c_str(), authPass_.c_str());
     callbackStopped_ = false;
     aborted_ = false;
     return !url.isEmpty();
@@ -37,6 +48,12 @@ class SecureHttpClient {
 
   bool begin(const std::string& url) { return begin(String(url)); }
   bool begin(const char* url) { return begin(String(url)); }
+
+  // curl connects inside each request, so there is nothing to open early.
+  bool connect(const AbortCallback& shouldAbort = nullptr) {
+    aborted_ = shouldAbort && shouldAbort();
+    return !aborted_;
+  }
 
   void end() { http_.end(); }
 
@@ -56,15 +73,7 @@ class SecureHttpClient {
 
   int GET() { return http_.GET(); }
   int POST(const String& payload) { return http_.POST(payload.c_str()); }
-  int sendRequest(const char* method, const String& payload) {
-    if (method && std::string(method) == "PUT") {
-      return http_.PUT(payload);
-    }
-    if (method && std::string(method) == "POST") {
-      return http_.POST(payload.c_str());
-    }
-    return http_.GET();
-  }
+  int sendRequest(const char* method, const String& payload) { return http_.sendRequest(method, payload); }
   int sendRequest(const char* method, const std::string& payload) { return sendRequest(method, String(payload)); }
 
   int sendRequest(const char* method, const uint8_t* payload, size_t len, const DataCallback& onData,
@@ -128,6 +137,9 @@ class SecureHttpClient {
  private:
   NetworkClientSecure client_;
   HTTPClient http_;
+  std::string userAgent_ = "FreeInk-ESP32";  // SDK default
+  std::string authUser_;
+  std::string authPass_;
   bool callbackStopped_ = false;
   bool aborted_ = false;
 };

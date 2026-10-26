@@ -71,7 +71,8 @@ class HTTPClient {
     if (name) headers_[name] = value ? value : "";
   }
   void setAuthorization(const char* user, const char* pass) {
-    if (user && pass) basicAuth_ = std::string(user) + ":" + pass;
+    // An empty user turns auth off, as FreeInk's setBasicAuth() does.
+    basicAuth_ = user && *user && pass ? std::string(user) + ":" + pass : std::string();
   }
 
   int GET() { return perform("GET", nullptr); }
@@ -79,6 +80,10 @@ class HTTPClient {
   int POST(const char* body) { return perform("POST", body ? body : ""); }
   int PUT(const char* body) { return perform("PUT", body ? body : ""); }
   int PUT(const String& body) { return perform("PUT", body.c_str()); }
+  // Any method; an empty payload sends no body.
+  int sendRequest(const char* type, const String& payload) {
+    return perform(type ? type : "GET", payload.isEmpty() ? nullptr : payload.c_str());
+  }
 
   String getString() { return responseBody_; }
   int getSize() { return static_cast<int>(responseBody_.length()); }
