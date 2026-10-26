@@ -77,4 +77,25 @@ int main(int argc, char **argv) {
   assert(http.begin(base + "/trickle"));
   assert(http.GET() == 200 && http.responseComplete());
   assert(http.getString().s == "slowly");
+
+  // begin() drops the previous request's headers; the user agent and basic auth stay.
+  freeink::SecureHttpClient session;
+  session.setUserAgent("Sim");
+  session.setBasicAuth("user", "pass");
+  assert(session.begin(base + "/echo") && session.connect());
+  session.addHeader("X-Once", "1");
+  assert(session.GET() == 200 && session.getString().s == "GET once=1 ua=Sim auth=yes body=");
+  assert(session.begin(base + "/echo"));
+  assert(session.GET() == 200 && session.getString().s == "GET once= ua=Sim auth=yes body=");
+  session.clearBasicAuth();
+  assert(session.begin(base + "/echo"));
+  assert(session.sendRequest("PATCH", std::string("a=1")) == 200);
+  assert(session.getString().s == "PATCH once= ua=Sim auth=no body=a=1");
+  assert(session.begin(base + "/echo"));
+  assert(session.sendRequest("DELETE", std::string()) == 200);
+  assert(session.getString().s == "DELETE once= ua=Sim auth=no body=");
+  assert(session.begin(base + "/echo"));
+  assert(session.sendRequest("HEAD", std::string()) == 200);
+  assert(session.getContentLength() > 0 && session.getString().s.empty());
+  assert(session.begin(base + "/echo") && !session.connect([] { return true; }));
 }

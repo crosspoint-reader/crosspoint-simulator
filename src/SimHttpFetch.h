@@ -192,7 +192,13 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
   if (followRedirects) cmd += "-L ";
   cmd += "-o " + shellQuote(tmpTemplate);
   cmd += " -w '%{http_code}'";
-  if (method && std::string(method) != "GET") cmd += " -X " + shellQuote(method);
+  const std::string verb = method ? method : "GET";
+  // -X HEAD would make curl wait for the body the headers announce.
+  if (verb == "HEAD") {
+    cmd += " --head";
+  } else if (verb != "GET") {
+    cmd += " -X " + shellQuote(verb);
+  }
   for (const auto& header : headers) {
     cmd += " -H " + shellQuote(header.first + ": " + header.second);
   }
@@ -216,7 +222,8 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
 
   bool readOk = readFile(tmpTemplate, out.body);
   unlink(tmpTemplate);
-  if (!readOk) out.body.clear();
+  // --head writes the headers to the output file too; a HEAD response has no body.
+  if (!readOk || verb == "HEAD") out.body.clear();
 
   size_t start = 0;
   while (start < statusText.size()) {
