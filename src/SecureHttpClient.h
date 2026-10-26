@@ -14,7 +14,10 @@ namespace freeink {
 
 class SecureHttpClient {
  public:
-  SecureHttpClient() { http_.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS); }
+  SecureHttpClient() {
+    http_.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    setTimeout(15000);  // SDK default
+  }
   using DataCallback = std::function<bool(const uint8_t*, size_t)>;
   using AbortCallback = std::function<bool()>;
 
@@ -44,7 +47,11 @@ class SecureHttpClient {
   void addHeader(const char* name, const char* value) { http_.addHeader(name, value); }
   void addHeader(const std::string& name, const std::string& value) { http_.addHeader(name.c_str(), value.c_str()); }
 
-  void setTimeout(uint16_t ms) { http_.setTimeout(ms); }
+  // Like the SDK, one value limits both connecting and each wait for data.
+  void setTimeout(uint32_t ms) {
+    http_.setConnectTimeout(static_cast<int32_t>(ms));
+    http_.setTimeout(static_cast<uint16_t>(ms > UINT16_MAX ? UINT16_MAX : ms));
+  }
   void setReuse(bool reuse) { http_.setReuse(reuse); }
 
   int GET() { return http_.GET(); }

@@ -15,6 +15,14 @@
 
 namespace sim_http_fetch {
 
+// Firmware HTTP timeouts. On the device each one limits a single wait (to
+// connect, or for the next data), not the whole transfer. 5 s is the
+// Arduino HTTPClient and ESP-IDF default.
+struct Timeouts {
+  unsigned long connectMs = 5000;
+  unsigned long readMs = 5000;
+};
+
 struct Response {
   int statusCode = 0;
   int curlExitCode = 0;
@@ -167,13 +175,20 @@ inline bool fetchFromMockRoot(const std::string& url, Response& out) {
 }
 
 inline bool fetchWithCurl(const std::string& url, const char* method, const std::map<std::string, std::string>& headers,
-                          const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true) {
+                          const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true,
+                          const Timeouts& timeouts = {}) {
   char tmpTemplate[] = "/tmp/crosspoint-sim-http-XXXXXX";
   int fd = mkstemp(tmpTemplate);
   if (fd < 0) return false;
   close(fd);
 
-  std::string cmd = "curl -sS -D - --connect-timeout 10 --max-time 60 ";
+  // curl has no read timeout; "under 1 byte/s for N seconds" is the closest.
+  const unsigned long readSeconds = timeouts.readMs < 1000 ? 1 : (timeouts.readMs + 999) / 1000;
+  char limits[96];
+  snprintf(limits, sizeof(limits), "--connect-timeout %.3f --speed-limit 1 --speed-time %lu ",
+           timeouts.connectMs / 1000.0, readSeconds);
+  std::string cmd = "curl -sS -D - ";
+  cmd += limits;
   if (followRedirects) cmd += "-L ";
   cmd += "-o " + shellQuote(tmpTemplate);
   cmd += " -w '%{http_code}'";
@@ -225,11 +240,12 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
 }
 
 inline bool fetch(const std::string& url, const char* method, const std::map<std::string, std::string>& headers,
-                  const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true) {
+                  const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true,
+                  const Timeouts& timeouts = {}) {
   out = Response{};
   if (fetchFromMockRoot(url, out)) return true;
   if (fetchFromFileUrl(url, out)) return true;
-  return fetchWithCurl(url, method, headers, basicAuth, body, out, followRedirects);
+  return fetchWithCurl(url, method, headers, basicAuth, body, out, followRedirects, timeouts);
 }
 
 }  // namespace sim_http_fetch

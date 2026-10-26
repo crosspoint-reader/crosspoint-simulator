@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -13,6 +14,18 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if self.path == "/slow-start":
+            time.sleep(2.5)
+        elif self.path == "/trickle":
+            # 6 bytes over 3 s: longer than a 2 s timeout, never idle for 2 s.
+            self.send_response(200)
+            self.send_header("Content-Length", "6")
+            self.end_headers()
+            for byte in b"slowly":
+                self.wfile.write(bytes([byte]))
+                self.wfile.flush()
+                time.sleep(0.5)
+            return
         body = b"book"
         status = 302 if self.path in ("/redirect", "/cross-origin", "/loop") else 200
         self.send_response(status)
@@ -52,7 +65,7 @@ def main():
             finally:
                 server.shutdown()
                 thread.join()
-    print("PASS HTTP status, headers, lengths, redirects, origin scoping, cancellation")
+    print("PASS HTTP status, headers, lengths, redirects, origin scoping, cancellation, timeouts")
 
 
 if __name__ == "__main__":

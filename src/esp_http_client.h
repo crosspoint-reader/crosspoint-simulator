@@ -86,6 +86,14 @@ inline const char *methodName(esp_http_client_method_t method) {
     return "GET";
   }
 }
+
+// ESP-IDF uses timeout_ms for both connecting and each read; 0 means 5 s.
+inline sim_http_fetch::Timeouts timeouts(const esp_http_client_config_t &config) {
+  sim_http_fetch::Timeouts out;
+  if (config.timeout_ms > 0)
+    out.connectMs = out.readMs = static_cast<unsigned long>(config.timeout_ms);
+  return out;
+}
 } // namespace sim_http_client_detail
 
 inline esp_err_t esp_http_client_set_header(esp_http_client_handle_t handle,
@@ -145,7 +153,7 @@ inline esp_err_t esp_http_client_perform(esp_http_client_handle_t handle) {
   if (!sim_http_fetch::fetch(
           handle->config.url, method, handle->headers, "",
           handle->postField.empty() ? nullptr : handle->postField.c_str(),
-          response))
+          response, true, timeouts(handle->config)))
     return ESP_FAIL;
 
   handle->statusCode = response.statusCode;
@@ -182,7 +190,7 @@ inline esp_err_t esp_http_client_open(esp_http_client_handle_t handle,
           handle->config.url, methodName(handle->config.method),
           handle->headers, basicAuth,
           handle->postField.empty() ? nullptr : handle->postField.c_str(),
-          response))
+          response, true, timeouts(handle->config)))
     return ESP_FAIL;
   handle->statusCode = response.statusCode;
   handle->responseBody = std::move(response.body);
