@@ -361,6 +361,10 @@ struct WebServer::Impl {
   std::vector<std::unique_ptr<RequestHandler>> requestHandlers;
   std::function<void()> notFoundHandler;
   std::vector<String> collectedHeaders;
+  // Run in registration order; ownedMiddlewares keeps the ones built from a
+  // function.
+  std::vector<Middleware *> middlewares;
+  std::vector<std::unique_ptr<Middleware>> ownedMiddlewares;
 
   int currentClient = -1;
   HTTPMethod currentMethod = HTTP_GET;
@@ -431,6 +435,15 @@ struct WebServer::Impl {
       route.uploadHandler();
       break;
     }
+  }
+
+  bool runMiddleware(WebServer &server, size_t index,
+                     const Middleware::Callback &finalizer) {
+    if (index >= middlewares.size())
+      return finalizer();
+    return middlewares[index]->run(server, [&, index]() {
+      return runMiddleware(server, index + 1, finalizer);
+    });
   }
 
   void resetRequest() {
@@ -652,72 +665,78 @@ void WebServer::handleClient() {
   LOG_DBG("WEB", "[SIM] %s %s", request.method.c_str(),
           request.target.c_str());
 
-  bool handled = false;
-  for (const auto &route : impl_->routes) {
-    const bool headMatchesGet =
-        impl_->currentMethod == HTTP_HEAD && route.method == HTTP_GET;
-    if (route.uri == impl_->currentUri &&
-        (route.method == impl_->currentMethod || route.method == HTTP_ANY ||
-         headMatchesGet)) {
-      if (route.uploadHandler &&
-          contentType.find("multipart/form-data") != std::string::npos) {
-        const auto parts = parseMultipart(contentType, body);
-        for (const auto &part : parts) {
-          if (part.filename.empty()) {
-            impl_->currentArgs.emplace_back(String(part.name),
-                                            String(part.data));
+  // As on the device, middlewares wrap route dispatch; one that does not call
+  // next() has answered the request itself.
+  const auto dispatch = [&]() -> bool {
+    bool handled = false;
+    for (const auto &route : impl_->routes) {
+      const bool headMatchesGet =
+          impl_->currentMethod == HTTP_HEAD && route.method == HTTP_GET;
+      if (route.uri == impl_->currentUri &&
+          (route.method == impl_->currentMethod || route.method == HTTP_ANY ||
+           headMatchesGet)) {
+        if (route.uploadHandler &&
+            contentType.find("multipart/form-data") != std::string::npos) {
+          const auto parts = parseMultipart(contentType, body);
+          for (const auto &part : parts) {
+            if (part.filename.empty()) {
+              impl_->currentArgs.emplace_back(String(part.name),
+                                              String(part.data));
+            }
           }
-        }
-        for (const auto &part : parts) {
-          if (part.filename.empty())
-            continue;
-          impl_->currentUpload.name = part.name.c_str();
-          impl_->currentUpload.filename = part.filename.c_str();
-          impl_->currentUpload.totalSize = part.data.size();
-          impl_->currentUpload.status = UPLOAD_FILE_START;
-          impl_->currentUpload.currentSize = 0;
-          impl_->currentUpload.buf = nullptr;
-          route.uploadHandler();
-          for (size_t offset = 0; offset < part.data.size();
-               offset += UPLOAD_CHUNK_SIZE) {
-            impl_->currentUpload.status = UPLOAD_FILE_WRITE;
-            impl_->currentUpload.currentSize =
-                std::min(UPLOAD_CHUNK_SIZE, part.data.size() - offset);
-            impl_->currentUpload.buf = reinterpret_cast<uint8_t *>(
-                const_cast<char *>(part.data.data() + offset));
+          for (const auto &part : parts) {
+            if (part.filename.empty())
+              continue;
+            impl_->currentUpload.name = part.name.c_str();
+            impl_->currentUpload.filename = part.filename.c_str();
+            impl_->currentUpload.totalSize = part.data.size();
+            impl_->currentUpload.status = UPLOAD_FILE_START;
+            impl_->currentUpload.currentSize = 0;
+            impl_->currentUpload.buf = nullptr;
+            route.uploadHandler();
+            for (size_t offset = 0; offset < part.data.size();
+                 offset += UPLOAD_CHUNK_SIZE) {
+              impl_->currentUpload.status = UPLOAD_FILE_WRITE;
+              impl_->currentUpload.currentSize =
+                  std::min(UPLOAD_CHUNK_SIZE, part.data.size() - offset);
+              impl_->currentUpload.buf = reinterpret_cast<uint8_t *>(
+                  const_cast<char *>(part.data.data() + offset));
+              route.uploadHandler();
+            }
+            impl_->currentUpload.status = UPLOAD_FILE_END;
+            impl_->currentUpload.currentSize = 0;
+            impl_->currentUpload.buf = nullptr;
             route.uploadHandler();
           }
-          impl_->currentUpload.status = UPLOAD_FILE_END;
-          impl_->currentUpload.currentSize = 0;
-          impl_->currentUpload.buf = nullptr;
-          route.uploadHandler();
         }
-      }
-      route.handler();
-      handled = true;
-      break;
-    }
-  }
-
-  if (!handled) {
-    for (auto &requestHandler : impl_->requestHandlers) {
-      if (requestHandler->canHandle(*this, impl_->currentMethod,
-                                    impl_->currentUri) &&
-          requestHandler->handle(*this, impl_->currentMethod,
-                                 impl_->currentUri)) {
+        route.handler();
         handled = true;
         break;
       }
     }
-  }
 
-  if (!handled) {
-    if (impl_->notFoundHandler) {
-      impl_->notFoundHandler();
-    } else {
-      send(404, "text/plain", "Not Found");
+    if (!handled) {
+      for (auto &requestHandler : impl_->requestHandlers) {
+        if (requestHandler->canHandle(*this, impl_->currentMethod,
+                                      impl_->currentUri) &&
+            requestHandler->handle(*this, impl_->currentMethod,
+                                   impl_->currentUri)) {
+          handled = true;
+          break;
+        }
+      }
     }
-  }
+
+    if (!handled) {
+      if (impl_->notFoundHandler) {
+        impl_->notFoundHandler();
+      } else {
+        send(404, "text/plain", "Not Found");
+      }
+    }
+    return true;
+  };
+  impl_->runMiddleware(*this, 0, dispatch);
 
   ::close(client);
   impl_->resetRequest();
@@ -763,6 +782,27 @@ void WebServer::stop() {
 
 void WebServer::addHandler(RequestHandler *handler) {
   impl_->requestHandlers.emplace_back(handler);
+}
+
+WebServer &WebServer::addMiddleware(Middleware *middleware) {
+  impl_->middlewares.push_back(middleware);
+  return *this;
+}
+
+WebServer &WebServer::addMiddleware(Middleware::Function fn) {
+  impl_->ownedMiddlewares.emplace_back(new MiddlewareFunction(std::move(fn)));
+  return addMiddleware(impl_->ownedMiddlewares.back().get());
+}
+
+WebServer &WebServer::removeMiddleware(Middleware *middleware) {
+  auto &list = impl_->middlewares;
+  list.erase(std::remove(list.begin(), list.end(), middleware), list.end());
+  auto &owned = impl_->ownedMiddlewares;
+  const auto same = [middleware](const std::unique_ptr<Middleware> &m) {
+    return m.get() == middleware;
+  };
+  owned.erase(std::remove_if(owned.begin(), owned.end(), same), owned.end());
+  return *this;
 }
 
 void WebServer::send(int code, const char *content_type, const char *content) {
