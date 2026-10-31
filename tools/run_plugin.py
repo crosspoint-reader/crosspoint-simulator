@@ -66,7 +66,15 @@ def prepare_sd(sd, plugin_dir, config):
     # replace only the files that come from the plugin folder.
     shutil.copytree(plugin_dir, target, dirs_exist_ok=True)
     if config:
-        shutil.copyfile(config, target / config_file_name(plugin_dir))
+        # As in the firmware: an absolute path is on the card, a relative one is
+        # in the plugin's folder.
+        name_on_card = config_file_name(plugin_dir)
+        if name_on_card.startswith("/"):
+            config_path = sd / name_on_card.lstrip("/")
+        else:
+            config_path = target / name_on_card
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(config, config_path)
     return name
 
 
