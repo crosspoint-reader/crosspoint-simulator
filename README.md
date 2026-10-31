@@ -256,6 +256,41 @@ The screenshot contains the SDL renderer output at the host's actual drawable
 resolution, including Retina/HiDPI scaling. BMP is used because it is supported
 directly by SDL2 and adds no image-encoding dependency to the simulator.
 
+## Running an SD plugin
+
+`tools/run_plugin.py` starts the simulator with one plugin installed on a
+fresh SD card, with plugins enabled and the Plugin Hub prompt hidden. Run it
+from the firmware project after `pio run -e simulator`:
+
+```bash
+python3 ../crosspoint-simulator/tools/run_plugin.py ../my-plugin/my.crosspoint-plugin \
+  --config my-config.json --open
+```
+
+- `--config` installs a JSON file as the plugin's config file (the name in
+  `device.json` `config.file`, default `config.json`).
+- `--open` goes to Home > Plugins > the plugin and connects to the first
+  simulated Wi-Fi network, so the window opens on the plugin's first screen.
+- `--script` adds input steps. With `--open`, their times count from the
+  plugin opening.
+- `--routes`, `--http-log`, and `--port` set `CROSSPOINT_SIM_HTTP_ROUTES`,
+  `CROSSPOINT_SIM_HTTP_LOG`, and `CROSSPOINT_SIM_HTTP_PORT`.
+- Screen text is on; `--no-screen-text` turns it off. `--headless` runs
+  without a window.
+- The SD card is a temporary folder deleted on exit, so a token in the config
+  does not stay on disk. `--sd <folder>` keeps the card between runs; the
+  plugin folder is copied over it each time, and files the plugin wrote stay.
+
+The exit status is the simulator's, so a script that ends in `QUIT` works as a
+test: a WAIT that times out exits with 1. For example, this checks that a
+plugin lists the folders the API returns, without the network:
+
+```bash
+python3 ../crosspoint-simulator/tools/run_plugin.py ../my-plugin/my.crosspoint-plugin \
+  --config test-config.json --routes test-routes.json --open --headless \
+  --script '0:WAIT:SCREEN:.*Tech;300:SHOT:folders.bmp;500:QUIT'
+```
+
 ## Notes
 
 **Host-backed network flows**: OPDS/catalog downloads and KOReader sync use the
