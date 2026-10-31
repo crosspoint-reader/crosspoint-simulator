@@ -283,6 +283,41 @@ CROSSPOINT_SIM_HTTP_MOCK_ROOT="$PWD/lib/EpdFont/scripts/output" \
 The mock still uses the firmware's normal manifest parsing, file download,
 write-to-SD, `.cpfont` validation, registry refresh, and font-selection flow.
 
+**HTTP routes**: Set `CROSSPOINT_SIM_HTTP_ROUTES` to a JSON file of canned
+answers matched on method, full URL, and request headers. This tests a
+plugin or catalog against an API without the service or a real account,
+including error answers such as 401 or 500. Routes are checked before
+`CROSSPOINT_SIM_HTTP_MOCK_ROOT`, in file order, and the first match answers:
+
+```json
+{
+  "unmatched": "fail",
+  "routes": [
+    {
+      "method": "GET",
+      "url": "https://api.example.com/folders",
+      "request_headers": { "Authorization": "Bearer test-*" },
+      "headers": { "Content-Type": "application/json" },
+      "body": { "folders": [{ "id": 7, "title": "Tech" }] }
+    },
+    { "url": "https://api.example.com/folders", "status": 401, "body": "{}" },
+    { "url": "https://api.example.com/bookmarks?folder=7&*", "body_file": "bookmarks-7.json" }
+  ]
+}
+```
+
+- `url` and the `request_headers` values match the whole text, where `*`
+  matches anything. Header names ignore case. `method` defaults to any.
+- `status` defaults to 200. `body` is sent as is when it is a string and as
+  JSON otherwise; `body_file` is read relative to the routes file.
+- With `"unmatched": "fail"`, a request no route answers fails as if the
+  server refused the connection, and the simulator prints its method and URL
+  without the query. The default, `"network"`, sends it on as usual.
+- The file is read again for each request, so a test can change the answers
+  while the simulator runs. A file that cannot be read or parsed fails every
+  request.
+- The top level can also be just the array of routes.
+
 **File transfer**: The simulator provides host-backed `WebServer`,
 `WebSocketsServer`, and `NetworkClient` shims so firmware-owned file-transfer
 routes can run on the host. Firmware web servers that bind port 80 are exposed
