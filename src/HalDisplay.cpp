@@ -1,4 +1,5 @@
 #include "HalDisplay.h"
+#include "SimScreenText.h"
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
@@ -363,6 +364,7 @@ void HalDisplay::begin(bool /*seamless*/) { begin(); }
 
 void HalDisplay::clearScreen(uint8_t color) const {
   memset(getFrameBuffer(), color, BUFFER_SIZE);
+  sim_screen_text::clear();
 }
 
 void HalDisplay::drawImage(const uint8_t *imageData, uint16_t x, uint16_t y,
@@ -438,6 +440,7 @@ void HalDisplay::refreshDisplay(RefreshMode /*mode*/, bool /*turnOffScreen*/) {
   const uint8_t *fb = getFrameBuffer();
   snapshotBwBase(fb);
   renderBwPixels(fb);
+  sim_screen_text::flush();
 }
 
 // Called from the main thread (simulator_main.cpp) to push pixels to SDL.
