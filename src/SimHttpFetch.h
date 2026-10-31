@@ -6,12 +6,15 @@
 #include <unistd.h>
 
 #include <array>
+#include <chrono>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
+
+#include "SimHttpLog.h"
 
 namespace sim_http_fetch {
 
@@ -250,9 +253,21 @@ inline bool fetch(const std::string& url, const char* method, const std::map<std
                   const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true,
                   const Timeouts& timeouts = {}) {
   out = Response{};
-  if (fetchFromMockRoot(url, out)) return true;
-  if (fetchFromFileUrl(url, out)) return true;
-  return fetchWithCurl(url, method, headers, basicAuth, body, out, followRedirects, timeouts);
+  const auto started = std::chrono::steady_clock::now();
+  const char* source = "network";
+  bool ok = true;
+  if (fetchFromMockRoot(url, out)) {
+    source = "mock";
+  } else if (fetchFromFileUrl(url, out)) {
+    source = "file";
+  } else {
+    ok = fetchWithCurl(url, method, headers, basicAuth, body, out, followRedirects, timeouts);
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  sim_http_log::record({method, url, headers, basicAuth, body, out.statusCode, out.body.size(), out.curlExitCode,
+                        source,
+                        static_cast<unsigned long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count())});
+  return ok;
 }
 
 }  // namespace sim_http_fetch
