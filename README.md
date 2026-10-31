@@ -192,6 +192,16 @@ tests possible without desktop-control permissions:
   and `NEXT` for its capacitive cover page keys; `UP`/`DOWN` remain physical
   volume keys. A key pressed at 0 ms is already held when the firmware
   starts, like a button held at power-on.
+- `WAIT:<regex>` pauses the script until a firmware log line matches the
+  pattern (ECMAScript syntax, `;` not allowed). Lines logged since the last
+  scripted input count, so a WAIT placed after a key press also sees what that
+  press logged right away. Times after a WAIT count from the moment it
+  matched. If nothing matches within 30 s (`CROSSPOINT_SIM_WAIT_TIMEOUT_MS`),
+  the simulator exits with status 1; a pattern that does not compile exits
+  with status 2.
+- `SHOT:<path>` saves a BMP screenshot of the current screen. Unlike
+  `CROSSPOINT_SIM_SCREENSHOTS`, it follows the script, so it stays in step
+  with WAIT.
 - Picco accepts `SWITCH_ON` and `SWITCH_OFF` to set the slide-switch position.
   `CROSSPOINT_SIM_SLIDE_SWITCH=on` selects its initial position (default off).
 - Touch-device actions use `TAP:<x>,<y>[,<hold-milliseconds>]` or
@@ -218,12 +228,22 @@ tests possible without desktop-control permissions:
   pre-sleep schedules are cleared during relaunch so they cannot repeat
   forever.
 
-Times are measured from process startup. For example:
+Times are measured from process startup, or from the last matched WAIT. For
+example:
 
 ```bash
 mkdir -p ./qa-artifacts
 CROSSPOINT_SIM_INPUT_SCRIPT='900:DOWN;1250:DOWN;1600:DOWN;1900:ENTER;3000:QUIT' \
 CROSSPOINT_SIM_SCREENSHOTS='2400:./qa-artifacts/settings.bmp' \
+  .pio/build/simulator/program
+```
+
+With WAIT, a script follows the firmware instead of guessing how long each
+screen takes. Each time counts from the previous WAIT, so the second WAIT
+comes after the ENTER that causes it:
+
+```bash
+CROSSPOINT_SIM_INPUT_SCRIPT='0:WAIT:Entering activity: Home;300:SHOT:./qa-artifacts/home.bmp;500:ENTER;500:WAIT:Entering activity: FileBrowser;300:SHOT:./qa-artifacts/files.bmp;400:QUIT' \
   .pio/build/simulator/program
 ```
 

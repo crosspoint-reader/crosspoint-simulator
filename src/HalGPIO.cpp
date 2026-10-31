@@ -11,16 +11,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <regex>
 #include <string>
 #include <vector>
 
 #include "HalDisplay.h"
+#include "SimLog.h"
 #include "SimulatorLifecycle.h"
 
 // Defined in HalDisplay.cpp — set here so all SDL event polling lives in one
 // place.
 extern std::atomic<bool> quitRequested;
 extern GfxRenderer renderer;
+// Defined in HalDisplay.cpp: saves the next presented frame to `path`.
+void scheduleSimulatorScreenshot(const std::string &path);
 
 // Keyboard mapping:
 //   BTN_BACK    (0) → Escape
@@ -106,7 +110,9 @@ enum class SyntheticAction {
   SwitchOn,
   SwitchOff,
   Sleep,
-  Quit
+  Quit,
+  Wait,
+  Screenshot
 };
 
 struct SyntheticEvent {
@@ -116,10 +122,20 @@ struct SyntheticEvent {
   float logicalNx = 0.0f;
   float logicalNy = 0.0f;
   bool handled = false;
+  // Each WAIT starts a new segment; atMs counts from the segment start.
+  size_t segment = 0;
+  std::string text; // WAIT pattern or SHOT path
+  std::regex pattern;
+  unsigned long waitingSinceMs = 0;
 };
 
 std::vector<SyntheticEvent> syntheticEvents;
 bool syntheticEventsInitialized = false;
+// millis() when each script segment started; segment 0 starts at boot.
+std::vector<long> segmentStartMs;
+// Start of the last scripted input, so WAIT also sees lines it caused.
+unsigned long lastInputMs = 0;
+unsigned long waitTimeoutMs = 30000;
 
 float clamp01(float value) { return std::max(0.0f, std::min(1.0f, value)); }
 
@@ -362,12 +378,17 @@ void initializeSyntheticEvents() {
   if (!script || script[0] == '\0')
     return;
 
+  if (const char *timeout = std::getenv("CROSSPOINT_SIM_WAIT_TIMEOUT_MS"))
+    waitTimeoutMs = std::strtoul(timeout, nullptr, 10);
+
   const std::string spec(script);
+  size_t segment = 0;
   size_t start = 0;
   while (start < spec.size()) {
     const size_t end = spec.find(';', start);
     const std::string item = spec.substr(
         start, end == std::string::npos ? std::string::npos : end - start);
+    const size_t firstEvent = syntheticEvents.size();
     const size_t firstColon = item.find(':');
     const size_t secondColon = firstColon == std::string::npos
                                    ? std::string::npos
@@ -385,6 +406,22 @@ void initializeSyntheticEvents() {
                                              : SyntheticAction::SwitchOff});
       } else if (key == "QUIT") {
         syntheticEvents.push_back({atMs, SyntheticAction::Quit});
+      } else if ((key == "WAIT" || key == "SHOT") &&
+                 secondColon != std::string::npos) {
+        SyntheticEvent event{atMs, key == "WAIT" ? SyntheticAction::Wait
+                                                 : SyntheticAction::Screenshot};
+        event.text = item.substr(secondColon + 1);
+        if (key == "WAIT") {
+          try {
+            event.pattern = std::regex(event.text);
+          } catch (const std::regex_error &e) {
+            std::fprintf(stderr, "[SIM] Bad WAIT pattern \"%s\": %s\n",
+                         event.text.c_str(), e.what());
+            SimulatorLifecycle::setExitCode(2);
+            quitRequested.store(true);
+          }
+        }
+        syntheticEvents.push_back(std::move(event));
       } else if (key == "S" || key == "SLEEP") {
         syntheticEvents.push_back({atMs, SyntheticAction::Sleep});
       } else if (key == "PREV" || key == "NEXT") {
@@ -435,24 +472,72 @@ void initializeSyntheticEvents() {
       }
     }
 
+    for (size_t i = firstEvent; i < syntheticEvents.size(); ++i) {
+      syntheticEvents[i].segment = segment;
+      if (syntheticEvents[i].action == SyntheticAction::Wait)
+        ++segment;
+    }
+
     if (end == std::string::npos)
       break;
     start = end + 1;
   }
 
-  std::sort(syntheticEvents.begin(), syntheticEvents.end(),
-            [](const SyntheticEvent &a, const SyntheticEvent &b) {
-              return a.atMs < b.atMs;
-            });
+  segmentStartMs.assign(segment + 1, -1);
+  segmentStartMs[0] = 0;
+  std::stable_sort(syntheticEvents.begin(), syntheticEvents.end(),
+                   [](const SyntheticEvent &a, const SyntheticEvent &b) {
+                     return a.segment != b.segment ? a.segment < b.segment
+                                                   : a.atMs < b.atMs;
+                   });
+}
+
+// True once a WAIT's pattern is seen; times out the run after waitTimeoutMs.
+bool waitFinished(SyntheticEvent &event, unsigned long now) {
+  std::string line;
+  if (sim_log::findSince(lastInputMs, event.pattern, &line)) {
+    std::fprintf(stderr, "[SIM] WAIT matched: %s\n", line.c_str());
+    segmentStartMs[event.segment + 1] = static_cast<long>(now);
+    return true;
+  }
+  if (event.waitingSinceMs == 0) {
+    event.waitingSinceMs = now;
+  } else if (now - event.waitingSinceMs > waitTimeoutMs) {
+    std::fprintf(stderr, "[SIM] WAIT timed out after %lu ms: %s\n",
+                 waitTimeoutMs, event.text.c_str());
+    SimulatorLifecycle::setExitCode(1);
+    quitRequested.store(true);
+    return true;
+  }
+  return false;
 }
 
 void processSyntheticEvents() {
   initializeSyntheticEvents();
   const unsigned long now = millis();
   for (auto &event : syntheticEvents) {
-    if (event.handled || event.atMs > now)
+    const long segmentStart = segmentStartMs[event.segment];
+    if (event.handled || segmentStart < 0 ||
+        static_cast<unsigned long>(segmentStart) + event.atMs > now)
       continue;
+    if (event.action == SyntheticAction::Wait) {
+      event.handled = waitFinished(event, now);
+      continue;
+    }
     event.handled = true;
+    switch (event.action) {
+    case SyntheticAction::KeyDown:
+    case SyntheticAction::CoverDown:
+    case SyntheticAction::TouchDown:
+    case SyntheticAction::HomeDown:
+    case SyntheticAction::SwitchOn:
+    case SyntheticAction::SwitchOff:
+    case SyntheticAction::Sleep:
+      lastInputMs = now;
+      break;
+    default:
+      break;
+    }
     switch (event.action) {
     case SyntheticAction::KeyDown:
       if (!buttonAvailable(event.button))
@@ -502,6 +587,11 @@ void processSyntheticEvents() {
       break;
     case SyntheticAction::Quit:
       quitRequested.store(true);
+      break;
+    case SyntheticAction::Screenshot:
+      scheduleSimulatorScreenshot(event.text);
+      break;
+    case SyntheticAction::Wait:
       break;
     }
   }
