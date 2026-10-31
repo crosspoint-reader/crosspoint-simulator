@@ -38,6 +38,6 @@ int main(int argc, char **argv) {
   // infinite loop.  If normal exit() runs global destructors while the render
   // thread is mid-render, the destructor races with the thread → SIGABRT/
   // SIGSEGV → "quit unexpectedly" dialog.  SDL is already torn down above, so
-  // calling _exit(0) here is safe.
-  _exit(0);
+  // calling _exit() here is safe.
+  _exit(SimulatorLifecycle::exitCode());
 }

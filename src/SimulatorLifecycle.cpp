@@ -1,6 +1,7 @@
 #include "SimulatorLifecycle.h"
 #include "HalGPIO.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,7 @@ constexpr const char *kScreenshotsEnv = "CROSSPOINT_SIM_SCREENSHOTS";
 constexpr const char *kScreenshotsAfterWakeEnv =
     "CROSSPOINT_SIM_SCREENSHOTS_AFTER_WAKE";
 char **gArgv = nullptr;
+std::atomic<int> gExitCode{0};
 
 void promoteAfterWakeValue(const char *target, const char *afterWake) {
   const char *value = std::getenv(afterWake);
@@ -32,6 +34,10 @@ void promoteAfterWakeValue(const char *target, const char *afterWake) {
 namespace SimulatorLifecycle {
 
 void initProcessArgs(char **argv) { gArgv = argv; }
+
+void setExitCode(int code) { gExitCode.store(code); }
+
+int exitCode() { return gExitCode.load(); }
 
 WakeReason consumeWakeReason() {
   const char *value = std::getenv(kWakeReasonEnv);
