@@ -13,6 +13,8 @@
 #include <map>
 #include <string>
 
+#include "SimHttpRoutes.h"
+
 namespace sim_http_fetch {
 
 // Firmware HTTP timeouts. On the device each one limits a single wait (to
@@ -250,6 +252,13 @@ inline bool fetch(const std::string& url, const char* method, const std::map<std
                   const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true,
                   const Timeouts& timeouts = {}) {
   out = Response{};
+  const sim_http_routes::Result route =
+      sim_http_routes::respond(url, method, headers, out.statusCode, out.headers, out.body);
+  if (route == sim_http_routes::Result::Answered) return true;
+  if (route == sim_http_routes::Result::Refused) {
+    out.curlExitCode = 7;  // what curl reports when it cannot connect
+    return false;
+  }
   if (fetchFromMockRoot(url, out)) return true;
   if (fetchFromFileUrl(url, out)) return true;
   return fetchWithCurl(url, method, headers, basicAuth, body, out, followRedirects, timeouts);
