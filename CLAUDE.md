@@ -49,6 +49,13 @@ The simulator is a collection of host-side reimplementations of the firmware's h
   [sample-platformio-linux-wsl.ini](sample-platformio-linux-wsl.ini). Keep
   both in sync when build flags change. Native Windows is not supported, WSL
   is.
+- Screen text: [run_simulator.py](run_simulator.py) adds a build middleware
+  to the firmware's `lib/GfxRenderer` builder that compiles a patched copy of
+  `GfxRenderer.cpp` from the build directory, with one
+  `simulatorScreenText()` call in `drawText()`. The firmware checkout is never
+  edited; when the anchor line is gone the original file is compiled.
+  [src/SimScreenText.cpp](src/SimScreenText.cpp) collects the strings between
+  `clearScreen()` and a refresh.
 - Linker stubs: [src/firmware_link_stubs.cpp](src/firmware_link_stubs.cpp) provides symbols the firmware expects from other translation units (uzlib checksums, HWCDC Serial shim, LUT stubs). When the firmware adds a new global-extern symbol with no simulator counterpart, add its stub here.
 
 ## Device profiles and input mapping

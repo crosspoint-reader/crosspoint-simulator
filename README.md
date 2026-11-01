@@ -206,6 +206,17 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
+- `CROSSPOINT_SIM_SCREEN_TEXT=1` prints the text on screen after each display
+  refresh, in reading order, as one serial line:
+  `[SIM] SCREEN: 100% | SD card | books | / | « Home | Open | Up | Down`.
+  Each string the firmware drew since the last full clear is one entry, so
+  a book page lists one entry per word. A refresh that shows the same text
+  again prints nothing. The line goes through the serial port like a firmware
+  log line, so a test can check a screen from the log instead of reading a
+  screenshot. The simulator build compiles a copy of the firmware's
+  `GfxRenderer.cpp` whose `drawText()` reports its strings. If that function
+  changes too much to patch, the build prints
+  `Simulator: GfxRenderer::drawText changed` and the feature is off.
 - `CROSSPOINT_SIM_FREE_HEAP` and `CROSSPOINT_SIM_MAX_ALLOC_HEAP` override the
   ESP heap metrics reported to firmware. They are useful for repeatable
   low-memory paths without exhausting the host process. Values are byte counts;
