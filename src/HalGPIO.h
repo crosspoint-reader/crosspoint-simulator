@@ -82,6 +82,7 @@ public:
   bool wasTouchTap(float &nx, float &ny) const;
   bool wasTouchDown(float &nx, float &ny) const;
   bool wasTouchReleased() const;
+  bool wasTouchReleasedAt(float &nx, float &ny) const;
   bool isTouchTapCandidate(float &nx, float &ny, unsigned long &heldMs) const;
   bool isTouchHeldAt(float &nx, float &ny) const;
   bool wasTouchLongPress(float &nx, float &ny) const;

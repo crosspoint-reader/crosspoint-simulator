@@ -817,6 +817,14 @@ bool HalGPIO::wasTouchDown(float &nx, float &ny) const {
 
 bool HalGPIO::wasTouchReleased() const { return touchState.releasedThisFrame; }
 
+bool HalGPIO::wasTouchReleasedAt(float &nx, float &ny) const {
+  if (!wasTouchReleased())
+    return false;
+  nx = touchState.currentNx;
+  ny = touchState.currentNy;
+  return true;
+}
+
 bool HalGPIO::isTouchTapCandidate(float &nx, float &ny,
                                   unsigned long &heldMs) const {
   if (!touchState.down || touchState.movedBeyondTapSlop ||

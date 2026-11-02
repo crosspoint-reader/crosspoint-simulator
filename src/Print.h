@@ -14,6 +14,7 @@ public:
     }
     return n;
   }
+  size_t write(const char *s) { return s ? write(reinterpret_cast<const uint8_t *>(s), strlen(s)) : 0; }
   virtual void flush() {}
 
   // Add missing overloads from Print

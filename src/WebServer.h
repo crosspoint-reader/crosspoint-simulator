@@ -83,6 +83,8 @@ public:
                          const String &uri) {
     return false;
   }
+  virtual bool canUpload(WebServer &request, const String &uri) { return false; }
+  virtual void upload(WebServer &request, const String &uri, HTTPUpload &upload) {}
   virtual bool canRaw(WebServer &request, const String &uri) { return false; }
   virtual void raw(WebServer &request, const String &uri, HTTPRaw &raw) {}
   virtual bool handle(WebServer &request, HTTPMethod method,
@@ -143,6 +145,9 @@ public:
   HTTPUpload &upload();
 
 protected:
+  NetworkClient _currentClient;
+  virtual size_t _currentClientWrite(const char *buffer, size_t len);
+  virtual size_t _currentClientWrite_P(const char *buffer, size_t len);
   struct RequestArgument { String key; String value; };
   RequestArgument *_currentArgs = nullptr;
   int _currentArgCount = 0;

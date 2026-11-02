@@ -278,19 +278,15 @@ struct WebSocketsServer::Impl {
   std::map<uint8_t, int> clients;
   std::vector<std::thread> clientThreads;
   std::vector<Event> pendingEvents;
-  uint8_t nextClient = 0;
-
-  uint8_t addClient(int clientFd) {
+  int addClient(int clientFd) {
     std::lock_guard<std::mutex> lock(clientsMutex);
-    for (size_t i = 0; i < 255; ++i) {
-      const uint8_t candidate = nextClient++;
+    for (int candidate = 0; candidate < WEBSOCKETS_SERVER_CLIENT_MAX; ++candidate) {
       if (clients.find(candidate) == clients.end()) {
         clients[candidate] = clientFd;
         return candidate;
       }
     }
-    clients[nextClient] = clientFd;
-    return nextClient++;
+    return -1;
   }
 
   void removeClient(uint8_t num) {
@@ -423,7 +419,12 @@ void WebSocketsServer::begin() {
           return;
         }
 
-        const uint8_t num = impl_->addClient(client);
+        const int slot = impl_->addClient(client);
+        if (slot < 0) {
+          ::close(client);
+          return;
+        }
+        const uint8_t num = static_cast<uint8_t>(slot);
         impl_->pushEvent({num, WStype_CONNECTED, {}, 0});
 
         WsFrame frame;
@@ -483,6 +484,17 @@ void WebSocketsServer::sendTXT(uint8_t num, const char *txt) {
   const int fd = impl_->clientFd(num);
   if (fd >= 0)
     sendWsTextFrame(fd, txt ? txt : "");
+}
+
+bool WebSocketsServer::clientIsConnected(uint8_t num) {
+  return impl_->clientFd(num) >= 0;
+}
+
+void WebSocketsServer::disconnect(uint8_t num) {
+  std::lock_guard<std::mutex> lock(impl_->clientsMutex);
+  const auto it = impl_->clients.find(num);
+  if (it != impl_->clients.end())
+    ::shutdown(it->second, SHUT_RDWR);
 }
 
 void WebSocketsServer::close() {
