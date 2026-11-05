@@ -206,6 +206,14 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
+- `CROSSPOINT_SIM_HTTP_LOG` records every HTTP request the firmware makes,
+  one JSON object per line: method, URL, request headers, request and
+  response sizes, status, source (`network`, `mock`, or `file`) and time.
+  Set it to a file path (appended to) or `-` for stderr. Credentials are
+  replaced by their length: headers and query parameters whose name contains
+  `auth`, `token`, `key`, `secret`, `password`, `cookie`, `session` or
+  `signature`, and the password of basic auth. An `Authorization` value keeps
+  its scheme, for example `"Bearer <32 chars>"`. Bodies are not recorded.
 - `CROSSPOINT_SIM_FREE_HEAP` and `CROSSPOINT_SIM_MAX_ALLOC_HEAP` override the
   ESP heap metrics reported to firmware. They are useful for repeatable
   low-memory paths without exhausting the host process. Values are byte counts;
