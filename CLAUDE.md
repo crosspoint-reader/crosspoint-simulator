@@ -83,7 +83,7 @@ see [docs/eego-a4.md](docs/eego-a4.md).
 
 `HalGPIO::update` owns the SDL event pump for the whole simulator, do not poll SDL events elsewhere. Scancodes map to button indices `BTN_BACK=0` through `BTN_POWER=6`. `SDL_QUIT` sets the `quitRequested` atomic that `HalDisplay::shouldQuit()` reads.
 
-Picco uses 800x480, PiccoCst touch, RTC/tilt availability and I2C warm/cool
+Picco uses 800x480, Tma525c touch, RTC/tilt availability and I2C warm/cool
 frontlight state. There is no Home key. T toggles its slide switch; scripted
 `SWITCH_ON`/`SWITCH_OFF` and `CROSSPOINT_SIM_SLIDE_SWITCH=on` set its level.
 The level survives sleep/relaunch. Firmware applies the selected binding;

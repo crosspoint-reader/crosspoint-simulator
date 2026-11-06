@@ -16,7 +16,7 @@ capability helpers and driver implementation define the host profile below.
 - The SDK reports `SSD1677`, variant 0, and probes SSD1677/SSD2677 panels inside
   its driver. The host preserves that nominal profile; it does not probe or
   simulate the panel variants, waveforms or refresh timing.
-- `PiccoCst` touch uses the shared orientation-aware mouse/tap/swipe path. There
+- `Tma525c` touch uses the shared orientation-aware mouse/tap/swipe path. There
   is no capacitive Home key. H and Metalio cover Prev/Next have no effect.
 - Up/Down map to the SDK's GPIO21/GPIO9 buttons; P maps to Power. Return exposes
   the SDK's GPIO5 Confirm input, whose physical role is still marked unconfirmed

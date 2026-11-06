@@ -294,6 +294,10 @@ HalDisplay::~HalDisplay() {}
 #define SIMULATOR_CONTROLLER_TITLE "SSD1677"
 #endif
 
+const char* HalDisplay::controllerName() const {
+  return SIMULATOR_CONTROLLER_TITLE;
+}
+
 #if defined(SIMULATOR_DEVICE_PICCO)
 static constexpr const char *WINDOW_TITLE = "Simulator - BOOX Picco";
 #elif defined(SIMULATOR_DEVICE_EEGO_A4)

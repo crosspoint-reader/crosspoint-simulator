@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
   assert(BoardConfig::ACTIVE.displayController ==
          BoardConfig::DisplayController::SSD1677);
   assert(BoardConfig::ACTIVE.touch.controller ==
-         BoardConfig::TouchController::PiccoCst);
+         BoardConfig::TouchController::Tma525c);
   assert(HalDisplay::DISPLAY_WIDTH == 800 && HalDisplay::DISPLAY_HEIGHT == 480);
   assert(HalDisplay::BUFFER_SIZE == 48000);
   assert(BoardConfig::ACTIVE.displayWidth == HalDisplay::DISPLAY_WIDTH &&
