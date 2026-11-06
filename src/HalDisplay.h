@@ -30,6 +30,7 @@ public:
   Controller getController() const;
   GrayscaleCapabilities grayscaleCapabilities(
       GrayscaleMode mode = GrayscaleMode::Overlay) const;
+  const char* controllerName() const;
 
   // Constructor with pin configuration
   HalDisplay();

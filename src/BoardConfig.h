@@ -199,7 +199,7 @@ enum class TouchController : uint8_t {
   Ft6336u,
   Gslx680,
   Cst816s,
-  PiccoCst
+  Tma525c
 };
 
 struct TouchConfig {
@@ -304,7 +304,7 @@ inline constexpr BoardProfile EEGO_A4 = {Board::EegoA4,
 
 inline constexpr BoardProfile PICCO = {
     Board::Picco, "picco", DisplayController::SSD1677, 0, {21, 9, 6}, {},
-    800,          480,     {TouchController::PiccoCst}};
+    800,          480,     {TouchController::Tma525c}};
 
 #if defined(SIMULATOR_DEVICE_PICCO)
 inline BoardProfile ACTIVE = PICCO;

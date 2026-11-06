@@ -34,6 +34,8 @@ public:
   void endUsbDrive();
   UsbDriveState usbDriveState() const;
   bool usbDriveHostSuspended() const;
+  uint64_t sdTotalBytes();
+  bool sdUsedBytes(uint64_t& usedBytes);
   std::vector<String> listFiles(const char *path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on
   // failure.

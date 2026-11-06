@@ -294,6 +294,22 @@ HalDisplay::~HalDisplay() {}
 #define SIMULATOR_CONTROLLER_TITLE "SSD1677"
 #endif
 
+const char* HalDisplay::controllerName() const {
+  switch (BoardConfig::ACTIVE.displayController) {
+    case BoardConfig::DisplayController::UC8253:
+      return "UC8253";
+    case BoardConfig::DisplayController::UC8279C:
+      return "UC8279C";
+    case BoardConfig::DisplayController::UC8179:
+      return "UC8179";
+    case BoardConfig::DisplayController::UC8279:
+      return "UC8279";
+    case BoardConfig::DisplayController::SSD1677:
+    default:
+      return "SSD1677";
+  }
+}
+
 #if defined(SIMULATOR_DEVICE_PICCO)
 static constexpr const char *WINDOW_TITLE = "Simulator - BOOX Picco";
 #elif defined(SIMULATOR_DEVICE_EEGO_A4)

@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -532,4 +533,28 @@ std::vector<String> HalStorage::listFiles(const char *path, int maxFiles) {
   }
   closedir(dir);
   return result;
+}
+
+uint64_t HalStorage::sdTotalBytes() {
+  struct statvfs vfs;
+  
+  if (statvfs(resolveStoragePath(NULL).c_str(), &vfs) != 0) {
+    return 0;
+  }
+  
+  return (uint64_t)vfs.f_blocks * ((vfs.f_frsize != 0) ? vfs.f_frsize : vfs.f_bsize);
+}
+
+bool HalStorage::sdUsedBytes(uint64_t& usedBytes) {
+  struct statvfs vfs;
+
+  if (statvfs(resolveStoragePath(NULL).c_str(), &vfs) != 0) {
+    usedBytes = 0;
+    return false;
+  }
+
+  uint64_t bsize = (vfs.f_frsize != 0) ? vfs.f_frsize : vfs.f_bsize;
+  usedBytes = (uint64_t)(vfs.f_blocks - vfs.f_bfree) * bsize;
+  
+  return true;
 }
