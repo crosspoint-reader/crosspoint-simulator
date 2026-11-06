@@ -18,7 +18,7 @@ rm -rf ./fs_/.crosspoint/               # clear stale on-disk caches after stora
 
 For local dev against this repo, the firmware's `platformio.ini` should reference it as `simulator=symlink://../crosspoint-simulator` instead of the git URL.
 
-There are no tests, no linter, and no per-file build commands. A change is "tested" by running the simulator and exercising the affected feature.
+There are no unit tests, no linter, and no per-file build commands. A change is "tested" by running the simulator and exercising the affected feature. CI ([.github/workflows/firmware-build.yml](.github/workflows/firmware-build.yml)) builds firmware `develop` against this repo on every pull request and nightly, boots to Home, and runs [test/web_manager_smoke.py](test/web_manager_smoke.py).
 
 ## Architecture
 
