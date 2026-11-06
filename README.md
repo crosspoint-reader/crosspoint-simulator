@@ -111,6 +111,13 @@ By default, the simulator keeps its own `JPEGDEC`, `PNGdec`, and QRCode compatib
 
 If you only want a self-contained simulator dependency, stop there.
 
+On macOS, keep the sample's `configure_macos_archiver.py` pre-build hook: an ESP
+toolchain on `PATH` may otherwise supply an archiver incompatible with Apple's
+native linker. With a local `symlink://` dependency, point both pre-build hooks
+(`configure_macos_archiver.py` and `skip_device_content_protection.py`) at that
+local checkout. PlatformIO stores a `.pio-link` file, not a directory at
+`.pio/libdeps/$PIOENV/simulator`, for this dependency type.
+
 If you also want the `Run Simulator` task to appear in the consuming repo's PlatformIO IDE task list (under the "Custom" folder), let the consuming project own the IDE task registration. Add `custom_run_simulator_target_owner = project` to `[env:simulator]`, then add one project-level hook:
 
 For a normal fetched dependency:
