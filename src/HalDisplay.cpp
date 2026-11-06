@@ -62,6 +62,8 @@ struct ScreenshotEvent {
   bool handled = false;
 };
 
+// Script SHOT actions add to the schedule from the input path.
+std::mutex screenshotMutex;
 std::vector<ScreenshotEvent> screenshotEvents;
 bool screenshotEventsInitialized = false;
 const std::thread::id simulatorMainThread = std::this_thread::get_id();
@@ -94,6 +96,7 @@ void initializeScreenshotEvents() {
 }
 
 bool hasDueScreenshot() {
+  const std::lock_guard<std::mutex> lock(screenshotMutex);
   initializeScreenshotEvents();
   const unsigned long now = millis();
   for (const auto &event : screenshotEvents) {
@@ -142,6 +145,7 @@ bool saveRendererBmp(const std::string &path) {
 }
 
 void captureDueScreenshots() {
+  const std::lock_guard<std::mutex> lock(screenshotMutex);
   const unsigned long now = millis();
   for (auto &event : screenshotEvents) {
     if (event.handled || event.atMs > now)
@@ -250,6 +254,12 @@ void composeGrayscalePreview() {
 }
 
 } // namespace
+
+void scheduleSimulatorScreenshot(const std::string &path) {
+  const std::lock_guard<std::mutex> lock(screenshotMutex);
+  initializeScreenshotEvents();
+  screenshotEvents.push_back({millis(), path});
+}
 
 static bool isPortraitOrientation(GfxRenderer::Orientation orientation) {
   return orientation == GfxRenderer::Portrait ||

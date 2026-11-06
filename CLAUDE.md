@@ -94,6 +94,9 @@ limits.
 For repeatable QA, `CROSSPOINT_SIM_INPUT_SCRIPT` schedules synthetic key and
 touch-device edges through the same `HalGPIO` state as real SDL input, and
 `CROSSPOINT_SIM_SCREENSHOTS` captures renderer output on the SDL main thread.
+Script `WAIT` steps match firmware serial lines kept by
+[src/SimLog.cpp](src/SimLog.cpp) and start a new timing segment; `SHOT`
+requests a capture from the input path.
 Keep synthetic held-time timestamps on the `SDL_GetTicks()` clock used by real
 keyboard events; the firmware's `millis()` clock has a different origin. The
 deep-sleep loop must also process synthetic input. Process relaunch promotes
