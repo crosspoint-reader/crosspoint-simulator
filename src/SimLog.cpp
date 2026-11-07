@@ -16,39 +16,44 @@ struct Line {
   std::string text;
 };
 
-std::mutex mutex;
-std::deque<Line> lines;
-std::string partial;
+struct State {
+  std::mutex mutex;
+  std::deque<Line> lines;
+  std::string partial;
+};
 
-} // namespace
+State& state() {
+  // Firmware global constructors can log before this translation unit initializes.
+  static State instance;
+  return instance;
+}
 
-void write(const char *data, size_t size) {
-  const std::lock_guard<std::mutex> lock(mutex);
+}  // namespace
+
+void write(const char* data, size_t size) {
+  auto& log = state();
+  const std::lock_guard<std::mutex> lock(log.mutex);
   for (size_t i = 0; i < size; ++i) {
     if (data[i] != '\n') {
-      partial.push_back(data[i]);
+      log.partial.push_back(data[i]);
       continue;
     }
-    if (!partial.empty() && partial.back() == '\r')
-      partial.pop_back();
-    lines.push_back({millis(), std::move(partial)});
-    partial.clear();
-    if (lines.size() > kMaxLines)
-      lines.pop_front();
+    if (!log.partial.empty() && log.partial.back() == '\r') log.partial.pop_back();
+    log.lines.push_back({millis(), std::move(log.partial)});
+    log.partial.clear();
+    if (log.lines.size() > kMaxLines) log.lines.pop_front();
   }
 }
 
-bool findSince(unsigned long sinceMs, const std::regex &pattern,
-               std::string *line) {
-  const std::lock_guard<std::mutex> lock(mutex);
-  for (const Line &entry : lines) {
-    if (entry.atMs < sinceMs || !std::regex_search(entry.text, pattern))
-      continue;
-    if (line)
-      *line = entry.text;
+bool findSince(unsigned long sinceMs, const std::regex& pattern, std::string* line) {
+  auto& log = state();
+  const std::lock_guard<std::mutex> lock(log.mutex);
+  for (const Line& entry : log.lines) {
+    if (entry.atMs < sinceMs || !std::regex_search(entry.text, pattern)) continue;
+    if (line) *line = entry.text;
     return true;
   }
   return false;
 }
 
-} // namespace sim_log
+}  // namespace sim_log
