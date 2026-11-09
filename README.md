@@ -31,7 +31,7 @@ sudo pacman -S sdl2 openssl
 pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-pkgconf
 ```
 
-On native Windows, build with `C:\msys64\ucrt64\bin` first in `PATH` (it holds `gcc` and `SDL2.dll`) and with `PYTHONUTF8=1`, so the firmware's Python build scripts write UTF-8. `curl.exe` ships with Windows 10 and later. The clock shows UTC: the Windows C runtime reads only the simple `TZ` form, so a POSIX rule with daylight saving falls back to UTC.
+On native Windows, build with `C:\msys64\ucrt64\bin` first in `PATH` (it holds `gcc` and `SDL2.dll`) and with `PYTHONUTF8=1`, so the firmware's Python build scripts write UTF-8. `curl.exe` ships with Windows 10 and later. Clock: the Windows C runtime reads only the simple `TZ` form, a three-letter zone name, an offset and an optional daylight-saving name. Fixed offsets (`MSK-3`, `UTC-3:00`) are exact. Daylight saving always follows the US dates, whatever rule follows (`CET-1CEST,M3.5.0,M10.5.0/3` is an hour off for a few weeks a year), and zone names that are not three letters (`AKST9AKDT,…`, `AEST-10AEDT,…`, `<+03>-3`) give a wrong local time.
 
 ## Integration
 

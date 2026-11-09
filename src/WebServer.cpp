@@ -616,8 +616,14 @@ void WebServer::handleClient() {
   impl_->resetRequest();
   impl_->currentClient = client;
   const int handlerFd = simDupSocket(client);
-  if (handlerFd < 0)
-    LOG_ERR("WEB", "[SIM] Cannot duplicate the client socket; the response is lost");
+  if (handlerFd < 0) {
+    // Without the handler's copy its response would be lost: answer here.
+    LOG_ERR("WEB", "[SIM] Cannot duplicate the client socket");
+    sendSimpleResponse(client, 500, "Internal Server Error");
+    simCloseSocket(client);
+    impl_->resetRequest();
+    return;
+  }
   _currentClient = NetworkClient(handlerFd);
   impl_->currentMethod = methodFromString(request.method);
   impl_->currentUri = path.empty() ? "/" : path.c_str();

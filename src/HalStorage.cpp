@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "SimPosixCompat.h"
+#include "SimWin32.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -46,6 +47,13 @@ std::string resolveStoragePath(const char *path) {
   if (logical.empty()) {
     logical = "/";
   }
+#ifdef _WIN32
+  // Windows also splits paths at '\', so "..\x" would leave the SD root.
+  for (char &character : logical) {
+    if (character == '\\')
+      character = '/';
+  }
+#endif
   if (containsUnsafeSegment(logical)) {
     fprintf(stderr, "[SIM] rejected unsafe storage path: %s\n",
             logical.c_str());
@@ -393,11 +401,20 @@ bool HalStorage::rename(const char *oldPath, const char *newPath) {
   ensureParentDirectories(n);
   return ::rename(o.c_str(), n.c_str()) == 0;
 }
-// Same as the device (SDCardManager::replaceFile): drop the old file, then
-// rename. A plain rename() keeps working on POSIX, but on Windows it refuses
-// to overwrite an existing file.
 bool HalStorage::replaceFile(const char *tmpPath, const char *path) {
-  return (!exists(path) || remove(path)) && rename(tmpPath, path);
+#ifdef _WIN32
+  // rename() cannot overwrite on Windows. MoveFileEx replaces the destination
+  // in one step and leaves it as it was if the move fails.
+  const std::string from = resolveStoragePath(tmpPath);
+  const std::string to = resolveStoragePath(path);
+  if (from.empty() || to.empty()) {
+    return false;
+  }
+  ensureParentDirectories(to);
+  return sim_win32::replaceFile(from, to);
+#else
+  return rename(tmpPath, path);
+#endif
 }
 static bool removeDirRecursive(const std::string &full) {
   DIR *d = opendir(full.c_str());

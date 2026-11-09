@@ -16,6 +16,8 @@
 #include <string>
 #ifdef _WIN32
 #include <vector>
+
+#include "SimWin32.h"
 #endif
 
 #include "SimHttpRoutes.h"
@@ -40,17 +42,6 @@ struct Response {
 inline bool startsWith(const std::string& value, const char* prefix) { return value.rfind(prefix, 0) == 0; }
 
 inline std::string shellQuote(const std::string& value) {
-#ifdef _WIN32
-  // popen() runs cmd.exe, which has no single quotes; curl.exe splits its
-  // command line by the C runtime rules, where \" is a literal quote.
-  std::string quoted = "\"";
-  for (char c : value) {
-    if (c == '"') quoted += '\\';
-    quoted += c;
-  }
-  quoted += "\"";
-  return quoted;
-#else
   std::string out = "'";
   for (char c : value) {
     if (c == '\'')
@@ -60,7 +51,6 @@ inline std::string shellQuote(const std::string& value) {
   }
   out += "'";
   return out;
-#endif
 }
 
 inline int hexValue(char c) {
@@ -212,6 +202,59 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
 
   // curl has no read timeout; "under 1 byte/s for N seconds" is the closest.
   const unsigned long readSeconds = timeouts.readMs < 1000 ? 1 : (timeouts.readMs + 999) / 1000;
+  const std::string verb = method ? method : "GET";
+  std::string statusText;
+#ifdef _WIN32
+  // No shell: cmd.exe would expand %NAME% and end the quoting at any '"' in a
+  // URL, header or body. curl gets each argument as it is, and the body from a
+  // file, which also keeps large bodies off the 32 KiB command line.
+  char connectSeconds[32];
+  snprintf(connectSeconds, sizeof(connectSeconds), "%.3f", timeouts.connectMs / 1000.0);
+  std::vector<std::string> args = {"-sS", "-D", "-", "--connect-timeout", connectSeconds, "--speed-limit", "1",
+                                   "--speed-time", std::to_string(readSeconds)};
+  if (followRedirects) args.push_back("-L");
+  // The temp paths come from getenv("TEMP") in the narrow code page; curl gets UTF-8.
+  args.insert(args.end(), {"-o", sim_win32::narrowToUtf8(tmpTemplate), "-w", "%{http_code}"});
+  // -X HEAD would make curl wait for the body the headers announce.
+  if (verb == "HEAD") {
+    args.push_back("--head");
+  } else if (verb != "GET") {
+    args.insert(args.end(), {"-X", verb});
+  }
+  for (const auto& header : headers) {
+    args.insert(args.end(), {"-H", header.first + ": " + header.second});
+  }
+  if (!basicAuth.empty()) args.insert(args.end(), {"-u", basicAuth});
+  std::string bodyPath;
+  if (body) {
+    std::vector<char> bodyTemplate(tmpPattern.begin(), tmpPattern.end());
+    bodyTemplate.push_back('\0');
+    const int bodyFd = mkstemp(bodyTemplate.data());
+    if (bodyFd < 0) {
+      unlink(tmpTemplate);
+      return false;
+    }
+    const size_t bodyLength = strlen(body);
+    const bool written = write(bodyFd, body, static_cast<unsigned>(bodyLength)) == static_cast<int>(bodyLength);
+    close(bodyFd);
+    bodyPath = bodyTemplate.data();
+    if (!written) {
+      unlink(bodyPath.c_str());
+      unlink(tmpTemplate);
+      return false;
+    }
+    args.insert(args.end(), {"--data-binary", "@" + sim_win32::narrowToUtf8(bodyPath)});
+  }
+  args.insert(args.end(), {"--url", url});
+
+  const int rc = sim_win32::runCapture("curl", args, statusText);
+  if (!bodyPath.empty()) unlink(bodyPath.c_str());
+  if (rc < 0) {
+    unlink(tmpTemplate);
+    return false;
+  }
+  out.curlExitCode = rc;
+#else
   char limits[96];
   snprintf(limits, sizeof(limits), "--connect-timeout %.3f --speed-limit 1 --speed-time %lu ",
            timeouts.connectMs / 1000.0, readSeconds);
@@ -219,8 +262,7 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
   cmd += limits;
   if (followRedirects) cmd += "-L ";
   cmd += "-o " + shellQuote(tmpTemplate);
-  cmd += " -w " + shellQuote("%{http_code}");
-  const std::string verb = method ? method : "GET";
+  cmd += " -w '%{http_code}'";
   // -X HEAD would make curl wait for the body the headers announce.
   if (verb == "HEAD") {
     cmd += " --head";
@@ -240,16 +282,11 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
     return false;
   }
 
-  std::string statusText;
   std::array<char, 64> statusBuffer{};
   while (fgets(statusBuffer.data(), static_cast<int>(statusBuffer.size()), pipe)) {
     statusText += statusBuffer.data();
   }
   const int rc = pclose(pipe);
-#ifdef _WIN32
-  // _pclose() returns the command's exit code itself.
-  if (rc >= 0) out.curlExitCode = rc;
-#else
   if (rc >= 0 && WIFEXITED(rc)) out.curlExitCode = WEXITSTATUS(rc);
 #endif
 
