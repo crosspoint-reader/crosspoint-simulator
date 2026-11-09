@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "SimPosixCompat.h"
 #include "SimulatorStorageRoot.h"
 #include "esp_err.h"
 

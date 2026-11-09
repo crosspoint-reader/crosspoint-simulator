@@ -2,9 +2,12 @@
 
 #include "SimulatorNetworkPorts.h"
 #include <Logging.h>
+#include <lwip/sockets.h>
+#ifndef _WIN32
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -348,13 +351,13 @@ void WebSocketsServer::begin() {
       0) {
     LOG_ERR("WS", "[SIM] WebSocket bind 127.0.0.1:%d failed: %s", impl_->port,
             strerror(errno));
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
     return;
   }
   if (::listen(impl_->fd, 8) != 0) {
     LOG_ERR("WS", "[SIM] WebSocket listen failed: %s", strerror(errno));
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
     return;
   }
@@ -377,12 +380,12 @@ void WebSocketsServer::begin() {
         while (raw.find("\r\n\r\n") == std::string::npos) {
           const ssize_t got = ::recv(client, buffer, sizeof(buffer), 0);
           if (got <= 0) {
-            ::close(client);
+            simCloseSocket(client);
             return;
           }
           raw.append(buffer, static_cast<size_t>(got));
           if (raw.size() > 32768) {
-            ::close(client);
+            simCloseSocket(client);
             return;
           }
         }
@@ -404,7 +407,7 @@ void WebSocketsServer::begin() {
 
         const auto keyIt = headers.find("sec-websocket-key");
         if (keyIt == headers.end()) {
-          ::close(client);
+          simCloseSocket(client);
           return;
         }
 
@@ -415,13 +418,13 @@ void WebSocketsServer::begin() {
                  << "Sec-WebSocket-Accept: "
                  << websocketAcceptValue(keyIt->second) << "\r\n\r\n";
         if (!sendAll(client, response.str().data(), response.str().size())) {
-          ::close(client);
+          simCloseSocket(client);
           return;
         }
 
         const int slot = impl_->addClient(client);
         if (slot < 0) {
-          ::close(client);
+          simCloseSocket(client);
           return;
         }
         const uint8_t num = static_cast<uint8_t>(slot);
@@ -447,7 +450,7 @@ void WebSocketsServer::begin() {
 
         impl_->pushEvent({num, WStype_DISCONNECTED, {}, 0});
         impl_->removeClient(num);
-        ::close(client);
+        simCloseSocket(client);
       });
     }
   });
@@ -501,7 +504,7 @@ void WebSocketsServer::close() {
   impl_->active = false;
   if (impl_->fd >= 0) {
     ::shutdown(impl_->fd, SHUT_RDWR);
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
   }
 

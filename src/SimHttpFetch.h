@@ -2,7 +2,9 @@
 
 #include <dirent.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <unistd.h>
 
 #include <array>
@@ -12,6 +14,9 @@
 #include <cstring>
 #include <map>
 #include <string>
+#ifdef _WIN32
+#include <vector>
+#endif
 
 #include "SimHttpRoutes.h"
 
@@ -35,6 +40,17 @@ struct Response {
 inline bool startsWith(const std::string& value, const char* prefix) { return value.rfind(prefix, 0) == 0; }
 
 inline std::string shellQuote(const std::string& value) {
+#ifdef _WIN32
+  // popen() runs cmd.exe, which has no single quotes; curl.exe splits its
+  // command line by the C runtime rules, where \" is a literal quote.
+  std::string quoted = "\"";
+  for (char c : value) {
+    if (c == '"') quoted += '\\';
+    quoted += c;
+  }
+  quoted += "\"";
+  return quoted;
+#else
   std::string out = "'";
   for (char c : value) {
     if (c == '\'')
@@ -44,6 +60,7 @@ inline std::string shellQuote(const std::string& value) {
   }
   out += "'";
   return out;
+#endif
 }
 
 inline int hexValue(char c) {
@@ -179,7 +196,16 @@ inline bool fetchFromMockRoot(const std::string& url, Response& out) {
 inline bool fetchWithCurl(const std::string& url, const char* method, const std::map<std::string, std::string>& headers,
                           const std::string& basicAuth, const char* body, Response& out, bool followRedirects = true,
                           const Timeouts& timeouts = {}) {
+#ifdef _WIN32
+  // No /tmp on Windows: the template lives in %TEMP%.
+  const char* tempDir = std::getenv("TEMP");
+  const std::string tmpPattern = std::string(tempDir && tempDir[0] ? tempDir : ".") + "\\crosspoint-sim-http-XXXXXX";
+  std::vector<char> tmpBuffer(tmpPattern.begin(), tmpPattern.end());
+  tmpBuffer.push_back('\0');
+  char* tmpTemplate = tmpBuffer.data();
+#else
   char tmpTemplate[] = "/tmp/crosspoint-sim-http-XXXXXX";
+#endif
   int fd = mkstemp(tmpTemplate);
   if (fd < 0) return false;
   close(fd);
@@ -193,7 +219,7 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
   cmd += limits;
   if (followRedirects) cmd += "-L ";
   cmd += "-o " + shellQuote(tmpTemplate);
-  cmd += " -w '%{http_code}'";
+  cmd += " -w " + shellQuote("%{http_code}");
   const std::string verb = method ? method : "GET";
   // -X HEAD would make curl wait for the body the headers announce.
   if (verb == "HEAD") {
@@ -220,7 +246,12 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
     statusText += statusBuffer.data();
   }
   const int rc = pclose(pipe);
+#ifdef _WIN32
+  // _pclose() returns the command's exit code itself.
+  if (rc >= 0) out.curlExitCode = rc;
+#else
   if (rc >= 0 && WIFEXITED(rc)) out.curlExitCode = WEXITSTATUS(rc);
+#endif
 
   bool readOk = readFile(tmpTemplate, out.body);
   unlink(tmpTemplate);
