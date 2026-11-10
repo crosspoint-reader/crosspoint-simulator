@@ -14,6 +14,30 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_system.h"
 
+#ifdef _WIN32
+#include <cstring>
+// newlib (the device), macOS and glibc 2.38+ provide BSD strlcpy; MinGW does
+// not. Same contract: copy at most size-1 bytes, always terminate, return the
+// length of src.
+inline size_t strlcpy(char *dst, const char *src, size_t size) {
+  const size_t len = strlen(src);
+  if (size > 0) {
+    const size_t n = len < size - 1 ? len : size - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+  }
+  return len;
+}
+
+#include <sys/time.h>
+// MinGW has no settimeofday(). The firmware sets the clock through it; a
+// simulator user process may not, which Linux and macOS report as EPERM too.
+inline int settimeofday(const struct timeval *, const void *) {
+  errno = EPERM;
+  return -1;
+}
+#endif
+
 #define PROGMEM
 #define ICACHE_RODATA_ATTR
 #define IRAM_ATTR

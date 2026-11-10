@@ -1,5 +1,7 @@
 #include "HalClock.h"
 
+#include "SimPosixCompat.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>

@@ -1,7 +1,10 @@
 #include "NetworkClient.h"
 
+#include <lwip/sockets.h>
+#ifndef _WIN32
 #include <netdb.h>
 #include <sys/socket.h>
+#endif
 #include <unistd.h>
 
 #include <cerrno>
@@ -14,7 +17,7 @@ struct NetworkClient::Impl {
   explicit Impl(int socketFd) : fd(socketFd) {}
   ~Impl() {
     if (fd >= 0)
-      ::close(fd);
+      simCloseSocket(fd);
   }
 
   int fd = -1;
@@ -44,7 +47,7 @@ int NetworkClient::connect(const char *host, uint16_t port) {
       continue;
     if (::connect(fd, addr->ai_addr, addr->ai_addrlen) == 0)
       break;
-    ::close(fd);
+    simCloseSocket(fd);
     fd = -1;
   }
   freeaddrinfo(results);
@@ -104,7 +107,7 @@ size_t NetworkClient::write(Stream &stream) {
 
 void NetworkClient::stop() {
   if (impl_ && impl_->fd >= 0) {
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
   }
 }

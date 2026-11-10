@@ -3,7 +3,7 @@
 A desktop simulator for [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)-based firmware. Compiles the firmware natively and renders the e-ink display in an SDL2 window. No device required. Can be used with forks of Crosspoint but any new methods added to the firmware will need to be stubbed. If your fork diverges from the CrossPoint HAL, see [FORKING.md](FORKING.md).
 
 > [!NOTE]
-> **Platform support:** macOS and Linux/WSL use different native compiler and library flags. Start from `sample-platformio-macos.ini` on macOS, or `sample-platformio-linux-wsl.ini` on Linux/WSL. Native Windows is not supported; use WSL and follow the Linux instructions.
+> **Platform support:** macOS, Linux/WSL and native Windows use different native compiler and library flags. Start from `sample-platformio-macos.ini` on macOS, `sample-platformio-linux-wsl.ini` on Linux/WSL, or `sample-platformio-windows.ini` on native Windows (MSYS2 UCRT64).
 
 > [!WARNING]
 > This has been tested on x86_64 macOS (Intel), ARM64 macOS (Apple Silicon,
@@ -26,7 +26,12 @@ sudo dnf install SDL2-devel openssl-devel
 
 # Linux — Arch
 sudo pacman -S sdl2 openssl
+
+# Windows — MSYS2 (https://www.msys2.org), in the UCRT64 shell
+pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-pkgconf
 ```
+
+On native Windows, build with `C:\msys64\ucrt64\bin` first in `PATH` (it holds `gcc` and `SDL2.dll`) and with `PYTHONUTF8=1`, so the firmware's Python build scripts write UTF-8. `curl.exe` ships with Windows 10 and later. Clock: the Windows C runtime reads only the simple `TZ` form, a three-letter zone name, an offset and an optional daylight-saving name. Fixed offsets (`MSK-3`, `UTC-3:00`) are exact. Daylight saving always follows the US dates, whatever rule follows (`CET-1CEST,M3.5.0,M10.5.0/3` is an hour off for a few weeks a year), and zone names that are not three letters (`AKST9AKDT,…`, `AEST-10AEDT,…`, `<+03>-3`) give a wrong local time.
 
 ## Integration
 
@@ -34,6 +39,7 @@ Add the simulator to your firmware's platformio.ini as a `lib_dep` and configure
 
 - `sample-platformio-macos.ini`
 - `sample-platformio-linux-wsl.ini`
+- `sample-platformio-windows.ini`
 
 No scripts need to be copied into the firmware repo for the simulator to build. The simulator library automatically patches consumer-side compatibility issues from its own build script when PlatformIO fetches it as a dependency, including the common `GfxRenderer::setOrientation()` hook needed for SDL window resizing.
 
@@ -221,6 +227,10 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
+- `CROSSPOINT_SIM_WINDOW_POS=<x>,<y>` places the window on the desktop
+  (default: the system picks). `CROSSPOINT_SIM_WINDOW_PERCENT` scales it, 10 to
+  400 (default 100); rendering keeps the panel size, but screenshots are taken
+  from the window, so keep 100 for full-size shots.
 - `CROSSPOINT_SIM_SCREEN_TEXT=1` prints the text on screen after each display
   refresh, in reading order, as one serial line:
   `[SIM] SCREEN: 100% | SD card | books | / | « Home | Open | Up | Down`.

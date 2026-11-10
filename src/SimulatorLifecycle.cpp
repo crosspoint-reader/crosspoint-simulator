@@ -1,11 +1,24 @@
 #include "SimulatorLifecycle.h"
 #include "HalGPIO.h"
+#include "SimPosixCompat.h"
 
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+
+#ifdef _WIN32
+#include <SDL.h>
+#include <string>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -69,9 +82,46 @@ WakeReason consumeWakeReason() {
   // or terminate the relaunched instance.
   promoteAfterWakeValue(kInputScriptEnv, kInputScriptAfterWakeEnv);
   promoteAfterWakeValue(kScreenshotsEnv, kScreenshotsAfterWakeEnv);
+#ifdef _WIN32
+  // Windows has no exec that keeps the process: _execvp starts a new process
+  // and ends this one, so whoever waits on the simulator (a QA script,
+  // `timeout`) returns before the woken instance has run and loses its exit
+  // status. Close this window, run the woken instance from this process's own
+  // command line (its quoting and Unicode intact; the environment set above is
+  // inherited), wait, and exit with its status. Each sleep adds one waiting
+  // process; a kill-on-close job ends the woken ones if a waiter is killed.
+  SDL_Quit();
+  std::fflush(nullptr);
+  // The job handle stays open on purpose: closing it is what kills the job.
+  if (HANDLE job = CreateJobObjectW(nullptr, nullptr)) {
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags =
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits,
+                            sizeof(limits));
+    AssignProcessToJobObject(job, GetCurrentProcess());
+  }
+  // The program by its own path; the command line keeps the arguments.
+  wchar_t program[MAX_PATH];
+  const DWORD programLength = GetModuleFileNameW(nullptr, program, MAX_PATH);
+  std::wstring commandLine = GetCommandLineW();
+  STARTUPINFOW startup{};
+  startup.cb = sizeof(startup);
+  PROCESS_INFORMATION child{};
+  if (programLength > 0 && programLength < MAX_PATH &&
+      CreateProcessW(program, commandLine.data(), nullptr, nullptr, TRUE, 0,
+                     nullptr, nullptr, &startup, &child)) {
+    WaitForSingleObject(child.hProcess, INFINITE);
+    DWORD status = 1;
+    GetExitCodeProcess(child.hProcess, &status);
+    _exit(static_cast<int>(status));
+  }
+  std::fprintf(stderr, "SimulatorLifecycle: CreateProcessW failed (%lu)\n",
+               GetLastError());
+#else
   execvp(gArgv[0], gArgv);
-
   std::perror("execvp");
+#endif
   _exit(1);
 }
 

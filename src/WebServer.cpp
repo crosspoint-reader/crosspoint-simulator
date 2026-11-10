@@ -2,10 +2,13 @@
 
 #include "SimulatorNetworkPorts.h"
 #include <Logging.h>
-#include <arpa/inet.h>
 #include <fcntl.h>
+#include <lwip/sockets.h>
+#ifndef _WIN32
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -554,13 +557,13 @@ void WebServer::begin() {
       0) {
     LOG_ERR("WEB", "[SIM] WebServer bind 127.0.0.1:%d failed: %s", impl_->port,
             strerror(errno));
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
     return;
   }
   if (::listen(impl_->fd, 16) != 0) {
     LOG_ERR("WEB", "[SIM] WebServer listen failed: %s", strerror(errno));
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
     return;
   }
@@ -579,7 +582,7 @@ void WebServer::begin() {
       PendingRequest request;
       request.client = client;
       if (!readRequest(client, request)) {
-        ::close(client);
+        simCloseSocket(client);
         continue;
       }
       std::lock_guard<std::mutex> lock(impl_->queueMutex);
@@ -612,7 +615,16 @@ void WebServer::handleClient() {
   clearArguments();
   impl_->resetRequest();
   impl_->currentClient = client;
-  _currentClient = NetworkClient(::dup(client));
+  const int handlerFd = simDupSocket(client);
+  if (handlerFd < 0) {
+    // Without the handler's copy its response would be lost: answer here.
+    LOG_ERR("WEB", "[SIM] Cannot duplicate the client socket");
+    sendSimpleResponse(client, 500, "Internal Server Error");
+    simCloseSocket(client);
+    impl_->resetRequest();
+    return;
+  }
+  _currentClient = NetworkClient(handlerFd);
   impl_->currentMethod = methodFromString(request.method);
   impl_->currentUri = path.empty() ? "/" : path.c_str();
   impl_->requestContentLength = bodyLength;
@@ -636,7 +648,7 @@ void WebServer::handleClient() {
     }
     sendSimpleResponse(client, 413, "Payload Too Large");
     _currentClient.stop();
-    ::close(client);
+    simCloseSocket(client);
     impl_->resetRequest();
     return;
   }
@@ -660,7 +672,7 @@ void WebServer::handleClient() {
       impl_->emitMultipartAbort(*this);
     sendSimpleResponse(client, 400, "Incomplete request body");
     _currentClient.stop();
-    ::close(client);
+    simCloseSocket(client);
     impl_->resetRequest();
     return;
   }
@@ -758,7 +770,7 @@ void WebServer::handleClient() {
   impl_->runMiddleware(*this, 0, dispatch);
 
   _currentClient.stop();
-  ::close(client);
+  simCloseSocket(client);
   impl_->resetRequest();
 }
 
@@ -789,14 +801,14 @@ void WebServer::stop() {
   impl_->active = false;
   if (impl_->fd >= 0) {
     ::shutdown(impl_->fd, SHUT_RDWR);
-    ::close(impl_->fd);
+    simCloseSocket(impl_->fd);
     impl_->fd = -1;
   }
   if (impl_->worker.joinable())
     impl_->worker.join();
   std::lock_guard<std::mutex> lock(impl_->queueMutex);
   for (const auto &request : impl_->queue)
-    ::close(request.client);
+    simCloseSocket(request.client);
   impl_->queue.clear();
 }
 

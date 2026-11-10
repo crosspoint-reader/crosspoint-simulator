@@ -5,13 +5,22 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <sys/statvfs.h>
+#endif
 #include <unistd.h>
+
+#include "SimPosixCompat.h"
+#include "SimWin32.h"
 
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#ifdef _WIN32
+#include <filesystem>
+#include <system_error>
+#endif
 #include <limits>
 #include <sstream>
 #include <vector>
@@ -38,6 +47,13 @@ std::string resolveStoragePath(const char *path) {
   if (logical.empty()) {
     logical = "/";
   }
+#ifdef _WIN32
+  // Windows also splits paths at '\', so "..\x" would leave the SD root.
+  for (char &character : logical) {
+    if (character == '\\')
+      character = '/';
+  }
+#endif
   if (containsUnsafeSegment(logical)) {
     fprintf(stderr, "[SIM] rejected unsafe storage path: %s\n",
             logical.c_str());
@@ -105,7 +121,7 @@ public:
     // The simulator's FsApiConstants.h just includes <fcntl.h> and typedef int
     // oflag_t, so all O_* constants are already native POSIX values — pass them
     // straight through.
-    fd = ::open(path.c_str(), flags, 0666);
+    fd = ::open(path.c_str(), flags | SIM_OPEN_BINARY, 0666);
     if (fd < 0) {
       fprintf(stderr, "[SIM] open failed: %s (flags=0x%x errno=%d %s)\n",
               path.c_str(), flags, errno, strerror(errno));
@@ -386,7 +402,19 @@ bool HalStorage::rename(const char *oldPath, const char *newPath) {
   return ::rename(o.c_str(), n.c_str()) == 0;
 }
 bool HalStorage::replaceFile(const char *tmpPath, const char *path) {
+#ifdef _WIN32
+  // rename() cannot overwrite on Windows. MoveFileEx replaces the destination
+  // in one step and leaves it as it was if the move fails.
+  const std::string from = resolveStoragePath(tmpPath);
+  const std::string to = resolveStoragePath(path);
+  if (from.empty() || to.empty()) {
+    return false;
+  }
+  ensureParentDirectories(to);
+  return sim_win32::replaceFile(from, to);
+#else
   return rename(tmpPath, path);
+#endif
 }
 static bool removeDirRecursive(const std::string &full) {
   DIR *d = opendir(full.c_str());
@@ -535,6 +563,26 @@ std::vector<String> HalStorage::listFiles(const char *path, int maxFiles) {
   return result;
 }
 
+#ifdef _WIN32
+// No statvfs on Windows; std::filesystem::space() reads the same volume
+// figures (GetDiskFreeSpaceEx) without pulling <windows.h> into this file.
+uint64_t HalStorage::sdTotalBytes() {
+  std::error_code ec;
+  const auto info = std::filesystem::space(resolveStoragePath(NULL), ec);
+  return ec ? 0 : static_cast<uint64_t>(info.capacity);
+}
+
+bool HalStorage::sdUsedBytes(uint64_t& usedBytes) {
+  std::error_code ec;
+  const auto info = std::filesystem::space(resolveStoragePath(NULL), ec);
+  if (ec) {
+    usedBytes = 0;
+    return false;
+  }
+  usedBytes = static_cast<uint64_t>(info.capacity - info.free);
+  return true;
+}
+#else
 uint64_t HalStorage::sdTotalBytes() {
   struct statvfs vfs;
   
@@ -555,6 +603,7 @@ bool HalStorage::sdUsedBytes(uint64_t& usedBytes) {
 
   uint64_t bsize = (vfs.f_frsize != 0) ? vfs.f_frsize : vfs.f_bsize;
   usedBytes = (uint64_t)(vfs.f_blocks - vfs.f_bfree) * bsize;
-  
+
   return true;
 }
+#endif

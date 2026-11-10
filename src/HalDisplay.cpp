@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -278,6 +279,34 @@ static void getLogicalWindowSize(GfxRenderer::Orientation orientation,
       SIMULATOR_WINDOW_SCALE;
 }
 
+// Optional on-screen window placement: CROSSPOINT_SIM_WINDOW_PERCENT scales the
+// window (10-400, default 100) while the logical size stays the panel size, so
+// rendering and screenshots are unchanged; CROSSPOINT_SIM_WINDOW_POS="x,y" places
+// it (default: the system picks).
+static int windowPercent() {
+  const char *value = std::getenv("CROSSPOINT_SIM_WINDOW_PERCENT");
+  const int pct = value ? std::atoi(value) : 100;
+  return (pct >= 10 && pct <= 400) ? pct : 100;
+}
+
+// CROSSPOINT_SIM_WINDOW_BORDERLESS=1 opens the window without a frame or title bar.
+static bool windowBorderless() {
+  const char *value = std::getenv("CROSSPOINT_SIM_WINDOW_BORDERLESS");
+  return value && value[0] == '1';
+}
+
+static void windowPosition(int *x, int *y) {
+  *x = SDL_WINDOWPOS_UNDEFINED;
+  *y = SDL_WINDOWPOS_UNDEFINED;
+  const char *value = std::getenv("CROSSPOINT_SIM_WINDOW_POS");
+  int px = 0;
+  int py = 0;
+  if (value && std::sscanf(value, "%d,%d", &px, &py) == 2) {
+    *x = px;
+    *y = py;
+  }
+}
+
 static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
   if (!window || !sdl_renderer)
     return;
@@ -288,7 +317,7 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
   if (winW == currentWindowWidth && winH == currentWindowHeight)
     return;
 
-  SDL_SetWindowSize(window, winW, winH);
+  SDL_SetWindowSize(window, winW * windowPercent() / 100, winH * windowPercent() / 100);
   SDL_RenderSetLogicalSize(sdl_renderer, winW, winH);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
@@ -359,6 +388,12 @@ static constexpr const char *WINDOW_TITLE =
 #undef SIMULATOR_CONTROLLER_TITLE
 
 void HalDisplay::begin() {
+#ifdef SDL_HINT_WINDOWS_DPI_AWARENESS
+  // Windows scales a DPI-unaware window by the display scale (300 % on a 4K
+  // screen turns 480x800 into 1440x2400). Declaring awareness keeps the window
+  // at panel pixels.
+  SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+#endif
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
               << std::endl;
@@ -372,9 +407,14 @@ void HalDisplay::begin() {
 
   // SDL_WINDOW_ALLOW_HIGHDPI lets the renderer use full Retina/HiDPI pixels on
   // macOS so we get crisp 1:1 rendering instead of a blurry upscale.
-  window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_UNDEFINED,
-                            SDL_WINDOWPOS_UNDEFINED, winW, winH,
-                            SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+  int winX = 0;
+  int winY = 0;
+  windowPosition(&winX, &winY);
+  window = SDL_CreateWindow(WINDOW_TITLE, winX, winY,
+                            winW * windowPercent() / 100,
+                            winH * windowPercent() / 100,
+                            SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI |
+                                (windowBorderless() ? SDL_WINDOW_BORDERLESS : 0));
   sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
   // Keep all rendering logic in logical (winW×winH) coordinates; SDL maps to
