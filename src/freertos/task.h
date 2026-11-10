@@ -85,6 +85,10 @@ inline void vTaskDelete(TaskHandle_t h) {
 }
 inline unsigned int uxTaskGetStackHighWaterMark(TaskHandle_t) { return 2048; }
 inline void vTaskList(char *) {}
+#define taskSCHEDULER_NOT_STARTED ((BaseType_t)0)
+#define taskSCHEDULER_RUNNING ((BaseType_t)1)
+#define taskSCHEDULER_SUSPENDED ((BaseType_t)2)
+inline BaseType_t xTaskGetSchedulerState(void) { return taskSCHEDULER_RUNNING; }
 // vTaskDelay's argument is in FreeRTOS ticks, and portTICK_PERIOD_MS
 // (FreeRTOS.h) is this shim's one tick-rate definition. Convert through it, do
 // not assume one tick is one millisecond. A no-op here made every firmware

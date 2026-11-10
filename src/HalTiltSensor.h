@@ -29,7 +29,8 @@ public:
   void begin() {
 #if defined(SIMULATOR_DEVICE_X3) || defined(SIMULATOR_DEVICE_X4_CLASSIC) ||    \
     defined(SIMULATOR_DEVICE_STICKY) ||                                        \
-    defined(SIMULATOR_DEVICE_METALIO_EINK4) || defined(SIMULATOR_DEVICE_PICCO)
+    defined(SIMULATOR_DEVICE_METALIO_EINK4) ||                                \
+    defined(SIMULATOR_DEVICE_METALIO_EINK4_PLUS) || defined(SIMULATOR_DEVICE_PICCO)
     _available = true;
 #else
     _available = false;

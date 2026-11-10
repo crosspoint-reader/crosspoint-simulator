@@ -54,6 +54,7 @@ public:
 
   // Start button GPIO and setup SPI for screen and SD card
   void begin();
+  void prepareForDeepSleep() {}
 
   // Clears the per-frame press/release edge latches. Must be called exactly
   // once per frame (before the firmware's loop()), NOT on every update().
@@ -87,9 +88,12 @@ public:
   bool isTouchHeldAt(float &nx, float &ny) const;
   bool wasTouchLongPress(float &nx, float &ny) const;
   void suppressTouchContact();
+  void discardBufferedTouch() {}
+  uint32_t touchFrameTime() const { return millis(); }
   unsigned long lastTouchHeldMs() const;
   bool wasSwipe(float &nxStart, float &nyStart, float &nxEnd,
                 float &nyEnd) const;
+  bool wasPinch(float &scale) const { (void)scale; return false; }
   bool wasTouchActivity() const;
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
   bool consumeSimulatorSleepRequest();
@@ -103,6 +107,10 @@ public:
 
   // Check if USB is connected
   bool isUsbConnected() const;
+  bool coldBootImpliesPowerButton() const {
+    return isXteinkDevice() || BoardConfig::isPaperMono() ||
+           BoardConfig::isSticky() || BoardConfig::isMetalioEInk4();
+  }
 
   // Returns true once per edge (plug or unplug) since the last update()
   bool wasUsbStateChanged() const;
