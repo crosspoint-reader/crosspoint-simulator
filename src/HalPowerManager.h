@@ -6,6 +6,7 @@
 #include <freertos/semphr.h>
 
 #include <cassert>
+#include <cstdlib>
 
 #include "HalGPIO.h"
 
@@ -46,6 +47,7 @@ public:
   // Setup wake up GPIO and enter deep sleep
   // Should be called inside main loop() to handle the currentLockMode
   void startDeepSleep(HalGPIO &gpio, bool wakeOnHeldButton = false) const;
+  [[noreturn]] void sleepOnExpanderKey() const { std::abort(); }
 
 #if FREEINK_DEVICE_PICCO
   bool holdWhileUsbPowered(HalGPIO &gpio,

@@ -12,6 +12,7 @@ profiles = [
     (["SIMULATOR_DEVICE_STICKY"], "sticky", 1, 0, 0),
     (["SIMULATOR_DEVICE_PAPERMONO"], "m5stack_paper_mono", 1, 0, 1),
     (["SIMULATOR_DEVICE_METALIO_EINK4"], "metalio_eink4", 1, 1, 0),
+    (["SIMULATOR_DEVICE_METALIO_EINK4_PLUS"], "metalio_eink4_plus", 1, 1, 1),
     (["SIMULATOR_DEVICE_EEGO_A4"], "eego_a4", 1, 1, 1),
     (["SIMULATOR_DEVICE_PICCO"], "picco", 1, 0, 1),
 ]
@@ -31,7 +32,8 @@ int main(int, char **argv) {
   assert(FREEINK_CAP_FRONTLIGHT == int(BoardConfig::hasPwmFrontlight() || BoardConfig::hasI2cFrontlight()));
   assert(FREEINK_DEVICE_X4 + FREEINK_DEVICE_X3 + FREEINK_DEVICE_X4PRO +
          FREEINK_DEVICE_X4CLASSIC + FREEINK_DEVICE_STICKY +
-         FREEINK_DEVICE_PAPERMONO + FREEINK_DEVICE_METALIO_EINK4 + FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_PICCO == 1);
+         FREEINK_DEVICE_PAPERMONO + FREEINK_DEVICE_METALIO_EINK4 +
+         FREEINK_DEVICE_METALIO_EINK4_PLUS + FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_PICCO == 1);
 }
 ''')
     command = ["c++", "-std=c++20", f"-I{root / 'src'}", "-DFREEINK_DEVICE_X4=1", str(source)]
@@ -42,9 +44,13 @@ int main(int, char **argv) {
     negatives = [
         (["SIMULATOR_DEVICE_METALIO_EINK4", "SIMULATOR_DISPLAY_UC8179"], "uses SSD1677"),
         (["SIMULATOR_DEVICE_METALIO_EINK4", "SIMULATOR_DISPLAY_UC8279"], "uses SSD1677"),
+        (["SIMULATOR_DEVICE_METALIO_EINK4_PLUS", "SIMULATOR_DISPLAY_UC8179"], "uses EPDiy"),
+        (["SIMULATOR_DEVICE_METALIO_EINK4_PLUS", "SIMULATOR_DISPLAY_UC8279"], "uses EPDiy"),
     ]
     negatives += [(["SIMULATOR_DEVICE_METALIO_EINK4"] + flags, "at most one simulated device")
                   for flags, *_ in profiles if flags and "SIMULATOR_DEVICE_METALIO_EINK4" not in flags]
+    negatives += [(["SIMULATOR_DEVICE_METALIO_EINK4_PLUS"] + flags, "at most one simulated device")
+                  for flags, *_ in profiles if flags and "SIMULATOR_DEVICE_METALIO_EINK4_PLUS" not in flags]
     negatives += [(["SIMULATOR_DEVICE_EEGO_A4"] + flags, "at most one simulated device")
                   for flags, *_ in profiles if flags and "SIMULATOR_DEVICE_EEGO_A4" not in flags]
     negatives += [(["SIMULATOR_DEVICE_EEGO_A4", flag], "uses UC8279C")

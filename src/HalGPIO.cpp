@@ -124,8 +124,8 @@ struct SyntheticEvent {
   bool handled = false;
   // Each WAIT starts a new segment; atMs counts from the segment start.
   size_t segment = 0;
-  std::string text; // WAIT pattern or SHOT path
-  std::regex pattern;
+  std::string text{}; // WAIT pattern or SHOT path
+  std::regex pattern{};
   unsigned long waitingSinceMs = 0;
 };
 
@@ -139,10 +139,25 @@ unsigned long waitTimeoutMs = 30000;
 
 float clamp01(float value) { return std::max(0.0f, std::min(1.0f, value)); }
 
+bool isPortraitOrientation() {
+  const auto o = renderer.getOrientation();
+  return o == GfxRenderer::Portrait || o == GfxRenderer::PortraitInverted;
+}
+
+int orientedPanelWidth() {
+  return isPortraitOrientation() ? HalDisplay::DISPLAY_HEIGHT
+                                 : HalDisplay::DISPLAY_WIDTH;
+}
+
+int orientedPanelHeight() {
+  return isPortraitOrientation() ? HalDisplay::DISPLAY_WIDTH
+                                 : HalDisplay::DISPLAY_HEIGHT;
+}
+
 void logicalToPanelNormalized(float logicalNx, float logicalNy, float &panelNx,
                               float &panelNy) {
-  const int logicalWidth = renderer.getScreenWidth();
-  const int logicalHeight = renderer.getScreenHeight();
+  const int logicalWidth = orientedPanelWidth();
+  const int logicalHeight = orientedPanelHeight();
   const int lx = static_cast<int>(clamp01(logicalNx) *
                                   static_cast<float>(logicalWidth - 1));
   const int ly = static_cast<int>(clamp01(logicalNy) *
@@ -288,8 +303,8 @@ bool parseTouchSpec(const std::string &detail, float &x1, float &y1, float &x2,
       return value;
     return clamp01(value / static_cast<float>(std::max(1, extent - 1)));
   };
-  const int logicalWidth = renderer.getScreenWidth();
-  const int logicalHeight = renderer.getScreenHeight();
+  const int logicalWidth = orientedPanelWidth();
+  const int logicalHeight = orientedPanelHeight();
   x1 = normalize(x1, logicalWidth);
   y1 = normalize(y1, logicalHeight);
   x2 = normalize(x2, logicalWidth);
@@ -316,7 +331,7 @@ bool buttonAvailable(int button) {
   if (BoardConfig::isEegoA4())
     return button == HalGPIO::BTN_POWER || button == HalGPIO::BTN_UP ||
            button == HalGPIO::BTN_DOWN;
-  if (!BoardConfig::isMetalioEInk4())
+  if (!BoardConfig::isMetalioEInk4() && !BoardConfig::isMetalioEInk4Plus())
     return true;
   // BOOT/POWER and the expander/cover page keys are the only button inputs.
   return button == HalGPIO::BTN_CONFIRM || button == HalGPIO::BTN_POWER ||
@@ -324,7 +339,8 @@ bool buttonAvailable(int button) {
 }
 
 void beginCoverButton(int button) {
-  if (!BoardConfig::isMetalioEInk4() || coverButtonDown[button])
+  if ((!BoardConfig::isMetalioEInk4() && !BoardConfig::isMetalioEInk4Plus()) ||
+      coverButtonDown[button])
     return;
   coverButtonDown[button] = true;
   capacitivePagePressedThisFrame = true;
@@ -634,6 +650,9 @@ void HalGPIO::begin() {
 #elif defined(SIMULATOR_DEVICE_METALIO_EINK4)
   _deviceType = DeviceType::X4;
   BoardConfig::selectDevice(BoardConfig::Board::MetalioEInk4);
+#elif defined(SIMULATOR_DEVICE_METALIO_EINK4_PLUS)
+  _deviceType = DeviceType::X4;
+  BoardConfig::selectDevice(BoardConfig::Board::MetalioEInk4Plus);
 #elif defined(SIMULATOR_DEVICE_PAPERMONO)
   _deviceType = DeviceType::X4;
   BoardConfig::selectDevice(BoardConfig::Board::PaperMono);
@@ -762,27 +781,27 @@ void HalGPIO::update() {
                e.button.button == SDL_BUTTON_LEFT) {
       const float logicalNx =
           static_cast<float>(e.button.x) /
-          std::max(1, static_cast<int>(renderer.getScreenWidth()) - 1);
+          std::max(1, orientedPanelWidth() - 1);
       const float logicalNy =
           static_cast<float>(e.button.y) /
-          std::max(1, static_cast<int>(renderer.getScreenHeight()) - 1);
+          std::max(1, orientedPanelHeight() - 1);
       beginTouch(logicalNx, logicalNy);
     } else if (e.type == SDL_MOUSEMOTION && touchState.down) {
       const float logicalNx =
           static_cast<float>(e.motion.x) /
-          std::max(1, static_cast<int>(renderer.getScreenWidth()) - 1);
+          std::max(1, orientedPanelWidth() - 1);
       const float logicalNy =
           static_cast<float>(e.motion.y) /
-          std::max(1, static_cast<int>(renderer.getScreenHeight()) - 1);
+          std::max(1, orientedPanelHeight() - 1);
       moveTouch(logicalNx, logicalNy);
     } else if (e.type == SDL_MOUSEBUTTONUP &&
                e.button.button == SDL_BUTTON_LEFT) {
       const float logicalNx =
           static_cast<float>(e.button.x) /
-          std::max(1, static_cast<int>(renderer.getScreenWidth()) - 1);
+          std::max(1, orientedPanelWidth() - 1);
       const float logicalNy =
           static_cast<float>(e.button.y) /
-          std::max(1, static_cast<int>(renderer.getScreenHeight()) - 1);
+          std::max(1, orientedPanelHeight() - 1);
       endTouch(logicalNx, logicalNy);
     }
   }

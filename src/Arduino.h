@@ -7,10 +7,12 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <thread>
 
 #include "freertos/FreeRTOS.h"
+#include "esp_system.h"
 
 #define PROGMEM
 #define ICACHE_RODATA_ATTR
@@ -20,6 +22,8 @@
 #define SET_LOOP_TASK_STACK_SIZE(bytes)
 #define PGM_P const char *
 #define PSTR(s) (s)
+#define pgm_read_byte(addr) (*(const uint8_t *)(addr))
+#define memcpy_P(dest, src, num) memcpy((dest), (src), (num))
 
 inline unsigned long millis() {
   using namespace std::chrono;

@@ -31,7 +31,7 @@ bool HalFrontlight::present() const {
 }
 
 bool HalFrontlight::hasColorTemperature() const {
-  return BoardConfig::isX4Pro() ||
+  return BoardConfig::isX4Pro() || BoardConfig::isMetalioEInk4Plus() ||
          ((BoardConfig::isEegoA4() || BoardConfig::isPicco()) && present());
 }
 

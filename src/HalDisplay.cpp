@@ -315,6 +315,8 @@ const char* HalDisplay::controllerName() const {
       return "UC8179";
     case BoardConfig::DisplayController::UC8279:
       return "UC8279";
+    case BoardConfig::DisplayController::Epdiy:
+      return "EPDiy";
     case BoardConfig::DisplayController::SSD1677:
     default:
       return "SSD1677";
@@ -328,6 +330,9 @@ static constexpr const char *WINDOW_TITLE = "Simulator - EEGO A4 (UC8279C)";
 #elif defined(SIMULATOR_DEVICE_METALIO_EINK4)
 static constexpr const char *WINDOW_TITLE =
     "Simulator - Metalio E-Ink 4 (SSD1677)";
+#elif defined(SIMULATOR_DEVICE_METALIO_EINK4_PLUS)
+static constexpr const char *WINDOW_TITLE =
+    "Simulator - Metalio E-Ink 4 Plus (EPDiy)";
 #elif defined(SIMULATOR_DEVICE_PAPERMONO)
 static constexpr const char *WINDOW_TITLE =
     "Simulator - M5Stack PaperMono (SSD1677)";

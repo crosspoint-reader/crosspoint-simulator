@@ -66,6 +66,7 @@ The simulator is a collection of host-side reimplementations of the firmware's h
 `SIMULATOR_DEVICE_STICKY` for Seeed Sticky, or
 `SIMULATOR_DEVICE_PAPERMONO` for M5Stack PaperMono, or
 `SIMULATOR_DEVICE_METALIO_EINK4` for Metalio E-Ink 4, or
+`SIMULATOR_DEVICE_METALIO_EINK4_PLUS` for Metalio E-Ink 4 Plus, or
 `SIMULATOR_DEVICE_EEGO_A4` for EEGO A4, or `SIMULATOR_DEVICE_PICCO` for Picco.
 `SIMULATOR_DISPLAY_UC8179` and `SIMULATOR_DISPLAY_UC8279` select per-batch
 controller revisions without changing a device's geometry or capabilities.
@@ -79,9 +80,12 @@ PaperMono uses an 800x480 SSD1677 panel with FT6336-compatible touch, RTC, and
 single-channel frontlight state, without a Home key or tilt.
 
 Metalio uses an 800x480 SSD1677 panel with CST816S touch, a cover Home key,
-RTC, tilt, and haptic settings, without a frontlight. Only Confirm, Power,
-Up, and Down button contacts are available; Back/Left/Right are disabled.
-Up/Down model volume and cover Prev/Next keys. Haptic calls are host no-ops.
+RTC, tilt, and haptic settings, without a frontlight. Metalio E-Ink 4 Plus uses
+a 1216x684 EPDiy parallel panel (`uiScale = 1.5`) with FT6336U touch, a cover
+Home key, RTC, tilt, haptics, and a dual-channel PWM warm/cool frontlight. On
+both Metalio boards, only Confirm, Power, Up, and Down button contacts are
+available; Back/Left/Right are disabled. Up/Down model volume and cover
+Prev/Next keys. Haptic calls are host no-ops.
 
 EEGO A4 uses a 768x552 UC8279C panel, GSLX680 touch, RTC, Up/Down/Power
 buttons and an optional warm/cool I2C frontlight. `SIMULATOR_EEGO_NO_FRONTLIGHT`

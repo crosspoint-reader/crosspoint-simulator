@@ -1,3 +1,7 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
@@ -15,13 +19,23 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <regex>
 
 GfxRenderer renderer;
 std::atomic<bool> quitRequested{false};
 namespace SimulatorLifecycle {
 WakeReason consumeWakeReason() { return WakeReason::None; }
 [[noreturn]] void rebootAsPowerWake() { std::abort(); }
+void setExitCode(int) {}
 } // namespace SimulatorLifecycle
+
+namespace sim_log {
+bool findSince(unsigned long, const std::regex &, std::string *) {
+  return false;
+}
+} // namespace sim_log
+
+void scheduleSimulatorScreenshot(const std::string &) {}
 
 static int homeTaps = 0, homeLongPresses = 0, coverEdges = 0;
 static int buttonEdges[7] = {};
@@ -73,25 +87,58 @@ int main() {
   gpio.begin();
   halClock.begin();
   halTiltSensor.begin();
-  assert(BoardConfig::isMetalioEInk4());
+#if defined(SIMULATOR_DEVICE_METALIO_EINK4_PLUS)
+  assert(BoardConfig::isMetalioEInk4Plus() && !BoardConfig::isMetalioEInk4());
+  assert(std::strcmp(BoardConfig::ACTIVE.name, "metalio_eink4_plus") == 0);
+  assert(FREEINK_DEVICE_METALIO_EINK4_PLUS == 1 &&
+         FREEINK_DEVICE_METALIO_EINK4 == 0 && FREEINK_MCU_C3 == 0);
+  assert(FREEINK_CAP_TOUCH == 1 && FREEINK_CAP_FRONTLIGHT == 1 &&
+         FREEINK_CAP_WARMLIGHT == 1 && FREEINK_CAP_HAPTIC == 1);
+  assert(BoardConfig::ACTIVE.displayController ==
+         BoardConfig::DisplayController::Epdiy);
+  assert(BoardConfig::ACTIVE.touch.controller ==
+         BoardConfig::TouchController::Ft6336u);
+  assert(HalDisplay::DISPLAY_WIDTH == 1216 && HalDisplay::DISPLAY_HEIGHT == 684);
+  assert(HalDisplay::BUFFER_SIZE == 103968);
+  assert(BoardConfig::ACTIVE.displayWidth == HalDisplay::DISPLAY_WIDTH);
+  assert(BoardConfig::ACTIVE.displayHeight == HalDisplay::DISPLAY_HEIGHT);
+  assert(BoardConfig::ACTIVE.uiScale == 1.5f);
+  assert(renderer.getScreenWidth() == 456 && renderer.getScreenHeight() == 811);
+  assert(BoardConfig::ACTIVE.wifiMaxTxPower == 60);
+  const auto insets = BoardConfig::ACTIVE.viewableInsets;
+  assert(insets.top == 2 && insets.right == 2 && insets.bottom == 12 &&
+         insets.left == 2);
+  auto &light = HalFrontlight::getInstance();
+  assert(light.present() && light.hasColorTemperature());
+  light.begin(65, 75, true);
+  assert(light.isOn() && light.brightness() == 65 && light.warmth() == 75);
+  light.setBrightness(255);
+  light.setWarmth(255);
+  assert(light.brightness() == 100 && light.warmth() == 100);
+  light.setOn(false);
+  assert(!light.isOn());
+#else
+  assert(BoardConfig::isMetalioEInk4() && !BoardConfig::isMetalioEInk4Plus());
   assert(std::strcmp(BoardConfig::ACTIVE.name, "metalio_eink4") == 0);
-  assert(FREEINK_DEVICE_METALIO_EINK4 == 1 && FREEINK_MCU_C3 == 0);
+  assert(FREEINK_DEVICE_METALIO_EINK4 == 1 &&
+         FREEINK_DEVICE_METALIO_EINK4_PLUS == 0 && FREEINK_MCU_C3 == 0);
   assert(FREEINK_CAP_TOUCH == 1 && FREEINK_CAP_FRONTLIGHT == 0 &&
-         FREEINK_CAP_HAPTIC == 1);
+         FREEINK_CAP_WARMLIGHT == 0 && FREEINK_CAP_HAPTIC == 1);
   assert(BoardConfig::ACTIVE.displayController ==
          BoardConfig::DisplayController::SSD1677);
   assert(BoardConfig::ACTIVE.touch.controller ==
          BoardConfig::TouchController::Cst816s);
   assert(HalDisplay::DISPLAY_WIDTH == 800 && HalDisplay::DISPLAY_HEIGHT == 480);
   assert(HalDisplay::BUFFER_SIZE == 48000);
-  assert(BoardConfig::ACTIVE.input.up == -1 &&
-         BoardConfig::ACTIVE.input.down == -1);
   const auto insets = BoardConfig::ACTIVE.viewableInsets;
   assert(insets.top == 9 && insets.right == 3 && insets.bottom == 3 &&
          insets.left == 3);
+  assert(!HalFrontlight::getInstance().present());
+#endif
+  assert(BoardConfig::ACTIVE.input.up == -1 &&
+         BoardConfig::ACTIVE.input.down == -1);
   assert(gpio.hasTouch() && gpio.hasHomeKey() && !gpio.isXteinkDevice() &&
          !gpio.hasEdgeSideButtons());
-  assert(!HalFrontlight::getInstance().present());
   assert(halClock.isAvailable());
   uint8_t hour, minute;
   assert(halClock.getTime(hour, minute) && hour < 24 && minute < 60);
@@ -101,6 +148,7 @@ int main() {
   HalHaptics::longPress(true, 2);
   frame();
   until(350);
+  assert(gpio.touchFrameTime() >= 350);
   assert(gpio.isPressed(HalGPIO::BTN_CONFIRM));
   assert(!gpio.wasCapacitivePagePressed());
   until(460);
@@ -172,9 +220,14 @@ int main() {
       {0, 1, 1, 0}, {1, 1, 0, 0}, {1, 0, 0, 1}, {0, 0, 1, 1}};
   for (int orientation = 0; orientation < 4; ++orientation) {
     renderer.setOrientation(static_cast<GfxRenderer::Orientation>(orientation));
+    const bool portrait = renderer.portrait();
+    const int winW =
+        portrait ? HalDisplay::DISPLAY_HEIGHT : HalDisplay::DISPLAY_WIDTH;
+    const int winH =
+        portrait ? HalDisplay::DISPLAY_WIDTH : HalDisplay::DISPLAY_HEIGHT;
     for (int corner = 0; corner < 2; ++corner) {
-      const int x = corner ? renderer.getScreenWidth() - 1 : 0;
-      const int y = corner ? renderer.getScreenHeight() - 1 : 0;
+      const int x = corner ? winW - 1 : 0;
+      const int y = corner ? winH - 1 : 0;
       float nx, ny;
       mouse(SDL_MOUSEBUTTONDOWN, x, y);
       assert(gpio.wasTouchDown(nx, ny));
@@ -187,7 +240,7 @@ int main() {
     }
     float x1, y1, x2, y2;
     mouse(SDL_MOUSEBUTTONDOWN, 10, 100);
-    mouse(SDL_MOUSEBUTTONUP, renderer.getScreenWidth() - 10, 100);
+    mouse(SDL_MOUSEBUTTONUP, winW - 10, 100);
     assert(gpio.wasSwipe(x1, y1, x2, y2));
     assert(!gpio.wasTouchTap(x1, y1));
   }
