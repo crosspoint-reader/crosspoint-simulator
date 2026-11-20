@@ -53,26 +53,49 @@ if os.path.isdir(content_headers):
 DRAW_TEXT_START = "void GfxRenderer::drawText("
 # After the empty-string and font-cache-scan returns, before glyphs are drawn.
 DRAW_TEXT_ANCHOR = "  const auto fontIt = fontMap.find(resolvedFontId);"
-SCREEN_TEXT_HOOK = "  simulatorScreenText(x, y, text);\n"
+# Match the two drawText overloads that pass resolved text to drawVisualText.
+RESOLVE_TEXT = re.compile(
+    r"^  const VisualText visualText = (resolveVisualText|resolveLaidOutText)"
+    r"\(text, [^\n]+\);\n(?=  drawVisualText\()",
+    re.MULTILINE,
+)
+
+
+def _screen_text_hooks(text):
+    start = text.find(DRAW_TEXT_START)
+    if start < 0:
+        return []
+    end = text.find("\n}", start)
+    anchor = text.find(DRAW_TEXT_ANCHOR, start, end)
+    if anchor >= 0:
+        return [(anchor, "  simulatorScreenText(x, y, text);\n")]
+
+    hooks = []
+    for match in RESOLVE_TEXT.finditer(text, start):
+        argument = "text.text" if match[1] == "resolveLaidOutText" else "text"
+        hooks.append((match.end(), (
+            "  if (!(fontCacheManager_ && fontCacheManager_->isScanning())) {\n"
+            f"    simulatorScreenText(x, y, {argument});\n"
+            "  }\n"
+        )))
+    return hooks
 
 
 def _patch_gfx_renderer(lib_env, node):
     source = node.srcnode().get_abspath()
     with open(source, encoding="utf-8") as f:
         text = f.read()
-    start = text.find(DRAW_TEXT_START)
-    anchor = text.find(DRAW_TEXT_ANCHOR, start) if start >= 0 else -1
-    if anchor < 0:
+    hooks = _screen_text_hooks(text)
+    if not hooks:
         print("Simulator: GfxRenderer::drawText changed; screen text is off")
         return node
-    patched = (
-        '#include "SimScreenText.h"\n'
-        + "#line 1 \"%s\"\n" % source.replace("\\", "/")
-        + text[:anchor]
-        + SCREEN_TEXT_HOOK
-        + "#line %d\n" % (text.count("\n", 0, anchor) + 1)
-        + text[anchor:]
-    )
+    patched = ['#include "SimScreenText.h"\n', '#line 1 "%s"\n' % source.replace("\\", "/")]
+    previous = 0
+    for anchor, hook in hooks:
+        patched.extend((text[previous:anchor], hook, "#line %d\n" % (text.count("\n", 0, anchor) + 1)))
+        previous = anchor
+    patched.append(text[previous:])
+    patched = "".join(patched)
     out_dir = os.path.join(lib_env.subst("$BUILD_DIR"), "simulator_patched")
     out = os.path.join(out_dir, "GfxRenderer.cpp")
     os.makedirs(out_dir, exist_ok=True)

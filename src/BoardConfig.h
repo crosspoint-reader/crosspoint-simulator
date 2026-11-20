@@ -205,6 +205,16 @@ enum class Board {
   Picco,
 };
 
+enum class InputStyle : uint8_t {
+  XteinkAdcLadder,
+  DigitalButtons,
+  DigitalConfirmBackHold,
+  DigitalConfirmPowerHold,
+  DigitalFiveKey,
+  DigitalTwoButton,
+  OnePageAdcLadder,
+};
+
 enum class DisplayController {
   SSD1677 = 0,
   UC8253 = 2,
@@ -242,6 +252,7 @@ struct ViewableInsets {
 struct BoardProfile {
   Board board;
   const char *name;
+  InputStyle inputStyle;
   DisplayController displayController;
   uint8_t displayControllerVariant;
   struct {
@@ -281,30 +292,36 @@ inline constexpr uint8_t X4_DISPLAY_CONTROLLER_VARIANT = 0;
 #endif
 
 inline constexpr BoardProfile XTEINK_X4 = {Board::XteinkX4, "xteink_x4",
+                                           InputStyle::XteinkAdcLadder,
                                            X4_DISPLAY_CONTROLLER,
                                            X4_DISPLAY_CONTROLLER_VARIANT,
                                            {4, 5}};
 inline constexpr BoardProfile XTEINK_X3 = {Board::XteinkX3, "xteink_x3",
+                                           InputStyle::XteinkAdcLadder,
                                            DisplayController::UC8253, 0, {4, 5}};
 inline constexpr BoardProfile XTEINK_X3_UC8279 = {
-    Board::XteinkX3Uc8279, "xteink_x3_uc8279", DisplayController::UC8279, 0,
-    {4, 5}};
+    Board::XteinkX3Uc8279, "xteink_x3_uc8279", InputStyle::XteinkAdcLadder,
+    DisplayController::UC8279, 0, {4, 5}};
 inline constexpr BoardProfile XTEINK_X4_PRO = {
-    Board::XteinkX4Pro, "xteink_x4_pro", X4_DISPLAY_CONTROLLER,
+    Board::XteinkX4Pro, "xteink_x4_pro", InputStyle::DigitalButtons,
+    X4_DISPLAY_CONTROLLER,
     X4_DISPLAY_CONTROLLER_VARIANT, {0, 7}, {}, 800, 480,
     {TouchController::Gt911}};
 inline constexpr BoardProfile XTEINK_X4_CLASSIC = {
-    Board::XteinkX4Classic, "xteink_x4_classic", X4_DISPLAY_CONTROLLER,
+    Board::XteinkX4Classic, "xteink_x4_classic", InputStyle::DigitalButtons,
+    X4_DISPLAY_CONTROLLER,
     X4_DISPLAY_CONTROLLER_VARIANT, {0, 7}, {9, 7, 3, 7}};
 inline constexpr BoardProfile STICKY = {
-    Board::Sticky, "sticky", DisplayController::SSD1677, 0, {5, 6}, {}, 800,
-    480, {TouchController::Gt911}};
+    Board::Sticky, "sticky", InputStyle::DigitalConfirmPowerHold,
+    DisplayController::SSD1677, 0, {5, 6}, {}, 800, 480, {TouchController::Gt911}};
 inline constexpr BoardProfile PAPER_MONO = {
-    Board::PaperMono, "m5stack_paper_mono", DisplayController::SSD1677, 0,
-    {0, 7}, {9, 7, 3, 7}, 800, 480, {TouchController::Ft6336u}};
+    Board::PaperMono, "m5stack_paper_mono", InputStyle::DigitalTwoButton,
+    DisplayController::SSD1677, 0, {0, 7}, {9, 7, 3, 7}, 800, 480,
+    {TouchController::Ft6336u}};
 
 inline constexpr BoardProfile METALIO_EINK4 = {Board::MetalioEInk4,
                                                "metalio_eink4",
+                                               InputStyle::DigitalButtons,
                                                DisplayController::SSD1677,
                                                0,
                                                {-1, -1},
@@ -315,6 +332,7 @@ inline constexpr BoardProfile METALIO_EINK4 = {Board::MetalioEInk4,
 inline constexpr BoardProfile METALIO_EINK4_PLUS = {
     .board = Board::MetalioEInk4Plus,
     .name = "metalio_eink4_plus",
+    .inputStyle = InputStyle::DigitalButtons,
     .displayController = DisplayController::Epdiy,
     .displayControllerVariant = 0,
     .input = {-1, -1},
@@ -327,6 +345,7 @@ inline constexpr BoardProfile METALIO_EINK4_PLUS = {
 
 inline constexpr BoardProfile EEGO_A4 = {Board::EegoA4,
                                          "eego_a4",
+                                         InputStyle::DigitalButtons,
                                          DisplayController::UC8279C,
                                          0,
                                          {5, 7},
@@ -342,8 +361,9 @@ inline constexpr BoardProfile EEGO_A4 = {Board::EegoA4,
                                          60};
 
 inline constexpr BoardProfile PICCO = {
-    Board::Picco, "picco", DisplayController::SSD1677, 0, {21, 9, 6}, {},
-    800,          480,     {TouchController::Tma525c}};
+    Board::Picco, "picco", InputStyle::DigitalButtons,
+    DisplayController::SSD1677, 0, {21, 9, 6}, {}, 800, 480,
+    {TouchController::Tma525c}};
 
 #if defined(SIMULATOR_DEVICE_PICCO)
 inline constexpr BoardProfile DEFAULT_DEVICE = PICCO;

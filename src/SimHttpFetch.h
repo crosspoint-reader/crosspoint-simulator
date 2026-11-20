@@ -12,6 +12,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 
 #include "SimHttpRoutes.h"
 
@@ -30,6 +31,7 @@ struct Response {
   int curlExitCode = 0;
   std::string body;
   std::map<std::string, std::string> headers;
+  std::map<std::string, std::string> combinedHeaders;
 };
 
 inline bool startsWith(const std::string& value, const char* prefix) { return value.rfind(prefix, 0) == 0; }
@@ -234,11 +236,19 @@ inline bool fetchWithCurl(const std::string& url, const char* method, const std:
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (startsWith(line, "HTTP/")) {
       out.headers.clear();
+      out.combinedHeaders.clear();
     } else if (const size_t colon = line.find(':'); colon != std::string::npos) {
       std::string name = line.substr(0, colon);
       for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
       const size_t value = line.find_first_not_of(" \t", colon + 1);
-      out.headers[name] = value == std::string::npos ? "" : line.substr(value);
+      std::string field = value == std::string::npos ? "" : line.substr(value);
+      auto [it, inserted] = out.headers.try_emplace(name, field);
+      if (!inserted) {
+        auto& combined = out.combinedHeaders.try_emplace(name, it->second).first->second;
+        combined += ", ";
+        combined += field;
+        it->second = std::move(field);
+      }
     } else if (!line.empty()) {
       out.statusCode = std::atoi(line.c_str());
     }

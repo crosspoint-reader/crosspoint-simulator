@@ -11,6 +11,7 @@ struct StackFrame {
 
 void begin();
 void restart();
+bool getEegoUid(uint32_t& uid);
 
 // Dump panic info to SD card if necessary
 void checkPanic();

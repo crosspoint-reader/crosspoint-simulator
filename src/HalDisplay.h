@@ -31,6 +31,13 @@ public:
   GrayscaleCapabilities grayscaleCapabilities(
       GrayscaleMode mode = GrayscaleMode::Overlay) const;
   const char* controllerName() const;
+  const char* panelName() const { return nullptr; }
+
+  void setReaderRefresh(bool) {}
+  // The SDL preview already composes all grayscale levels.
+  void setOverlayFullTone(bool) {}
+  bool displayRetainedGrayscaleOverlay(uint16_t, uint16_t, uint16_t, uint16_t,
+                                       bool) { return false; }
 
   // Constructor with pin configuration
   HalDisplay();
@@ -80,6 +87,7 @@ public:
 
   // Power management
   void deepSleep();
+  void controllerIdle() {}
 
   // Access to frame buffer
   uint8_t *getFrameBuffer() const;

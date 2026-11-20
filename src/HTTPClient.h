@@ -57,6 +57,7 @@ class HTTPClient {
     statusCode_ = 0;
     responseComplete_ = false;
     responseHeaders_.clear();
+    combinedHeaders_.clear();
   }
   void setFollowRedirects(int mode) { followRedirects_ = mode != HTTPC_DISABLE_FOLLOW_REDIRECTS; }
   void setReuse(bool reuse) { (void)reuse; }
@@ -96,6 +97,10 @@ class HTTPClient {
     const auto it = responseHeaders_.find(name);
     return it == responseHeaders_.end() ? "" : it->second;
   }
+  std::string getCombinedHeader(const char* lowercaseName) const {
+    const auto it = combinedHeaders_.find(lowercaseName);
+    return it == combinedHeaders_.end() ? getHeader(lowercaseName) : it->second;
+  }
   const std::map<std::string, std::string>& getHeaders() const { return responseHeaders_; }
   Stream* getStreamPtr() {
     if (!responseStream_) responseStream_ = std::make_unique<ResponseBodyStream>(responseBody_);
@@ -117,6 +122,7 @@ class HTTPClient {
     statusCode_ = 0;
     responseComplete_ = false;
     responseHeaders_.clear();
+    combinedHeaders_.clear();
   }
 
   static String errorToString(int error) {
@@ -182,6 +188,7 @@ class HTTPClient {
   bool followRedirects_ = true;
   sim_http_fetch::Timeouts timeouts_;
   std::map<std::string, std::string> responseHeaders_;
+  std::map<std::string, std::string> combinedHeaders_;
 
   int perform(const char* method, const char* body) {
     if (url_.empty()) return 0;
@@ -193,11 +200,13 @@ class HTTPClient {
       statusCode_ = 0;
       responseComplete_ = false;
       responseHeaders_.clear();
+      combinedHeaders_.clear();
       return simCurlExitCodeToHttpError(response.curlExitCode);
     }
 
     responseBody_ = response.body;
     responseHeaders_ = std::move(response.headers);
+    combinedHeaders_ = std::move(response.combinedHeaders);
     responseStream_.reset();
     statusCode_ = response.statusCode;
     responseComplete_ = response.curlExitCode == 0;

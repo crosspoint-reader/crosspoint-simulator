@@ -104,6 +104,7 @@ public:
   // Verify power button was held long enough after wakeup.
   // The host wake path is synthetic, so verification always succeeds.
   bool verifyPowerButtonWakeup();
+  bool isPowerButtonPhysicallyPressed() const { return true; }
 
   // Check if USB is connected
   bool isUsbConnected() const;
