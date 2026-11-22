@@ -221,6 +221,8 @@ tests possible without desktop-control permissions:
 - `CROSSPOINT_SIM_SCREENSHOTS` saves BMP screenshots as
   `<milliseconds>:<path>`, separated by semicolons. Create the destination
   directory before running the simulator.
+- `CROSSPOINT_SIM_WINDOW_SCALE=<0.25-8>` enlarges the window (e.g. `2`) without
+  changing the panel resolution, touch coordinates or screenshots. Default 1.
 - `CROSSPOINT_SIM_SCREEN_TEXT=1` prints the text on screen after each display
   refresh, in reading order, as one serial line:
   `[SIM] SCREEN: 100% | SD card | books | / | « Home | Open | Up | Down`.

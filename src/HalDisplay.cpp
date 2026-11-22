@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -21,7 +22,27 @@ static SDL_Texture *texture = nullptr;
 // Render the simulator at full panel size. The previous 0.5x window was too
 // small. With 1:1 pixel mapping, the simulator can be used for testing fine
 // details.
-static constexpr int SIMULATOR_WINDOW_SCALE = 1;
+// CROSSPOINT_SIM_WINDOW_SCALE (e.g. 1.5, 2) enlarges only the OS window; the
+// logical size stays at panel pixels, so rendering, touch and screenshots are
+// unaffected. Invalid or out-of-range values fall back to 1.
+static float windowScale() {
+  static const float scale = [] {
+    const char *value = std::getenv("CROSSPOINT_SIM_WINDOW_SCALE");
+    if (!value || *value == '\0')
+      return 1.0f;
+
+    char *end = nullptr;
+    const float parsed = std::strtof(value, &end);
+    if (*end != '\0' || !(parsed >= 0.25f && parsed <= 8.0f))
+      return 1.0f;
+
+    return parsed;
+  }();
+  return scale;
+}
+static int scaledSize(int logical) {
+  return std::max(1, static_cast<int>(logical * windowScale() + 0.5f));
+}
 
 // Pixel buffer written by the render task, read by the main thread for
 // SDL_RenderPresent. On macOS, SDL calls must happen on the main thread.
@@ -271,11 +292,9 @@ static void getLogicalWindowSize(GfxRenderer::Orientation orientation,
                                  int *width, int *height) {
   const bool isPortrait = isPortraitOrientation(orientation);
   *width =
-      (isPortrait ? HalDisplay::DISPLAY_HEIGHT : HalDisplay::DISPLAY_WIDTH) *
-      SIMULATOR_WINDOW_SCALE;
+      isPortrait ? HalDisplay::DISPLAY_HEIGHT : HalDisplay::DISPLAY_WIDTH;
   *height =
-      (isPortrait ? HalDisplay::DISPLAY_WIDTH : HalDisplay::DISPLAY_HEIGHT) *
-      SIMULATOR_WINDOW_SCALE;
+      isPortrait ? HalDisplay::DISPLAY_WIDTH : HalDisplay::DISPLAY_HEIGHT;
 }
 
 static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
@@ -288,7 +307,7 @@ static void applyWindowGeometryIfNeeded(GfxRenderer::Orientation orientation) {
   if (winW == currentWindowWidth && winH == currentWindowHeight)
     return;
 
-  SDL_SetWindowSize(window, winW, winH);
+  SDL_SetWindowSize(window, scaledSize(winW), scaledSize(winH));
   SDL_RenderSetLogicalSize(sdl_renderer, winW, winH);
   currentWindowWidth = winW;
   currentWindowHeight = winH;
@@ -373,7 +392,8 @@ void HalDisplay::begin() {
   // SDL_WINDOW_ALLOW_HIGHDPI lets the renderer use full Retina/HiDPI pixels on
   // macOS so we get crisp 1:1 rendering instead of a blurry upscale.
   window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_UNDEFINED,
-                            SDL_WINDOWPOS_UNDEFINED, winW, winH,
+                            SDL_WINDOWPOS_UNDEFINED, scaledSize(winW),
+                            scaledSize(winH),
                             SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
   sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
