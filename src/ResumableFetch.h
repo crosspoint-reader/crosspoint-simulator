@@ -1,32 +1,13 @@
 #pragma once
 
 #include <SecureHttpClient.h>
+#include "FetchOrigin.h"
 
-#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <string>
 
 namespace freeink {
-
-// Keep credential scoping identical to the SDK's ResumableFetch helper.
-inline std::string fetchOrigin(const std::string& url) {
-  const size_t schemeEnd = url.find("://");
-  if (schemeEnd == std::string::npos) return {};
-  std::string scheme = url.substr(0, schemeEnd);
-  const size_t hostStart = schemeEnd + 3;
-  const size_t hostEnd = url.find_first_of("/?#", hostStart);
-  std::string authority = url.substr(hostStart, hostEnd == std::string::npos ? hostEnd : hostEnd - hostStart);
-  const size_t at = authority.rfind('@');
-  if (at != std::string::npos) authority.erase(0, at + 1);
-  for (auto* part : {&scheme, &authority}) {
-    for (char& c : *part) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  }
-  const size_t bracket = authority.rfind(']');
-  if (authority.find(':', bracket == std::string::npos ? 0 : bracket) == std::string::npos)
-    authority += scheme == "https" ? ":443" : ":80";
-  return scheme + "://" + authority;
-}
 
 struct FetchOptions {
   size_t startOffset = 0;

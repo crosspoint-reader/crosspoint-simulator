@@ -440,6 +440,7 @@ inline bool isMetalioEInk4() { return ACTIVE.board == Board::MetalioEInk4; }
 inline bool isMetalioEInk4Plus() { return ACTIVE.board == Board::MetalioEInk4Plus; }
 inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
 inline bool isPicco() { return ACTIVE.board == Board::Picco; }
+inline bool isOnePage() { return false; }
 inline bool hasTouch() {
   return isX4Pro() || isSticky() || isPaperMono() || isMetalioEInk4() || isMetalioEInk4Plus() ||
          isEegoA4() || isPicco();
