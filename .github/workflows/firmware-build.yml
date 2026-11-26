@@ -1,0 +1,91 @@
+name: Firmware build
+
+# Builds CrossPoint firmware develop against this simulator, so a firmware
+# change that needs a new shim or stub shows up the next day, not when a user
+# next pulls both repositories.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      firmware_ref:
+        description: crosspoint-reader branch, tag, or commit
+        default: develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: crosspoint-simulator
+
+      - uses: actions/checkout@v4
+        with:
+          repository: crosspoint-reader/crosspoint-reader
+          ref: ${{ inputs.firmware_ref || 'develop' }}
+          path: crosspoint-reader
+          submodules: recursive
+
+      - name: Show firmware revision
+        working-directory: crosspoint-reader
+        run: git log -1 --format='crosspoint-reader %H %s'
+
+      - name: Install host libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libssl-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install PlatformIO Core
+        # The same PlatformIO build the firmware CI uses; pyyaml is for its i18n script.
+        run: pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip pyyaml
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-simulator-${{ runner.os }}-${{ hashFiles('crosspoint-reader/platformio.ini', 'crosspoint-simulator/sample-platformio-linux-wsl.ini') }}
+          restore-keys: pio-simulator-${{ runner.os }}-
+
+      - name: Configure the simulator from the Linux sample
+        working-directory: crosspoint-reader
+        # The documented sample, pointed at this checkout instead of the
+        # simulator's main branch.
+        run: |
+          sed -e 's|^  simulator=https://github.com/crosspoint-reader/crosspoint-simulator$|  simulator=symlink://../crosspoint-simulator|' \
+              -e 's|pre:\.pio/libdeps/\$PIOENV/simulator/|pre:../crosspoint-simulator/|' \
+              ../crosspoint-simulator/sample-platformio-linux-wsl.ini > platformio.local.ini
+          grep -q 'simulator=symlink://../crosspoint-simulator$' platformio.local.ini
+          grep -q 'pre:../crosspoint-simulator/skip_device_content_protection.py' platformio.local.ini
+
+      - name: Build
+        working-directory: crosspoint-reader
+        run: pio run -e simulator
+
+      - name: Boot to Home
+        working-directory: crosspoint-reader
+        run: |
+          sd=$(mktemp -d)
+          SDL_VIDEODRIVER=dummy CROSSPOINT_SIM_SD="$sd" CROSSPOINT_SIM_HTTP_PORT=18090 \
+            CROSSPOINT_SIM_INPUT_SCRIPT='5000:QUIT' \
+            timeout 60 .pio/build/simulator/program > boot.log 2>&1
+          grep -q 'Entering activity: Home' boot.log || { cat boot.log; exit 1; }
+
+      - name: Web manager smoke test
+        working-directory: crosspoint-reader
+        run: python3 ../crosspoint-simulator/test/web_manager_smoke.py .pio/build/simulator/program
