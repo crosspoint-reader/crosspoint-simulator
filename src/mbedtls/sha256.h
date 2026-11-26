@@ -4,6 +4,12 @@
 #include <cstdint>
 #include <cstring>
 
+#ifdef __APPLE__
+#include <CommonCrypto/CommonDigest.h>
+#else
+#include <openssl/sha.h>
+#endif
+
 struct mbedtls_sha256_context {
   uint8_t digest[32] = {};
 };
@@ -37,11 +43,22 @@ inline int mbedtls_sha256_finish(mbedtls_sha256_context *ctx, unsigned char outp
 inline void mbedtls_sha256_free(mbedtls_sha256_context *) {}
 
 inline int mbedtls_sha256(const unsigned char *input, size_t ilen, unsigned char output[32], int is224) {
-  mbedtls_sha256_context ctx;
-  mbedtls_sha256_init(&ctx);
-  int ret = mbedtls_sha256_starts(&ctx, is224);
-  if (ret == 0) ret = mbedtls_sha256_update(&ctx, input, ilen);
-  if (ret == 0) ret = mbedtls_sha256_finish(&ctx, output);
-  mbedtls_sha256_free(&ctx);
-  return ret;
+  if (!output || (!input && ilen > 0)) return -1;
+  static const unsigned char empty = 0;
+  const unsigned char *data = input ? input : &empty;
+  if (is224) {
+    std::memset(output, 0, 32);
+#ifdef __APPLE__
+    CC_SHA224(data, static_cast<CC_LONG>(ilen), output);
+#else
+    SHA224(data, ilen, output);
+#endif
+  } else {
+#ifdef __APPLE__
+    CC_SHA256(data, static_cast<CC_LONG>(ilen), output);
+#else
+    SHA256(data, ilen, output);
+#endif
+  }
+  return 0;
 }
