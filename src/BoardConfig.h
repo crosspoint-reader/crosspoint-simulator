@@ -203,6 +203,7 @@ enum class Board {
   MetalioEInk4Plus,
   EegoA4,
   Picco,
+  OnePage,
 };
 
 enum class InputStyle : uint8_t {
@@ -365,6 +366,14 @@ inline constexpr BoardProfile PICCO = {
     DisplayController::SSD1677, 0, {21, 9, 6}, {}, 800, 480,
     {TouchController::Tma525c}};
 
+// OnePage (ESP32-C61): SSD1677 800x480, 4-key front ADC ladder on GPIO4 plus
+// side UP=6 / DOWN=9 keys, no touch or frontlight. Mirrors the firmware
+// profile so BoardConfig::isOnePage() callers compile; no simulator device
+// option selects it yet.
+inline constexpr BoardProfile ONEPAGE = {
+    Board::OnePage, "onepage", InputStyle::OnePageAdcLadder,
+    DisplayController::SSD1677, 0, {6, 9}, {0, 0, 0, 0}};
+
 #if defined(SIMULATOR_DEVICE_PICCO)
 inline constexpr BoardProfile DEFAULT_DEVICE = PICCO;
 #elif defined(SIMULATOR_DEVICE_EEGO_A4)
@@ -428,6 +437,9 @@ inline bool selectDevice(Board board) {
   case Board::Picco:
     ACTIVE = PICCO;
     return true;
+  case Board::OnePage:
+    ACTIVE = ONEPAGE;
+    return true;
   }
   return false;
 }
@@ -440,6 +452,7 @@ inline bool isMetalioEInk4() { return ACTIVE.board == Board::MetalioEInk4; }
 inline bool isMetalioEInk4Plus() { return ACTIVE.board == Board::MetalioEInk4Plus; }
 inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
 inline bool isPicco() { return ACTIVE.board == Board::Picco; }
+inline bool isOnePage() { return ACTIVE.board == Board::OnePage; }
 inline bool hasTouch() {
   return isX4Pro() || isSticky() || isPaperMono() || isMetalioEInk4() || isMetalioEInk4Plus() ||
          isEegoA4() || isPicco();
