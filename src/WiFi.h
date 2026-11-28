@@ -211,10 +211,11 @@ public:
     (void)eraseap;
     currentStatus = WL_DISCONNECTED;
   }
-  void mode(int mode) {
-    currentMode = static_cast<wifi_mode_t>(mode);
+  bool mode(wifi_mode_t mode) {
+    currentMode = mode;
     if (mode == WIFI_OFF)
       currentStatus = WL_DISCONNECTED;
+    return true;
   }
   bool softAP(const char *ssid, const char *pass = NULL, int channel = 1,
               int hidden = 0, int max_connection = 4) {
