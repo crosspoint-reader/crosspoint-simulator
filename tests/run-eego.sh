@@ -12,6 +12,7 @@ for variant in frontlit lightless; do
     -DSIMULATOR_DEVICE_EEGO_A4 $variant_flag \
     -Itests/native-stubs -Isrc $(sdl2-config --cflags) \
     tests/eego-input.cpp src/HalGPIO.cpp src/HalClock.cpp src/HalTiltSensor.cpp \
-    src/HalFrontlight.cpp $(sdl2-config --libs) -o "$build_dir/$variant"
+    src/HalFrontlight.cpp src/SimLog.cpp tests/native-stubs/Screenshot.cpp \
+    $(sdl2-config --libs) -o "$build_dir/$variant"
   "$build_dir/$variant"
 done

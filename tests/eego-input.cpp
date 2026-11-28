@@ -23,6 +23,7 @@ std::atomic<bool> quitRequested{false};
 namespace SimulatorLifecycle {
 WakeReason consumeWakeReason() { return WakeReason::None; }
 [[noreturn]] void rebootAsPowerWake() { std::abort(); }
+void setExitCode(int) {}
 } // namespace SimulatorLifecycle
 
 static int presses[7] = {};

@@ -13,6 +13,7 @@ for variant in normal ndebug; do
     -Itests/native-stubs -Isrc $(sdl2-config --cflags) \
     tests/picco-input.cpp src/HalGPIO.cpp src/HalClock.cpp src/HalTiltSensor.cpp \
     src/HalFrontlight.cpp src/HalPowerManager.cpp src/SimulatorLifecycle.cpp \
+    src/SimLog.cpp tests/native-stubs/Screenshot.cpp \
     $(sdl2-config --libs) -o "$build_dir/$variant"
   "$build_dir/$variant"
   "$build_dir/$variant" held
