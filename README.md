@@ -213,7 +213,8 @@ tests possible without desktop-control permissions:
   `SWIPE:<x1>,<y1>,<x2>,<y2>[,<duration-milliseconds>]`. Coordinates are in
   displayed logical pixels, so they match UI layouts and screenshots after the
   firmware changes orientation. Normalized coordinates from 0.0 to 1.0 are
-  also accepted for existing scripts.
+  also accepted for existing scripts. A scripted swipe moves the held contact
+  along a straight line over its duration.
 - `CROSSPOINT_SIM_SD` sets the folder used as the SD card (default `./fs_`).
   The firmware reopens the last book at boot, so start each scripted run with
   a fresh folder (or a known `.crosspoint/state.json`) when the script

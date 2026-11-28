@@ -82,7 +82,8 @@ int main() {
   setenv("CROSSPOINT_SIM_INPUT_SCRIPT",
          "20:BACK;120:LEFT;220:RIGHT;320:ENTER;440:UP;560:DOWN;"
          "680:PREV:140;850:NEXT:100;980:HOME:80;1100:HOME:800;2000:POWER;2200:"
-         "UP:200;2250:PREV:200;2500:NEXT:200;2550:DOWN:200",
+         "UP:200;2250:PREV:200;2500:NEXT:200;2550:DOWN:200;"
+         "2900:SWIPE:0.2,0.3,0.8,0.3,400;3450:TAP:0.4,0.5,120",
          1);
   gpio.begin();
   halClock.begin();
@@ -213,6 +214,26 @@ int main() {
   assert(!gpio.isPressed(HalGPIO::BTN_DOWN));
   assert(buttonEdges[HalGPIO::BTN_DOWN] == 3 &&
          releaseEdges[HalGPIO::BTN_DOWN] == 3);
+
+  // A swipe in portrait changes the panel's Y coordinate before release.
+  float startX, startY, heldX, heldY, endX, endY;
+  until(2920);
+  assert(gpio.isTouchHeldAt(startX, startY));
+  until(3100);
+  assert(gpio.isTouchHeldAt(heldX, heldY));
+  assert(near(heldX, startX) && heldY < startY - 0.15f && heldY > 0.3f);
+  while (!gpio.wasTouchReleased() && millis() < 3400)
+    until(millis() + 1);
+  assert(gpio.wasSwipe(startX, startY, endX, endY));
+  assert(near(startX, endX) && near(startY, 0.8f) && near(endY, 0.2f));
+  assert(!gpio.isTouchHeldAt(heldX, heldY));
+
+  until(3470);
+  assert(gpio.isTouchHeldAt(heldX, heldY));
+  while (!gpio.wasTouchReleased() && millis() < 3670)
+    until(millis() + 1);
+  assert(gpio.wasTouchTap(endX, endY));
+  assert(near(heldX, endX) && near(heldY, endY));
 
   // Independent expectations for each orientation's top-left and bottom-right
   // physical panel coordinates, including edge pixels.

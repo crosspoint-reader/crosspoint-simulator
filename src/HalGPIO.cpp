@@ -127,9 +127,14 @@ struct SyntheticEvent {
   std::string text{}; // WAIT pattern or SHOT path
   std::regex pattern{};
   unsigned long waitingSinceMs = 0;
+  unsigned long swipeDurationMs = 0;
+  float swipeEndNx = 0.0f;
+  float swipeEndNy = 0.0f;
 };
 
 std::vector<SyntheticEvent> syntheticEvents;
+// The event list stays in place once initialized.
+const SyntheticEvent *activeSwipe = nullptr;
 bool syntheticEventsInitialized = false;
 // millis() when each script segment started; segment 0 starts at boot.
 std::vector<long> segmentStartMs;
@@ -206,6 +211,7 @@ void updateTouchMovement(float panelNx, float panelNy) {
 void beginTouch(float logicalNx, float logicalNy) {
   if (!BoardConfig::hasTouch())
     return;
+  activeSwipe = nullptr;
   float panelNx = 0.0f;
   float panelNy = 0.0f;
   logicalToPanelNormalized(logicalNx, logicalNy, panelNx, panelNy);
@@ -233,6 +239,7 @@ void moveTouch(float logicalNx, float logicalNy) {
 }
 
 void endTouch(float logicalNx, float logicalNy) {
+  activeSwipe = nullptr;
   if (!touchState.down)
     return;
   moveTouch(logicalNx, logicalNy);
@@ -468,8 +475,14 @@ void initializeSyntheticEvents() {
         const bool swipe = key == "SWIPE";
         if (parseTouchSpec(item.substr(secondColon + 1), x1, y1, x2, y2,
                            duration, swipe)) {
-          syntheticEvents.push_back(
-              {atMs, SyntheticAction::TouchDown, -1, x1, y1});
+          SyntheticEvent touchDown{atMs, SyntheticAction::TouchDown, -1, x1,
+                                   y1};
+          if (swipe) {
+            touchDown.swipeDurationMs = duration;
+            touchDown.swipeEndNx = x2;
+            touchDown.swipeEndNy = y2;
+          }
+          syntheticEvents.push_back(std::move(touchDown));
           syntheticEvents.push_back(
               {atMs + duration, SyntheticAction::TouchUp, -1, x2, y2});
         }
@@ -582,6 +595,8 @@ void processSyntheticEvents() {
       break;
     case SyntheticAction::TouchDown:
       beginTouch(event.logicalNx, event.logicalNy);
+      if (touchState.down && event.swipeDurationMs > 0)
+        activeSwipe = &event;
       break;
     case SyntheticAction::TouchUp:
       endTouch(event.logicalNx, event.logicalNy);
@@ -611,6 +626,15 @@ void processSyntheticEvents() {
       break;
     }
   }
+  if (activeSwipe) {
+    const auto &swipe = *activeSwipe;
+    const auto startedAt =
+        static_cast<unsigned long>(segmentStartMs[swipe.segment]) + swipe.atMs;
+    const float progress = static_cast<float>(now - startedAt) /
+                           static_cast<float>(swipe.swipeDurationMs);
+    moveTouch(std::lerp(swipe.logicalNx, swipe.swipeEndNx, progress),
+              std::lerp(swipe.logicalNy, swipe.swipeEndNy, progress));
+  }
 }
 
 } // namespace
@@ -624,6 +648,7 @@ static void clearButtonState() {
     coverButtonDown[i] = false;
   }
   touchState = {};
+  activeSwipe = nullptr;
   homeKeyDown = false;
   homeKeyPressedThisFrame = false;
   homeKeyTappedThisFrame = false;
